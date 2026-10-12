@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DM Screen – Játékosok</title>
+<link rel="icon" href="favicon.ico">
+<style>
+:root{--bg:#0e1013;--panel:#1a1d23;--line:#2f3440;--text:#eceae4;--muted:#8e95a1;--accent:#e2a63b;--red:#d9534f;--orange:#e08a2e;--green:#4caf6a;--pc:#4a8fe0;--npc:#4caf6a;--mon:#c9483f}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Georgia,"Times New Roman",serif;overflow:hidden}
+header{display:flex;align-items:baseline;gap:28px;padding:18px 32px 10px;border-bottom:1px solid var(--line)}
+header h1{margin:0;font-size:34px;color:var(--accent);letter-spacing:1px}
+header .now{font-size:26px} header .now b{color:var(--accent)}
+header .next{font-size:20px;color:var(--muted)}
+#list{display:grid;grid-auto-flow:column;grid-template-rows:repeat(var(--rows),auto);grid-template-columns:repeat(var(--cols),1fr);gap:12px 18px;padding:18px 32px}
+.e{display:flex;align-items:center;gap:16px;background:var(--panel);border:1px solid var(--line);border-left:8px solid var(--mon);border-radius:12px;padding:10px 16px;transition:transform .25s,box-shadow .25s}
+.e.ally{border-left-color:var(--npc)} .e.pc{border-left-color:var(--pc)}
+.e.active{box-shadow:0 0 0 3px var(--accent),0 0 28px #e2a63b55;transform:scale(1.02);background:#262214}
+.e.out{opacity:.4}
+.pos{font-size:22px;color:var(--muted);width:30px;text-align:right}
+.av{width:var(--av);height:var(--av);border-radius:50%;object-fit:cover;flex:none;border:2px solid var(--line);background:#252a33;display:flex;align-items:center;justify-content:center;font-size:calc(var(--av) * .45);color:var(--muted)}
+.e.active .av{border-color:var(--accent)}
+.main{flex:1;min-width:0}
+.name{font-size:var(--fs);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px}
+.cond{background:#3a2f4d;border-radius:12px;padding:2px 10px;font-size:15px;font-family:"Segoe UI",sans-serif}
+.cond.conc{background:#28466b}
+.hp{width:clamp(140px,22%,260px);flex:none}
+.bar{height:22px;background:#08090b;border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative}
+.bar .fill{position:absolute;inset:0 auto 0 0;background:var(--green)}
+.bar.mid .fill{background:var(--orange)} .bar.low .fill{background:var(--red)}
+.bar span{position:relative;display:block;text-align:center;font:700 15px/20px "Segoe UI",sans-serif;text-shadow:0 1px 2px #000}
+.st{font:600 18px "Segoe UI",sans-serif;padding:4px 14px;border-radius:14px;flex:none}
+.st.healthy{color:var(--green);border:1px solid var(--green)}
+.st.hurt{color:#e8d34a;border:1px solid #e8d34a}
+.st.bloodied{color:#fff;background:#8a2a1c}
+.st.dying{color:#fff;background:#6b2a8a}
+.st.dead{color:var(--muted);border:1px solid var(--line)}
+#wait{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);font-size:26px;gap:12px;text-align:center}
+#wait b{color:var(--accent);font-size:40px}
+#fs{position:fixed;right:12px;bottom:10px;color:var(--muted);font:13px "Segoe UI",sans-serif;opacity:.6}
+</style>
+</head>
+<body>
+<header><h1>⚔ Initiative</h1><div class="now" id="now"></div><div class="next" id="next"></div></header>
+<div id="list"></div>
+<div id="wait"><b>⚔</b>Várakozás a DM képernyőre…<small>A DM Screen ablakának nyitva kell lennie ugyanebben a böngészőben.</small></div>
+<div id="fs">F11: teljes képernyő</div>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ST = {healthy: 'Sértetlen', hurt: 'Sérült', bloodied: 'Súlyosan sérült', dying: 'Haldoklik', dead: 'Halott'};
+let view = null;
+
+function avatar(e) {
+  const letter = esc((e.name || '?').trim().charAt(0).toUpperCase());
+  return e.portrait
+    ? `<img class="av" src="${esc(e.portrait)}" alt="" onerror="this.outerHTML='<div class=&quot;av&quot;>${letter}</div>'">`
+    : `<div class="av">${letter}</div>`;
+}
+function entry(e, i) {
+  const cls = ['e', e.side, e.kind === 'pc' ? 'pc' : '', e.active ? 'active' : '', e.status === 'dead' ? 'out' : ''].join(' ');
+  let right;
+  if (e.hp != null) {
+    const pct = Math.max(0, Math.min(100, e.hp / e.max * 100));
+    right = `<div class="hp"><div class="bar ${pct <= 25 ? 'low' : pct <= 50 ? 'mid' : ''}"><div class="fill" style="width:${pct}%"></div>
+      <span>${e.hp} / ${e.max}${e.temp ? ' +' + e.temp : ''}</span></div>${e.hp <= 0 ? '<div class="st dying" style="margin-top:6px;text-align:center">Haldoklik</div>' : ''}</div>`;
+  } else right = `<div class="st ${e.status}">${ST[e.status] || ''}</div>`;
+  const conds = e.cond.map(k => `<span class="cond ${k === 'Koncentráció' ? 'conc' : ''}">${esc(k)}</span>`).join('');
+  return `<div class="${cls}"><div class="pos">${i + 1}.</div>${avatar(e)}
+    <div class="main"><div class="name">${esc(e.name)}</div>${conds ? `<div class="sub">${conds}</div>` : ''}</div>${right}</div>`;
+}
+function render() {
+  if (!view) return;
+  $('#wait').style.display = view.list.length ? 'none' : 'flex';
+  if (!view.list.length) $('#wait').innerHTML = '<b>⚔</b>Még nincs harc.';
+  // méretezés: ha sokan vannak, két oszlop és kisebb betű
+  const n = view.list.length, cols = n > 9 ? 2 : 1, rows = Math.ceil(n / cols) || 1;
+  const avail = window.innerHeight - 110 - rows * 12;
+  const h = Math.max(48, Math.min(110, avail / rows - 22));
+  const root = document.documentElement.style;
+  root.setProperty('--cols', cols); root.setProperty('--rows', rows);
+  root.setProperty('--av', h + 'px'); root.setProperty('--fs', Math.max(18, Math.min(34, h * 0.42)) + 'px');
+  $('#list').innerHTML = view.list.map(entry).join('');
+  const i = view.list.findIndex(e => e.active);
+  if (view.started && i >= 0) {
+    const nxt = view.list.slice(i + 1).concat(view.list.slice(0, i)).find(e => e.status !== 'dead');
+    $('#now').innerHTML = `${view.round}. kör · Soron: <b>${esc(view.list[i].name)}</b>`;
+    $('#next').textContent = nxt ? 'Következik: ' + nxt.name : '';
+  } else { $('#now').textContent = view.started ? `${view.round}. kör` : 'A harc hamarosan kezdődik'; $('#next').textContent = ''; }
+}
+const chan = new BroadcastChannel('dmscreen-player');
+chan.onmessage = e => { if (e.data?.type === 'state') { view = e.data.view; render(); } };
+chan.postMessage({type: 'hello'});
+setInterval(() => { if (!view) chan.postMessage({type: 'hello'}); }, 2000);
+window.addEventListener('resize', render);
+</script>
+</body>
+</html>

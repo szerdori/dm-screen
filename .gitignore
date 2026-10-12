@@ -1,0 +1,9 @@
+# helyi adatmentések és beállítások (személyes adat, nem kerül a nyilvános tárolóba)
+adatok/
+.claude/
+*.json.bak
+dmscreen-mentes-*.json
+
+# régi helyi indító (a webes verzió után törölhető)
+server.ps1
+DM Screen inditasa.bat

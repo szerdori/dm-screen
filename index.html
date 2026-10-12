@@ -1,0 +1,1534 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DM Screen</title>
+<link rel="icon" href="favicon.ico">
+<style>
+:root{
+  --bg:#121418; --panel:#1b1e24; --panel2:#232730; --line:#323744; --text:#e7e7e9; --muted:#9097a3;
+  --accent:#e2a63b; --red:#d9534f; --orange:#e08a2e; --green:#4caf6a; --blue:#4a8fe0;
+  --pc:#4a8fe0; --npc:#4caf6a; --mon:#c9483f;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.4 "Segoe UI",system-ui,sans-serif}
+button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:600}
+button.small{padding:2px 7px;font-size:12px}
+button.on{background:var(--accent);color:#1a1405}
+input,select,textarea{font:inherit;color:var(--text);background:#0f1115;border:1px solid var(--line);border-radius:5px;padding:4px 6px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
+textarea{width:100%;resize:vertical}
+input[type=number]{width:64px}
+.muted{color:var(--muted)} .pad{padding:14px}
+header{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line);height:52px}
+.brand{font-weight:700;color:var(--accent);font-size:16px;margin-right:6px}
+.round{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 10px}
+.round b{color:var(--accent);font-size:16px}
+.grow{flex:1} .sep{width:1px;height:26px;background:var(--line);margin:0 4px}
+#saveState{color:var(--muted);font-size:12px}
+main{display:flex;height:calc(100% - 52px)}
+#board{flex:1;overflow:auto;padding:12px}
+#tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;align-items:start}
+#side{width:440px;min-width:360px;border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel)}
+#detail{flex:1;overflow:auto}
+#dice{border-top:1px solid var(--line);height:260px;display:flex;flex-direction:column}
+.dicebar{display:flex;gap:4px;padding:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.dicebar input{width:110px}
+#log{flex:1;overflow:auto;padding:4px 8px;font-size:13px}
+.le{padding:3px 0;border-bottom:1px solid #20242b}
+.le .who{color:var(--muted)} .le b{font-size:15px}
+.le.crit b{color:var(--green)} .le.fumble b{color:var(--red)}
+.le.turn{color:var(--accent);font-weight:600} .le.warn{color:var(--orange)} .le.round{color:var(--accent);text-align:center;font-weight:700}
+.empty{grid-column:1/-1;text-align:center;padding:60px;color:var(--muted)}
+.empty button{margin-top:12px}
+
+.tile{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--mon);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.tile.ally{border-left-color:var(--npc)} .tile.ally.k-pc{border-left-color:var(--pc)}
+.sidebtn{font-size:11px;padding:1px 7px;border-radius:10px}
+.sidebtn.enemy{background:#4a1f1d;border-color:var(--mon)} .sidebtn.ally{background:#1d3d25;border-color:var(--npc)}
+#diff{font-weight:600}
+.d-trivial{color:var(--muted)} .d-easy{color:var(--green)} .d-medium{color:#e8d34a} .d-hard{color:var(--orange)} .d-deadly{color:#fff;background:#7a1c1c;border-color:var(--red)}
+table.dt{border-collapse:collapse;width:100%;margin:6px 0 12px;font-size:13px}
+table.dt th,table.dt td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}
+table.dt td.n,table.dt th.n{text-align:right}
+table.dt tr.hl td{color:var(--accent);font-weight:700}
+.tile.active{box-shadow:0 0 0 2px var(--accent);background:#262318}
+.tile.selected{outline:1px dashed var(--muted);outline-offset:2px}
+.tile.dead{opacity:.45}
+.t-head{display:flex;align-items:center;gap:6px}
+.t-head .init{width:48px;font-weight:700;text-align:center;font-size:16px}
+.t-name{flex:1;font-weight:600;font-size:15px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.t-name small{color:var(--muted);font-weight:400;font-size:12px}
+.ac{background:var(--panel2);border:1px solid var(--line);border-radius:12px 12px 16px 16px;padding:2px 8px;font-weight:700}
+.hpbar{position:relative;height:20px;background:#0d0f12;border-radius:4px;overflow:hidden;border:1px solid var(--line)}
+.hpbar .fill{position:absolute;inset:0 auto 0 0;background:var(--green)}
+.hpbar.mid .fill{background:var(--orange)} .hpbar.low .fill{background:var(--red)}
+.hpbar .tmp{position:absolute;inset:0 0 0 auto;background:#5b7fbf88}
+.hpbar span{position:relative;display:block;text-align:center;font-weight:700;font-size:13px;line-height:18px;text-shadow:0 1px 2px #000}
+.hp-ctl{display:flex;gap:4px} .hp-ctl input{flex:1;width:auto;min-width:0}
+.hp-ctl button{flex:none;padding:4px 9px}
+.hp-ctl .dmg{background:#4a1f1d} .hp-ctl .heal{background:#1d3d25}
+.conds{display:flex;flex-wrap:wrap;gap:4px}
+.chip{background:#3a2f4d;border-radius:10px;padding:1px 8px;font-size:12px;cursor:pointer}
+.chip.conc{background:#28466b}
+.chip:hover{text-decoration:line-through}
+.atks{display:flex;flex-direction:column;gap:2px;font-size:13px}
+.atk{display:flex;gap:4px;align-items:baseline;flex-wrap:wrap}
+.atk .an{color:#cfd3da;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.atk .tag{color:var(--accent);font-size:11px;font-weight:700}
+.other{font-size:12px;color:var(--muted)}
+.t-foot{display:flex;align-items:center;gap:4px}
+.pips{display:flex;gap:3px;align-items:center;font-size:11px;color:var(--muted)}
+.pip{width:13px;height:13px;border-radius:50%;border:1px solid var(--accent);cursor:pointer}
+.pip.used{background:transparent} .pip.free{background:var(--accent)}
+
+.roll{color:var(--accent);border-bottom:1px dotted var(--accent);cursor:pointer;white-space:nowrap;font-weight:600}
+.roll:hover{background:#3a2f15}
+.roll.hit{color:#7fc4ff;border-color:#7fc4ff}
+
+/* statblock */
+.sb{padding:12px 14px}
+.sb h2{margin:0;color:var(--accent);font-size:20px}
+.sb .sub{color:var(--muted);font-style:italic;margin-bottom:8px}
+.sb h3{margin:14px 0 4px;color:var(--accent);border-bottom:1px solid var(--line);font-size:15px;padding-bottom:2px}
+.sb p{margin:4px 0}
+.sb .line b{color:#cfd3da}
+.abil{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;margin:8px 0;text-align:center}
+.abil div{background:var(--panel2);border-radius:6px;padding:4px 0;cursor:pointer}
+.abil div:hover{outline:1px solid var(--accent)}
+.abil small{display:block;color:var(--muted);font-size:11px}
+.abil .sv{font-size:11px;color:#7fc4ff}
+.ctl{background:var(--panel2);margin:10px 14px;padding:10px;border-radius:8px;display:flex;flex-direction:column;gap:8px}
+.ctl .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ctl label{color:var(--muted);font-size:12px}
+
+/* modal */
+#gate{position:fixed;inset:0;background:var(--bg);z-index:20;display:flex;align-items:center;justify-content:center;text-align:center;font-size:18px;color:var(--muted);line-height:1.8}
+#gate[hidden]{display:none}
+#gate button{margin-top:14px;font-size:16px;padding:8px 18px}
+#modal{position:fixed;inset:0;background:#000a;display:flex;align-items:flex-start;justify-content:center;padding:30px;z-index:10}
+#modal[hidden]{display:none}
+.modal-box{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:min(980px,100%);max-height:calc(100vh - 60px);overflow:auto;padding:16px}
+.modal-box h2{margin:0 0 10px;color:var(--accent)}
+.tabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button.on{background:var(--accent);color:#1a1405}
+.rows{display:flex;flex-direction:column;gap:4px}
+.lrow{display:flex;align-items:center;gap:8px;background:var(--panel2);padding:6px 8px;border-radius:6px}
+.lrow .nm{flex:1} .lrow .nm small{color:var(--muted);margin-left:6px}
+.lrow input[type=number]{width:52px}
+.srcs{display:flex;flex-wrap:wrap;gap:4px 12px;max-height:120px;overflow:auto;background:#0f1115;padding:8px;border-radius:6px;border:1px solid var(--line);font-size:12px}
+.form{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.form label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:2px}
+.form label input,.form label select{width:100%}
+.form .w2{grid-column:span 2} .form .w4{grid-column:1/-1}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.hint{font-size:12px;color:var(--muted)}
+@media (max-width:1200px){#side{width:340px;min-width:300px}}
+.kbd{border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:11px}
+.av{width:30px;height:30px;border-radius:50%;object-fit:cover;flex:none;border:1px solid var(--line);background:var(--panel2)}
+.sb .portrait{float:right;width:110px;height:110px;border-radius:10px;object-fit:cover;margin:0 0 8px 10px;border:1px solid var(--line)}
+.tile.hiddenp{border-style:dashed;opacity:.75}
+.tile.hiddenp .t-name::after{content:" 🙈";font-size:12px}
+.pv{width:72px;height:72px;border-radius:10px;object-fit:cover;border:1px solid var(--line);background:var(--panel2)}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">⚔ DM Screen</div>
+  <div class="round">Kör <b id="roundNo">1</b></div>
+  <button id="diff" data-act="diffInfo" title="Encounter nehézsége (DMG 2014) – kattints a részletekért">–</button>
+  <button data-act="prev" title="Előző (P)">◀</button>
+  <button class="primary" data-act="next" title="Következő (N vagy Szóköz)">Következő ▶</button>
+  <button data-act="rollInit">🎲 Initiative</button>
+  <span class="sep"></span>
+  <button data-act="openLib">＋ Hozzáadás / Könyvtár</button>
+  <button data-act="newCreature">✎ Új lény</button>
+  <button data-act="openPlayer" title="Külön ablakban megnyitja a játékosoknak szánt képernyőt – húzd át a másik monitorra, és nyomj F11-et">📺 Játékos képernyő</button>
+  <span class="grow"></span>
+  <span id="saveState"></span>
+  <button data-act="menu">⋯ Menü</button>
+</header>
+<main>
+  <section id="board"><div id="tiles"></div></section>
+  <aside id="side">
+    <div id="detail"></div>
+    <div id="dice">
+      <div class="dicebar">
+        <input id="diceInput" placeholder="pl. 2d6+3">
+        <button data-act="rollCustom">Dob</button>
+        <button class="small" data-die="1d4">d4</button><button class="small" data-die="1d6">d6</button>
+        <button class="small" data-die="1d8">d8</button><button class="small" data-die="1d10">d10</button>
+        <button class="small" data-die="1d12">d12</button><button class="small" data-die="1d20">d20</button>
+        <button class="small" data-die="1d100">d%</button>
+        <span class="hint" style="width:100%">Kattints a színes számokra · Shift+kattintás: előny / kritikus · Ctrl+kattintás: hátrány</span>
+      </div>
+      <div id="log"></div>
+    </div>
+  </aside>
+</main>
+<div id="modal" hidden><div class="modal-box" id="modalBox"></div></div>
+<div id="gate"><div>Betöltés…</div></div>
+<input type="file" id="fileIn" accept=".json,application/json" hidden>
+
+<script>
+'use strict';
+// ---------- alapok ----------
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Math.random().toString(36).slice(2, 10);
+const ABIL = ['str','dex','con','int','wis','cha'];
+const ABIL_FULL = {str:'Strength',dex:'Dexterity',con:'Constitution',int:'Intelligence',wis:'Wisdom',cha:'Charisma'};
+const CONDITIONS = ['Blinded','Charmed','Deafened','Exhaustion','Frightened','Grappled','Incapacitated','Invisible','Paralyzed','Petrified','Poisoned','Prone','Restrained','Stunned','Unconscious'];
+const SECTIONS = ['traits','actions','bonusActions','reactions','legendary'];
+const SECTION_HU = {traits:'Tulajdonságok', actions:'Akciók', bonusActions:'Bónusz akciók', reactions:'Reakciók', legendary:'Legendás akciók'};
+const KIND_HU = {monster:'Szörny', npc:'NPC', pc:'Játékos'};
+const sideOf = x => x.side || (x.c.kind === 'monster' ? 'enemy' : 'ally');
+const SIDE_HU = {enemy: 'Ellenfél', ally: 'Csapattárs'};
+const mod = s => Math.floor(((+s || 10) - 10) / 2);
+const sgn = n => (n >= 0 ? '+' : '') + n;
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+const TEMPLATE = {
+  "_leiras": "DM Screen sablon. Töltsd ki, és importáld: Könyvtár → JSON / Sablon fül. kind: monster | npc | pc. A szekciókban (traits, actions, bonusActions, reactions, legendary) minden elem {name, text}. A szövegben lévő dobásokat (pl. 1d6+2, +5 to hit, Recharge 5–6) a program kattinthatóvá teszi. initBonus: null = DEX módosító. Több lényt is megadhatsz egy tömbben: [ {...}, {...} ].",
+  "name": "Ködvadász", "kind": "monster", "size": "Medium", "type": "aberration", "alignment": "neutral evil", "cr": "3",
+  "ac": 14, "acNote": "natural armor", "hp": {"max": 52, "formula": "8d8+16"}, "speed": "30 ft., climb 30 ft.",
+  "abilities": {"str": 14, "dex": 16, "con": 14, "int": 8, "wis": 12, "cha": 6},
+  "saves": {"dex": 5}, "skills": "Stealth +7, Perception +3", "senses": "darkvision 60 ft., passive Perception 13",
+  "languages": "Deep Speech", "initBonus": null, "resist": "", "immune": "poison", "vuln": "", "condImmune": "poisoned",
+  "traits": [{"name": "Ködben járás", "text": "Sűrű ködben a ködvadász láthatatlan."}],
+  "actions": [
+    {"name": "Multiattack", "text": "Két Karom támadás."},
+    {"name": "Karom", "text": "Melee Weapon Attack: +5 to hit, reach 5 ft. Hit: 1d8+3 slashing damage."},
+    {"name": "Ködlehelet (Recharge 5–6)", "text": "15 ft. cone, DC 12 Constitution saving throw. 3d6 poison damage on a failed save, half as much on a success."}
+  ],
+  "bonusActions": [], "reactions": [], "legendary": [], "legendaryCount": 0, "notes": ""
+};
+
+// ---------- állapot ----------
+let S = {
+  library: [],
+  enc: {list: [], round: 1, active: null},
+  saved: [],
+  settings: {groupInit: true, rollHp: false, sources: ['MM','VGM','MTF','MPMM']}
+};
+let selected = null;
+let logLines = [];
+let libTab = 'lib';
+
+function blankCreature() {
+  return {id: uid(), name: 'Új lény', kind: 'monster', source: 'saját', size: '', type: '', alignment: '', cr: '',
+    ac: 10, acNote: '', hp: {max: 10, formula: ''}, speed: '30 ft.',
+    abilities: {str:10,dex:10,con:10,int:10,wis:10,cha:10}, saves: {}, skills: '', senses: '', languages: '',
+    initBonus: null, resist: '', immune: '', vuln: '', condImmune: '',
+    traits: [], actions: [], bonusActions: [], reactions: [], legendary: [], legendaryCount: 0, notes: ''};
+}
+function normCreature(c) {
+  const b = blankCreature();
+  const o = {...b, ...c};
+  delete o._leiras;
+  o.abilities = {...b.abilities, ...(c.abilities || {})};
+  o.hp = typeof c.hp === 'number' ? {max: c.hp, formula: ''} : {...b.hp, ...(c.hp || {})};
+  o.ac = +o.ac || 10;
+  o.saves = o.saves || {};
+  for (const k of SECTIONS) o[k] = (o[k] || []).map(e => typeof e === 'string' ? splitEntry(e) : {name: e.name || '', text: e.text || ''});
+  if (o.initBonus === '' || o.initBonus === undefined) o.initBonus = null;
+  if (o.initBonus !== null) o.initBonus = +o.initBonus;
+  if (!o.id) o.id = uid();
+  return o;
+}
+function splitEntry(s) {
+  s = s.trim();
+  const i = s.indexOf('. ');
+  return i > 0 && i < 80 ? {name: s.slice(0, i), text: s.slice(i + 2)} : {name: '', text: s};
+}
+const initBonusOf = c => c.initBonus ?? mod(c.abilities.dex);
+const nameOf = x => x.c.name + (x.num ? ' ' + x.num : '');
+const byId = id => S.enc.list.find(x => x.cid === id);
+
+// ---------- mentés: Firebase (Firestore), plusz másolat a böngészőben ----------
+// Firestore-ban: dmscreen/state (encounter + beállítások), dmscreen_library/{id}, dmscreen_saved/{id}.
+// Mindig csak a megváltozott dokumentumokat írjuk.
+let DB = null, saveTimer = null, authInfo = {status: 'loading'};
+let lastSaved = {state: '', lib: {}, saved: {}};
+const setSaveState = t => $('#saveState').textContent = t;
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 400); }
+function ensureIds() { S.saved.forEach(e => { if (!e.id) e.id = uid(); }); }
+function syncCol(col, arr, key, ops) {
+  const seen = {};
+  for (const it of arr) {
+    const j = JSON.stringify(it); seen[it.id] = j;
+    if (lastSaved[key][it.id] !== j) ops.push(DB.set(col + '/' + it.id, JSON.parse(j)));
+  }
+  for (const id of Object.keys(lastSaved[key])) if (!(id in seen)) ops.push(DB.del(col + '/' + id));
+  lastSaved[key] = seen;
+}
+async function doSave() {
+  saveTimer = null;
+  ensureIds();
+  try { localStorage.setItem('dmscreen', JSON.stringify(S)); } catch {}
+  if (!DB) { setSaveState(authInfo.status === 'unconfigured' ? '✓ böngészőben mentve' : ''); return; }
+  const ops = [];
+  try {
+    const state = JSON.stringify({enc: S.enc, settings: S.settings});
+    if (state !== lastSaved.state) { ops.push(DB.set('dmscreen/state', JSON.parse(state))); lastSaved.state = state; }
+    syncCol('dmscreen_library', S.library, 'lib', ops);
+    syncCol('dmscreen_saved', S.saved, 'saved', ops);
+    if (!ops.length) return;
+    setSaveState(navigator.onLine ? 'mentés…' : '⚠ nincs internet – a változások később töltődnek fel');
+    await Promise.all(ops);
+    setSaveState('✓ mentve');
+  } catch (e) {
+    lastSaved = {state: '', lib: {}, saved: {}};  // legközelebb mindent újraírunk
+    setSaveState('⚠ mentés sikertelen' + (e.code ? ' (' + e.code + ')' : ''));
+  }
+}
+window.addEventListener('beforeunload', e => {
+  try { localStorage.setItem('dmscreen', JSON.stringify(S)); } catch {}
+  if (saveTimer) { doSave(); e.preventDefault(); }
+});
+function applyLoaded(d) { S = {...S, ...d, settings: {...S.settings, ...(d.settings || {})}}; ensureIds(); }
+function loadLocal() {
+  try { const t = localStorage.getItem('dmscreen'); if (t) applyLoaded(JSON.parse(t)); } catch {}
+}
+async function loadFromDb() {
+  const [st, lib, saved] = await Promise.all([DB.get('dmscreen/state'), DB.list('dmscreen_library'), DB.list('dmscreen_saved')]);
+  if (st || lib.length || saved.length) {
+    applyLoaded({...(st || {}), library: lib, saved});
+    lastSaved = {state: JSON.stringify({enc: S.enc, settings: S.settings}), lib: {}, saved: {}};
+    S.library.forEach(c => lastSaved.lib[c.id] = JSON.stringify(c));
+    S.saved.forEach(e => lastSaved.saved[e.id] = JSON.stringify(e));
+  } else {
+    // üres a felhő: ha ebben a böngészőben van korábbi adat, azt töltjük fel
+    loadLocal();
+    if (S.library.length || S.enc.list.length || S.saved.length) save();
+  }
+}
+// a Firebase-modul hívja (lent), amikor kiderül, be vagy-e lépve
+window.DMApp = {
+  async setAuth(a) {
+    authInfo = a;
+    if (a.status === 'signedIn') {
+      DB = a.db;
+      renderGate('Adatok betöltése…');
+      try { await loadFromDb(); renderGate(null); }
+      catch (e) {
+        DB = null;
+        renderGate(e.code === 'permission-denied'
+          ? `Ez a Google-fiók (${esc(a.email)}) nem fér hozzá az adatokhoz.<br><button data-act="signOut">Másik fiókkal</button>`
+          : `Nem sikerült betölteni az adatokat (${esc(e.code || e.message)}).<br><button data-act="reload">Újra</button>`);
+        return;
+      }
+    } else if (a.status === 'unconfigured') { DB = null; loadLocal(); renderGate(null); }
+    else if (a.status === 'signedOut') {
+      DB = null;
+      renderGate(`<b style="font-size:40px;color:var(--accent)">⚔</b><br>Lépj be a Google-fiókoddal, hogy elérd a DM Screen adataidat.<br>
+        <button class="primary" data-act="signIn">Belépés Google-fiókkal</button>${a.error ? `<p style="color:var(--red)">${esc(a.error)}</p>` : ''}`);
+    }
+    render();
+  }
+};
+function renderGate(html) {
+  const g = $('#gate');
+  g.hidden = !html;
+  if (html) g.innerHTML = `<div>${html}</div>`;
+}
+
+// ---------- kocka ----------
+// kriptográfiai véletlenszám (Windows rendszer-generátora), elutasításos mintavétellel, hogy minden oldal pontosan egyforma eséllyel jöjjön
+function rnd(d) {
+  const a = new Uint32Array(1), lim = Math.floor(0x100000000 / d) * d;
+  do crypto.getRandomValues(a); while (a[0] >= lim);
+  return 1 + (a[0] % d);
+}
+const TIP_HIT = 'Támadódobás – kattintás: normál · Shift+kattintás: előny · Ctrl+kattintás: hátrány';
+const TIP_DMG = 'Sebzésdobás – kattintás: normál · Shift+kattintás: kritikus (dupla kocka)';
+const TIP_RECH = 'Recharge – d6 dobás, ennyi vagy több kell, hogy újra használható legyen';
+function roll(expr) {
+  const e = String(expr).replace(/\s+/g, '').replace(/[−–]/g, '-');
+  const terms = e.match(/[+-]?[^+-]+/g) || [];
+  let total = 0; const parts = [];
+  for (const t of terms) {
+    const sign = t[0] === '-' ? -1 : 1;
+    const body = t.replace(/^[+-]/, '');
+    const m = body.match(/^(\d*)d(\d+)$/i);
+    if (m) {
+      const n = Math.min(+(m[1] || 1), 200), d = +m[2]; const rs = [];
+      for (let i = 0; i < n; i++) rs.push(rnd(d));
+      total += sign * rs.reduce((a, b) => a + b, 0);
+      parts.push((sign < 0 ? '−' : '') + `[${rs.join(',')}]`);
+    } else if (/^\d+$/.test(body)) { total += sign * +body; parts.push((sign < 0 ? '−' : '+') + body); }
+  }
+  return {total, detail: parts.join(' ')};
+}
+function log(html, cls = '') {
+  logLines.unshift({html, cls});
+  logLines = logLines.slice(0, 150);
+  $('#log').innerHTML = logLines.map(l => `<div class="le ${l.cls}">${l.html}</div>`).join('');
+}
+function rollHit(bonus, who, label, mode) {
+  const b = parseInt(bonus) || 0;
+  const a = rnd(20), a2 = rnd(20);
+  const d = mode === 'adv' ? Math.max(a, a2) : mode === 'dis' ? Math.min(a, a2) : a;
+  const tag = mode === 'adv' ? ` előny [${a},${a2}]` : mode === 'dis' ? ` hátrány [${a},${a2}]` : ` [${a}]`;
+  const cls = d === 20 ? 'crit' : d === 1 ? 'fumble' : '';
+  log(`<span class="who">${esc(who)}</span> ${esc(label)}: <b>${d + b}</b> <small>d20${tag} ${sgn(b)}${d === 20 ? ' — KRITIKUS!' : d === 1 ? ' — elvétve' : ''}</small>`, cls);
+}
+function rollDmg(expr, who, label, crit) {
+  if (crit) expr = expr.replace(/(\d*)d(\d+)/g, (m, n, d) => `${2 * (+n || 1)}d${d}`);
+  const r = roll(expr);
+  log(`<span class="who">${esc(who)}</span> ${esc(label)}: <b>${r.total}</b> <small>${esc(expr)}${crit ? ' (krit)' : ''} ${esc(r.detail)}</small>`);
+}
+
+// szövegben lévő dobások kattinthatóvá tétele
+const LINK_RE = /(\d+d\d+(?:\s*[+\-−]\s*\d+(?!\s*d))?)|([+\-]\d+)(?= to hit)|(?<=Attack(?: Roll)?:\s?)([+\-]\d+)|(\(Recharge (\d)(?:[–-]6)?\))/g;
+function linkify(s) {
+  return esc(s).replace(LINK_RE, (m, dice, hit, hit2, rech, rn) => {
+    if (dice) return `<span class="roll" data-roll="${dice.replace(/\s/g, '')}" title="${TIP_DMG}">${dice}</span>`;
+    if (hit || hit2) return `<span class="roll hit" data-hit="${hit || hit2}" title="${TIP_HIT}">${hit || hit2}</span>`;
+    if (rech) return `<span class="roll" data-rech="${rn || 6}" title="${TIP_RECH}">${rech}</span>`;
+    return m;
+  }).replace(/\n/g, '<br>');
+}
+function atkInfo(text) {
+  const hit = (text.match(/([+\-]\d+)(?= to hit)/) || text.match(/Attack(?: Roll)?:\s?([+\-]\d+)/) || [])[1];
+  const dice = [];
+  const re = /(\d+d\d+(?:\s*[+\-−]\s*\d+(?!\s*d))?)/g; let m;
+  while ((m = re.exec(text))) {
+    const after = text.slice(re.lastIndex, re.lastIndex + 30).match(/^\)?\s*([A-Za-z]+)\s+damage/i);
+    dice.push({expr: m[1].replace(/\s/g, ''), type: after ? after[1].toLowerCase() : ''});
+  }
+  return {hit, dice};
+}
+
+// ---------- encounter ----------
+function order() {
+  return [...S.enc.list].sort((a, b) =>
+    (b.init ?? -99) - (a.init ?? -99) ||
+    initBonusOf(b.c) - initBonusOf(a.c) ||
+    (a.c.kind === 'pc' ? 0 : 1) - (b.c.kind === 'pc' ? 0 : 1) ||
+    nameOf(a).localeCompare(nameOf(b), 'hu', {numeric: true}));
+}
+function addToEncounter(creature, count = 1) {
+  const c0 = normCreature(structuredClone(creature));
+  const base = c0.name;
+  const same = S.enc.list.filter(x => x.c.name === base);
+  if (same.length === 1 && !same[0].num && c0.kind !== 'pc') same[0].num = 1;
+  let next = Math.max(0, ...same.map(x => x.num || 0)) + 1;
+  const group = uid();
+  const added = [];
+  for (let i = 0; i < count; i++) {
+    const c = structuredClone(c0);
+    c.libId = creature.libId || creature.id;
+    const num = c.kind === 'pc' ? 0 : (count > 1 || same.length ? next++ : 0);
+    let hp = c.hp.cur ?? c.hp.max;
+    if (S.settings.rollHp && c.hp.formula && c.kind !== 'pc') hp = Math.max(1, roll(c.hp.formula).total);
+    if (c.kind !== 'pc') c.hp.max = Math.max(c.hp.max, hp);
+    delete c.hp.cur;
+    const x = {cid: uid(), num, c, hp, temp: 0, init: null, cond: [], conc: false, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group};
+    S.enc.list.push(x); added.push(x);
+  }
+  // harc közben hozzáadott ellenfelek azonnal dobnak
+  if (S.enc.active) added.forEach(x => { if (x.c.kind !== 'pc') x.init = roll('1d20').total + initBonusOf(x.c); });
+  save(); render();
+  return added;
+}
+function startTurn(x) {
+  x.leg = 0;
+  const expired = [];
+  x.cond.forEach(k => { if (k.rounds != null) { k.rounds--; if (k.rounds <= 0) expired.push(k); } });
+  x.cond = x.cond.filter(k => !expired.includes(k));
+  log(`▶ ${esc(nameOf(x))} köre`, 'turn');
+  expired.forEach(k => log(`${esc(nameOf(x))}: ${esc(k.name)} lejárt`, 'warn'));
+  if (x.conc) log(`${esc(nameOf(x))} koncentrál`, 'warn');
+}
+function step(dir) {
+  const o = order();
+  if (!o.length) return;
+  const skip = x => x.dead && x.c.kind !== 'pc';
+  if (o.every(skip)) return;
+  let i = o.findIndex(x => x.cid === S.enc.active);
+  if (i < 0) {
+    i = o.findIndex(x => !skip(x));
+    S.enc.active = o[i].cid; S.enc.round = S.enc.round || 1;
+    log(`— ${S.enc.round}. kör —`, 'round'); startTurn(o[i]);
+  } else {
+    let j = i;
+    do {
+      j += dir;
+      if (j >= o.length) { j = 0; S.enc.round++; log(`— ${S.enc.round}. kör —`, 'round'); }
+      if (j < 0) { j = o.length - 1; S.enc.round = Math.max(1, S.enc.round - 1); }
+    } while (skip(o[j]));
+    S.enc.active = o[j].cid;
+    if (dir > 0) startTurn(o[j]);
+  }
+  selected = null;
+  save(); render();
+  document.querySelector('.tile.active')?.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+}
+function rollInitiative(mode) {
+  const groups = {};
+  for (const x of S.enc.list) {
+    if (mode === 'monsters' && x.c.kind === 'pc') continue;
+    if (mode === 'missing' && x.init != null) continue;
+    if (S.settings.groupInit && x.group) {
+      if (groups[x.group] == null) groups[x.group] = roll('1d20').total + initBonusOf(x.c);
+      x.init = groups[x.group];
+    } else x.init = roll('1d20').total + initBonusOf(x.c);
+  }
+  log('🎲 Initiative dobva', 'turn');
+  closeModal(); save(); render();
+}
+function damage(x, n) {
+  const max = x.c.hp.max;
+  let rem = n;
+  if (x.temp) { const t = Math.min(x.temp, rem); x.temp -= t; rem -= t; }
+  x.hp = Math.max(0, x.hp - rem);
+  log(`<span class="who">${esc(nameOf(x))}</span> −${n} HP → <b>${x.hp}</b>/${max}${x.temp ? ` (+${x.temp} temp)` : ''}`);
+  if (x.conc && n > 0) log(`⚠ ${esc(nameOf(x))}: koncentráció mentő, DC ${Math.max(10, Math.floor(n / 2))}`, 'warn');
+  if (x.hp === 0) {
+    if (x.c.kind === 'pc') log(`⚠ ${esc(nameOf(x))} 0 HP-n – death save-ek!`, 'warn');
+    else { x.dead = true; log(`💀 ${esc(nameOf(x))} elesett`, 'warn'); }
+  }
+}
+function heal(x, n) {
+  x.hp = Math.min(x.c.hp.max, x.hp + n);
+  if (x.hp > 0) x.dead = false;
+  log(`<span class="who">${esc(nameOf(x))}</span> +${n} HP → <b>${x.hp}</b>/${x.c.hp.max}`);
+}
+
+// ---------- megjelenítés ----------
+function render() {
+  $('#roundNo').textContent = S.enc.round || 1;
+  renderTiles(); renderDetail(); renderDiff(); broadcast();
+}
+
+// ---------- játékos képernyő ----------
+// csak azt küldjük át, amit a játékosok láthatnak
+const chan = 'BroadcastChannel' in window ? new BroadcastChannel('dmscreen-player') : null;
+function publicView() {
+  return {
+    round: S.enc.round || 1, started: !!S.enc.active,
+    list: order().filter(x => !x.hiddenP).map(x => {
+      const c = x.c, max = c.hp.max || 1, pc = c.kind === 'pc', ally = sideOf(x) === 'ally';
+      let status = null;
+      if (!pc) status = x.dead || x.hp <= 0 ? (ally ? 'dying' : 'dead') : x.hp <= max / 2 ? 'bloodied' : x.hp < max ? 'hurt' : 'healthy';
+      return {
+        id: x.cid, name: x.publicName || nameOf(x), kind: c.kind, side: sideOf(x),
+        portrait: c.portrait || '', active: x.cid === S.enc.active,
+        hp: pc ? x.hp : null, max: pc ? max : null, temp: pc ? x.temp : 0, status,
+        cond: [...x.cond.map(k => k.name), ...(x.conc ? ['Koncentráció'] : [])]
+      };
+    })
+  };
+}
+function broadcast() { try { chan?.postMessage({type: 'state', view: publicView()}); } catch {} }
+if (chan) chan.onmessage = e => { if (e.data?.type === 'hello') broadcast(); };
+function setPortrait(v) {
+  $('#edForm').elements.portrait.value = v;
+  const pv = $('#portraitPv');
+  pv.src = v; pv.style.visibility = v ? 'visible' : 'hidden';
+}
+// feltöltött kép kicsinyítése 256 px-re, hogy ne hízzon meg a mentés
+document.addEventListener('change', e => {
+  if (e.target.id !== 'portraitFile' || !e.target.files[0]) return;
+  const img = new Image();
+  img.onload = () => {
+    const s = 256, cv = document.createElement('canvas'); cv.width = cv.height = s;
+    const k = Math.max(s / img.width, s / img.height), w = img.width * k, h = img.height * k;
+    cv.getContext('2d').drawImage(img, (s - w) / 2, (s - h) / 2, w, h);
+    setPortrait(cv.toDataURL('image/jpeg', 0.85));
+    $('#portraitUrl').value = ''; $('#portraitUrl').placeholder = '(feltöltött kép)';
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(e.target.files[0]);
+});
+document.addEventListener('input', e => { if (e.target.id === 'portraitUrl') setPortrait(e.target.value.trim()); });
+
+// ---------- nehézség (DMG 2014, 5. fejezet) ----------
+const CR_XP = {'0': 10, '1/8': 25, '1/4': 50, '1/2': 100, '1': 200, '2': 450, '3': 700, '4': 1100, '5': 1800, '6': 2300, '7': 2900, '8': 3900, '9': 5000, '10': 5900,
+  '11': 7200, '12': 8400, '13': 10000, '14': 11500, '15': 13000, '16': 15000, '17': 18000, '18': 20000, '19': 22000, '20': 25000,
+  '21': 33000, '22': 41000, '23': 50000, '24': 62000, '25': 75000, '26': 90000, '27': 105000, '28': 120000, '29': 135000, '30': 155000};
+// szintenként: [easy, medium, hard, deadly]
+const XP_THRESH = [null, [25, 50, 75, 100], [50, 100, 150, 200], [75, 150, 225, 400], [125, 250, 375, 500], [250, 500, 750, 1100],
+  [300, 600, 900, 1400], [350, 750, 1100, 1700], [450, 900, 1400, 2100], [550, 1100, 1600, 2400], [600, 1200, 1900, 2800],
+  [800, 1600, 2400, 3600], [1000, 2000, 3000, 4500], [1100, 2200, 3400, 5100], [1250, 2500, 3800, 5700], [1400, 2800, 4300, 6400],
+  [1600, 3200, 4800, 7200], [2000, 3900, 5900, 8800], [2100, 4200, 6300, 9500], [2400, 4900, 7300, 10900], [2800, 5700, 8500, 12700]];
+const MULT = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5];
+const DIFF_HU = {trivial: 'Triviális', easy: 'Könnyű', medium: 'Közepes', hard: 'Nehéz', deadly: 'Halálos'};
+const crXp = cr => CR_XP[String(cr ?? '').trim().replace(/^CR\s*/i, '').replace(/^0\.125$/, '1/8').replace(/^0\.25$/, '1/4').replace(/^0\.5$/, '1/2')];
+const pcLevel = c => { const m = String(c.level ?? c.cr ?? '').match(/\d+/); const n = m ? +m[0] : 0; return n >= 1 && n <= 20 ? n : null; };
+function difficulty() {
+  const party = S.enc.list.filter(x => sideOf(x) === 'ally' && x.c.kind === 'pc');
+  const enemies = S.enc.list.filter(x => sideOf(x) === 'enemy');
+  const thresh = [0, 0, 0, 0], noLevel = [];
+  party.forEach(x => { const l = pcLevel(x.c); if (l) XP_THRESH[l].forEach((v, i) => thresh[i] += v); else noLevel.push(nameOf(x)); });
+  const noCr = [];
+  let base = 0;
+  enemies.forEach(x => { const xp = crXp(x.c.cr); if (xp == null) noCr.push(nameOf(x)); else base += xp; });
+  const counted = enemies.length - noCr.length;
+  let idx = counted <= 0 ? 1 : counted === 1 ? 1 : counted === 2 ? 2 : counted <= 6 ? 3 : counted <= 10 ? 4 : counted <= 14 ? 5 : 6;
+  const pSize = party.length;
+  if (pSize && pSize < 3) idx++; else if (pSize >= 6) idx--;
+  const mult = MULT[idx];
+  const adj = Math.round(base * mult);
+  const rating = !pSize || !counted ? null : adj >= thresh[3] ? 'deadly' : adj >= thresh[2] ? 'hard' : adj >= thresh[1] ? 'medium' : adj >= thresh[0] ? 'easy' : 'trivial';
+  return {party, enemies, thresh, noLevel, noCr, base, mult, adj, rating, counted};
+}
+function renderDiff() {
+  const d = difficulty(), el = $('#diff');
+  el.className = d.rating ? 'd-' + d.rating : '';
+  el.textContent = d.rating ? `${DIFF_HU[d.rating]} · ${d.adj} XP` : 'Nehézség: –';
+  if (d.noLevel.length || d.noCr.length) el.textContent += ' ⚠';
+}
+function openDiffInfo() {
+  const d = difficulty();
+  const lvlNames = ['Könnyű', 'Közepes', 'Nehéz', 'Halálos'], keys = ['easy', 'medium', 'hard', 'deadly'];
+  const warn = [
+    !d.party.length ? 'Nincs játékos a csapattársak között – a nehézséghez a játékosok szintje kell.' : '',
+    !d.enemies.length ? 'Nincs ellenfél az encounterben.' : '',
+    d.noLevel.length ? `Ismeretlen szint (nem számolva): ${d.noLevel.join(', ')} – az adatlapon a „CR / szint” mezőbe írd be a szintet.` : '',
+    d.noCr.length ? `Ismeretlen CR (nem számolva): ${d.noCr.join(', ')} – az adatlapon add meg a CR-t.` : ''
+  ].filter(Boolean);
+  openModal(`<h2>Encounter nehézsége</h2>
+    ${d.rating ? `<p style="font-size:18px">Eredmény: <b class="d-${d.rating}" style="padding:2px 8px;border-radius:6px">${DIFF_HU[d.rating]}</b> &nbsp; <span class="muted">${d.adj} korrigált XP</span></p>` : ''}
+    ${warn.map(w => `<p style="color:var(--orange)">⚠ ${esc(w)}</p>`).join('')}
+    <h3>Csapat (${d.party.length} fő) – küszöbök</h3>
+    <table class="dt"><tr><th>Játékos</th><th class="n">Szint</th>${lvlNames.map(l => `<th class="n">${l}</th>`).join('')}</tr>
+      ${d.party.map(x => { const l = pcLevel(x.c); return `<tr><td>${esc(nameOf(x))}</td><td class="n">${l ?? '?'}</td>${[0, 1, 2, 3].map(i => `<td class="n">${l ? XP_THRESH[l][i] : '–'}</td>`).join('')}</tr>`; }).join('')}
+      <tr class="hl"><td>Összesen</td><td></td>${d.thresh.map((v, i) => `<td class="n">${v}</td>`).join('')}</tr></table>
+    <h3>Ellenfelek (${d.enemies.length})</h3>
+    <table class="dt"><tr><th>Ellenfél</th><th class="n">CR</th><th class="n">XP</th></tr>
+      ${d.enemies.map(x => `<tr><td>${esc(nameOf(x))}${x.dead ? ' <span class="muted">(halott)</span>' : ''}</td><td class="n">${esc(x.c.cr || '?')}</td><td class="n">${crXp(x.c.cr) ?? '–'}</td></tr>`).join('')}
+      <tr><td>Alap XP (ennyit kap a csapat)</td><td></td><td class="n">${d.base}</td></tr>
+      <tr><td>Szorzó (${d.counted} ellenfél, ${d.party.length} fős csapat)</td><td></td><td class="n">×${d.mult}</td></tr>
+      <tr class="hl"><td>Korrigált XP (ez számít a nehézséghez)</td><td></td><td class="n">${d.adj}</td></tr></table>
+    <p class="hint">A Dungeon Master's Guide (2014) 5. fejezete szerint. A korrigált XP-t a csapat küszöbeivel hasonlítja össze; a szorzó az ellenfelek számától függ, és 3 főnél kisebb csapatnál egy fokkal nő, 6 főnél nagyobbnál egy fokkal csökken.
+    Csak a csapattárs <b>játékosok</b> számítanak a csapatba, és minden ellenfél beleszámít (a halottak is, hiszen a harc egészét értékeli). Az ellenfél / csapattárs oldalt a csempe bal alsó gombjával váltod.
+    Fejenként ${d.party.length ? Math.floor(d.base / d.party.length) : 0} XP jár a legyőzött ellenfelekért.</p>
+    <div class="toolbar"><button data-act="edCancel">Bezárás</button></div>`);
+}
+function crLabel(c) {
+  if (!c.cr) return '';
+  return /^[\d\/.]+$/.test(String(c.cr)) ? 'CR ' + c.cr : c.cr;
+}
+function renderTiles() {
+  const o = order();
+  if (!o.length) {
+    $('#tiles').innerHTML = `<div class="empty">Még nincs senki az encounterben.<br><button class="primary" data-act="openLib">＋ Lények és játékosok hozzáadása</button></div>`;
+    return;
+  }
+  $('#tiles').innerHTML = o.map(tileHtml).join('');
+}
+function tileHtml(x) {
+  const c = x.c, max = c.hp.max || 1;
+  const pct = Math.max(0, Math.min(100, x.hp / max * 100));
+  const cls = ['tile', 'k-' + c.kind, sideOf(x)];
+  if (x.cid === S.enc.active) cls.push('active');
+  if (x.cid === selected) cls.push('selected');
+  if (x.dead) cls.push('dead');
+  const hpCls = pct <= 25 ? 'low' : pct <= 50 ? 'mid' : '';
+  const tmpPct = x.temp ? Math.min(100, x.temp / max * 100) : 0;
+  const chips = (x.conc ? `<span class="chip conc" data-act="toggleConc" title="Koncentráció – kattints a megszüntetéshez">Koncentráció</span>` : '') +
+    x.cond.map((k, i) => `<span class="chip" data-act="rmCond" data-i="${i}" title="Kattints az eltávolításhoz">${esc(k.name)}${k.rounds != null ? ' (' + k.rounds + ')' : ''}</span>`).join('');
+  const atkRows = [], others = [];
+  [...c.actions.map(a => [a, '']), ...c.bonusActions.map(a => [a, 'B'])].forEach(([a, t]) => {
+    const inf = atkInfo(a.name + ' ' + a.text);
+    const rech = (a.name.match(/Recharge (\d)/) || [])[1];
+    if (inf.hit || inf.dice.length) {
+      atkRows.push(`<div class="atk" data-label="${esc(a.name)}">${t ? `<span class="tag">${t}</span>` : ''}<span class="an" title="${esc(a.text)}">${esc(a.name.replace(/\s*\(Recharge[^)]*\)/, ''))}</span>` +
+        (rech ? `<span class="roll" data-rech="${rech}" title="${TIP_RECH}">⟳${rech}</span>` : '') +
+        (inf.hit ? `<span class="roll hit" data-hit="${inf.hit}" title="${TIP_HIT}">${inf.hit}</span>` : '') +
+        inf.dice.slice(0, 3).map(d => `<span class="roll" data-roll="${d.expr}" title="${TIP_DMG}">${d.expr}</span>${d.type ? `<small class="muted">${esc(d.type)}</small>` : ''}`).join(' ') + '</div>');
+    } else others.push((t ? t + ': ' : '') + a.name);
+  });
+  c.reactions.forEach(a => others.push('R: ' + a.name));
+  const legN = c.legendary.length ? (c.legendaryCount || 3) : 0;
+  const pips = legN ? `<span class="pips" title="Legendás akciók">LA ${Array.from({length: legN}, (_, i) => `<span class="pip ${i < x.leg ? 'used' : 'free'}" data-act="leg" data-i="${i}"></span>`).join('')}</span>` : '';
+  return `<div class="${cls.join(' ')}" data-cid="${x.cid}">
+    <div class="t-head">
+      <input class="init" type="number" value="${x.init ?? ''}" placeholder="${sgn(initBonusOf(c))}" title="Initiative (bónusz: ${sgn(initBonusOf(c))})">
+      ${c.portrait ? `<img class="av" src="${esc(c.portrait)}" alt="" data-act="select" onerror="this.style.display='none'">` : ''}
+      <div class="t-name" data-act="select" title="Részletek">${esc(nameOf(x))} <small>${esc(crLabel(c))}</small></div>
+      <div class="ac" title="AC${c.acNote ? ' – ' + esc(c.acNote) : ''}">🛡 ${c.ac}</div>
+    </div>
+    <div class="hpbar ${hpCls}"><div class="fill" style="width:${pct}%"></div>${tmpPct ? `<div class="tmp" style="width:${tmpPct}%"></div>` : ''}<span>${x.hp} / ${max}${x.temp ? ' +' + x.temp : ''}</span></div>
+    <div class="hp-ctl">
+      <input class="hpin" type="number" placeholder="±HP" title="Pozitív szám = sebzés, negatív (pl. -10) = gyógyítás, Enter-rel alkalmazod">
+      <button class="dmg" data-act="dmg" title="Sebzés">−</button>
+      <button class="heal" data-act="heal" title="Gyógyítás">+</button>
+      <button data-act="temp" title="Temp HP beállítása">T</button>
+    </div>
+    ${chips ? `<div class="conds">${chips}</div>` : ''}
+    ${atkRows.length ? `<div class="atks">${atkRows.slice(0, 6).join('')}</div>` : ''}
+    ${others.length ? `<div class="other">${esc(others.join(' · '))}</div>` : ''}
+    <div class="t-foot"><button class="sidebtn ${sideOf(x)}" data-act="toggleSide" title="Kattints az oldal váltásához (ellenfél ↔ csapattárs)">${SIDE_HU[sideOf(x)]}</button>${pips}<span class="grow"></span>
+      <button class="small ${x.conc ? 'on' : ''}" data-act="toggleConc" title="Koncentráció">C</button>
+      <button class="small ${x.hiddenP ? 'on' : ''}" data-act="toggleHidden" title="Elrejtés a játékos képernyőről (pl. lesben álló ellenfél)">🙈</button>
+      <button class="small" data-act="toggleDead" title="Halott / él">💀</button>
+      <button class="small" data-act="dup" title="Még egy ilyen">⎘</button>
+      <button class="small" data-act="remove" title="Eltávolítás">✕</button>
+    </div>
+  </div>`;
+}
+function statblock(c) {
+  const line = (k, v) => v ? `<p class="line"><b>${k}</b> ${linkify(v)}</p>` : '';
+  const saves = ABIL.filter(a => c.saves[a] != null).map(a => `${cap(a)} ${sgn(+c.saves[a])}`).join(', ');
+  const sec = k => c[k].length ? `<h3>${SECTION_HU[k]}${k === 'legendary' && c.legendaryCount ? ` (${c.legendaryCount}/kör)` : ''}</h3>` +
+    c[k].map(e => `<p data-label="${esc(e.name)}">${e.name ? `<b><i>${linkify(e.name)}.</i></b> ` : ''}${linkify(e.text)}</p>`).join('') : '';
+  return `<div class="sb">
+    ${c.portrait ? `<img class="portrait" src="${esc(c.portrait)}" alt="" onerror="this.style.display='none'">` : ''}
+    <h2>${esc(c.name)}</h2>
+    <div class="sub">${esc([[c.size, c.type].filter(Boolean).join(' '), c.alignment].filter(Boolean).join(', '))}${c.source ? ' · ' + esc(c.source) : ''}</div>
+    <p class="line"><b>AC</b> ${c.ac}${c.acNote ? ' (' + esc(c.acNote) + ')' : ''} &nbsp; <b>HP</b> ${c.hp.max}${c.hp.formula ? ' (' + linkify(c.hp.formula) + ')' : ''} &nbsp;
+      <b>Init</b> <span class="roll hit" data-hit="${sgn(initBonusOf(c))}" data-label="Initiative" title="${TIP_HIT}">${sgn(initBonusOf(c))}</span></p>
+    ${line('Speed', c.speed)}
+    <div class="abil">${ABIL.map(a => `<div data-check="${a}" title="Kattints: ${ABIL_FULL[a]} próba${c.saves[a] != null ? '' : ' / mentő'}"><small>${a.toUpperCase()}</small>${c.abilities[a]} (${sgn(mod(c.abilities[a]))})${c.saves[a] != null ? `<div class="sv" data-save="${a}">mentő ${sgn(+c.saves[a])}</div>` : ''}</div>`).join('')}</div>
+    ${line('Saving Throws', saves)}${line('Skills', c.skills)}${line('Damage Vulnerabilities', c.vuln)}${line('Damage Resistances', c.resist)}
+    ${line('Damage Immunities', c.immune)}${line('Condition Immunities', c.condImmune)}${line('Senses', c.senses)}${line('Languages', c.languages)}
+    ${c.cr ? `<p class="line"><b>${c.kind === 'pc' ? 'Szint' : 'CR'}</b> ${esc(String(c.cr).replace(/^Szint /, ''))}</p>` : ''}
+    ${SECTIONS.map(sec).join('')}
+    ${c.notes ? `<h3>Jegyzet</h3><p>${linkify(c.notes)}</p>` : ''}
+  </div>`;
+}
+function renderDetail() {
+  const x = byId(selected) || byId(S.enc.active);
+  if (!x) { $('#detail').innerHTML = `<div class="pad muted">Kattints egy csempe nevére a részletes adatlaphoz.<br><br>
+    Gyorsbillentyűk: <span class="kbd">N</span> / <span class="kbd">Szóköz</span> következő, <span class="kbd">P</span> előző, <span class="kbd">Esc</span> ablak bezárása.<br>
+    Dobások: kattints a <span class="roll">1d6+2</span> / <span class="roll hit">+4</span> értékekre. Shift = előny / kritikus, Ctrl = hátrány.</div>`; return; }
+  const c = x.c;
+  $('#detail').innerHTML = `<div data-cid="${x.cid}">
+    <div class="ctl">
+      <div class="row"><b style="flex:1">${esc(nameOf(x))}</b><span class="muted">${KIND_HU[c.kind] || ''}</span>
+        <select data-f="side">${Object.entries(SIDE_HU).map(([k, l]) => `<option value="${k}" ${sideOf(x) === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${selected && selected !== S.enc.active ? '<button class="small" data-act="deselect">aktuálishoz vissza</button>' : ''}</div>
+      <div class="row">
+        <label>Init</label><input type="number" data-f="init" value="${x.init ?? ''}" style="width:52px">
+        <label>HP</label><input type="number" data-f="hp" value="${x.hp}"> / <input type="number" data-f="max" value="${c.hp.max}">
+        <label>Temp</label><input type="number" data-f="temp" value="${x.temp}" style="width:52px">
+        <label>AC</label><input type="number" data-f="ac" value="${c.ac}" style="width:52px">
+      </div>
+      <div class="row">
+        <select id="condSel">${CONDITIONS.map(k => `<option>${k}</option>`).join('')}<option value="">egyéni…</option></select>
+        <input id="condCustom" placeholder="egyéni" style="width:90px">
+        <input id="condRounds" type="number" min="1" placeholder="kör" title="Hány körig tart (üres = amíg le nem veszed)" style="width:52px">
+        <button class="small" data-act="addCond">Állapot +</button>
+        <label><input type="checkbox" data-f="conc" ${x.conc ? 'checked' : ''}> Koncentráció</label>
+      </div>
+      ${x.cond.length || x.conc ? `<div class="conds">${x.conc ? '<span class="chip conc" data-act="toggleConc">Koncentráció</span>' : ''}${x.cond.map((k, i) => `<span class="chip" data-act="rmCond" data-i="${i}">${esc(k.name)}${k.rounds != null ? ' (' + k.rounds + ')' : ''}</span>`).join('')}</div>` : ''}
+      <div class="row">
+        <label>Játékosok ezt látják:</label><input data-f="pubName" value="${esc(x.publicName || '')}" placeholder="${esc(nameOf(x))}" title="Ha üres, a valódi nevét látják. Pl. „Csuklyás alak” egy még ismeretlen NPC-nél" style="flex:1">
+        <label><input type="checkbox" data-f="hiddenP" ${x.hiddenP ? 'checked' : ''}> rejtett</label>
+      </div>
+      <textarea data-f="notes" rows="2" placeholder="Jegyzet ehhez a harchoz (pl. kinek a célpontja, mit tervez)…">${esc(x.notes)}</textarea>
+      <div class="row"><button class="small" data-act="editCombatant">✎ Adatlap szerkesztése</button><button class="small" data-act="saveToLib">📚 Mentés a könyvtárba</button></div>
+    </div>
+    ${statblock(c)}
+  </div>`;
+}
+
+// ---------- modal ----------
+function openModal(html) { $('#modalBox').innerHTML = html; $('#modal').hidden = false; }
+function closeModal() { $('#modal').hidden = true; $('#modalBox').innerHTML = ''; }
+$('#modal').addEventListener('mousedown', e => { if (e.target.id === 'modal') closeModal(); });
+
+function openMenu() {
+  openModal(`<h2>Menü</h2><div class="rows">
+    <div class="lrow"><span class="nm">Új harc: ellenfelek törlése, a játékosok maradnak, initiative és kör nullázása</span><button data-act="newFight">Új harc</button></div>
+    <div class="lrow"><span class="nm">Mindenki eltávolítása az encounterből</span><button data-act="clearAll">Ürítés</button></div>
+    <div class="lrow"><span class="nm">Teljes mentés letöltése fájlba (könyvtár + encounter)</span><button data-act="exportAll">Exportálás</button></div>
+    <div class="lrow"><span class="nm">Teljes mentés visszatöltése fájlból (felülírja a mostanit)</span><button data-act="importAll">Importálás</button></div>
+    <div class="lrow"><span class="nm">Kitölthető sablon letöltése saját lényhez</span><button data-act="downloadTemplate">Sablon letöltése</button></div>
+  ${DB ? `<div class="lrow"><span class="nm">Belépve: <b>${esc(authInfo.email || '')}</b></span><button data-act="signOut">Kilépés</button></div>` : ''}
+  </div>
+  <p class="hint">${DB ? 'Az adatok automatikusan mentődnek a felhőbe (Firebase), így bármelyik gépről elérheted őket belépés után. Ha játék közben elmegy az internet, a program tovább működik, és később feltölti a változásokat.' : 'Az adatok csak ebben a böngészőben vannak elmentve.'}</p>`);
+}
+function openInitMenu() {
+  openModal(`<h2>Initiative dobás</h2><div class="rows">
+    <div class="lrow"><span class="nm">Ellenfelek és NPC-k dobása (a játékosokét te írod be)</span><button class="primary" data-act="init" data-mode="monsters">Dobás</button></div>
+    <div class="lrow"><span class="nm">Csak akinek még nincs</span><button data-act="init" data-mode="missing">Dobás</button></div>
+    <div class="lrow"><span class="nm">Mindenki, a játékosok is</span><button data-act="init" data-mode="all">Dobás</button></div>
+  </div>
+  <p><label><input type="checkbox" data-setting="groupInit" ${S.settings.groupInit ? 'checked' : ''}> Az egyszerre hozzáadott azonos lények közös initiative-et kapnak</label></p>`);
+}
+
+// ---------- könyvtár ----------
+function openLib(tab) { if (tab) libTab = tab; openModal('<div id="libRoot"></div>'); renderLib(); }
+function renderLib() {
+  const root = $('#libRoot'); if (!root) return;
+  const tabs = [['lib', '📚 Könyvtár'], ['five', '🐉 5e.tools'], ['ddb', '🧝 D&D Beyond'], ['json', '{ } JSON / Sablon'], ['enc', '⚔ Mentett encounterek']];
+  let body = '';
+  if (libTab === 'lib') body = libTabHtml();
+  if (libTab === 'five') body = fiveTabHtml();
+  if (libTab === 'ddb') body = ddbTabHtml();
+  if (libTab === 'json') body = jsonTabHtml();
+  if (libTab === 'enc') body = encTabHtml();
+  root.innerHTML = `<h2>Hozzáadás / Könyvtár</h2>
+    <div class="tabs">${tabs.map(([k, l]) => `<button class="${libTab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}
+      <span class="grow"></span>
+      <label class="hint"><input type="checkbox" data-setting="rollHp" ${S.settings.rollHp ? 'checked' : ''}> HP dobása formula alapján</label>
+      <label class="hint"><input type="checkbox" data-setting="groupInit" ${S.settings.groupInit ? 'checked' : ''}> közös initiative csoportoknak</label>
+    </div>${body}`;
+  if (libTab === 'lib') filterLib();
+}
+function libTabHtml() {
+  return `<div class="toolbar">
+      <input id="libSearch" placeholder="Keresés…" style="flex:1">
+      <select id="libKind"><option value="">mind</option><option value="pc">Játékosok</option><option value="npc">NPC-k</option><option value="monster">Ellenfelek</option></select>
+      <button data-act="addAllPcs">＋ Összes játékos</button>
+      <button data-act="newCreature">✎ Új lény</button>
+    </div><div class="rows" id="libRows"></div>`;
+}
+function filterLib() {
+  const q = ($('#libSearch')?.value || '').toLowerCase(), k = $('#libKind')?.value || '';
+  const items = S.library.filter(c => (!k || c.kind === k) && c.name.toLowerCase().includes(q))
+    .sort((a, b) => (a.kind === 'pc' ? 0 : 1) - (b.kind === 'pc' ? 0 : 1) || a.name.localeCompare(b.name, 'hu'));
+  $('#libRows').innerHTML = items.length ? items.map(c => `<div class="lrow" data-lib="${c.id}">
+      <span class="nm"><b>${esc(c.name)}</b><small>${KIND_HU[c.kind]} · ${esc(crLabel(c))} · AC ${c.ac} · HP ${c.hp.max} · ${esc(c.source || '')}</small></span>
+      <input type="number" min="1" value="1" class="cnt" title="Darabszám">
+      <button class="primary" data-act="libAdd">＋ Encounterbe</button>
+      <button class="small" data-act="libEdit" title="Szerkesztés">✎</button>
+      <button class="small" data-act="libExport" title="Letöltés JSON-ként">⬇</button>
+      <button class="small" data-act="libDel" title="Törlés">🗑</button>
+    </div>`).join('') : `<p class="muted">A könyvtár üres${q ? ' erre a keresésre' : ''}. Importálj az 5e.tools / D&D Beyond / JSON füleken, vagy hozz létre új lényt.</p>`;
+}
+function upsertLibrary(c) {
+  c = normCreature(c);
+  const i = S.library.findIndex(x => x.id === c.id || (c.ddbId && x.ddbId === c.ddbId));
+  if (i >= 0) { c.id = S.library[i].id; S.library[i] = c; } else S.library.push(c);
+  save();
+  return c;
+}
+
+// ---------- 5e.tools ----------
+const FIVE_BASE = 'https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/bestiary/';
+let fiveIndex = null, fiveData = {}, fiveResults = [];
+async function loadFiveIndex() {
+  if (!fiveIndex) fiveIndex = await (await fetch(FIVE_BASE + 'index.json')).json();
+  return fiveIndex;
+}
+async function loadFiveSource(src) {
+  if (fiveData[src]) return fiveData[src];
+  const idx = await loadFiveIndex();
+  if (!idx[src]) throw new Error('Ismeretlen forrás: ' + src);
+  const j = await (await fetch(FIVE_BASE + idx[src])).json();
+  return (fiveData[src] = j.monster || []);
+}
+function fiveTabHtml() {
+  if (!fiveIndex) {
+    loadFiveIndex().then(renderLib).catch(e => { const el = $('#fiveMsg'); if (el) el.textContent = 'Nem sikerült elérni az 5e.tools adatokat (van internet?): ' + e.message; });
+    return '<p id="fiveMsg" class="muted">Forráslista betöltése…</p>';
+  }
+  const keys = Object.keys(fiveIndex).sort((a, b) => (S.settings.sources.includes(b) - S.settings.sources.includes(a)) || a.localeCompare(b));
+  return `<p class="hint">Beilleszthetsz 5e.tools linket is (pl. <code>https://5e.tools/bestiary.html#skeleton_mm</code>), vagy név szerint kereshetsz a bejelölt könyvekben. 2014-es szabályokhoz: MM = 2014-es Monster Manual, VGM = Volo's, MTF = Mordenkainen's Tome of Foes, MPMM = Monsters of the Multiverse (2022-es átdolgozás). Az XMM a 2024-es Monster Manual. Az első keresés egy-két másodpercig tölt.</p>
+    <div class="srcs">${keys.map(k => `<label><input type="checkbox" data-src="${k}" ${S.settings.sources.includes(k) ? 'checked' : ''}> ${k}</label>`).join('')}</div>
+    <div class="toolbar" style="margin-top:10px"><input id="fiveQ" placeholder="5e.tools link, vagy szörny neve angolul (pl. goblin)" style="flex:1"><button class="primary" data-act="fiveSearch">Keresés</button></div>
+    <div id="fiveMsg" class="hint"></div><div class="rows" id="fiveRows"></div>`;
+}
+async function fiveSearch() {
+  const q = ($('#fiveQ').value || '').trim().toLowerCase();
+  // 5e.tools link, pl. https://5e.tools/bestiary.html#skeleton_xmm
+  const link = q.match(/bestiary\.html#([^,]+)_([a-z0-9-]+)/i);
+  if (link) {
+    $('#fiveMsg').textContent = 'Betöltés…';
+    try {
+      const name = decodeURIComponent(link[1]).toLowerCase();
+      const idx = await loadFiveIndex();
+      const src = Object.keys(idx).find(k => k.toLowerCase() === link[2].toLowerCase());
+      if (!src) throw new Error('ismeretlen forrás: ' + link[2]);
+      fiveResults = (await loadFiveSource(src)).filter(m => m.name.toLowerCase() === name);
+      $('#fiveMsg').textContent = fiveResults.length ? '' : 'Nem találtam ilyen szörnyet ebben a forrásban.';
+    } catch (e) { $('#fiveMsg').textContent = 'Hiba: ' + e.message; fiveResults = []; }
+    renderFiveRows();
+    return;
+  }
+  const srcs = S.settings.sources;
+  if (!srcs.length) { $('#fiveMsg').textContent = 'Jelölj ki legalább egy forrást.'; return; }
+  $('#fiveMsg').textContent = 'Betöltés…';
+  try {
+    const all = (await Promise.all(srcs.map(s => loadFiveSource(s).catch(() => [])))).flat();
+    fiveResults = all.filter(m => m.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 100);
+    $('#fiveMsg').textContent = `${fiveResults.length} találat${fiveResults.length === 100 ? ' (az első 100)' : ''}`;
+    renderFiveRows();
+  } catch (e) { $('#fiveMsg').textContent = 'Hiba: ' + e.message; }
+}
+function renderFiveRows() {
+  $('#fiveRows').innerHTML = fiveResults.map((m, i) => {
+    const cr = typeof m.cr === 'object' ? m.cr?.cr : m.cr;
+    return `<div class="lrow" data-five="${i}"><span class="nm"><b>${esc(m.name)}</b><small>${esc(m.source)} · ${cr != null ? 'CR ' + esc(cr) : ''} · ${esc(fiveType(m.type))}</small></span>
+      <input type="number" min="1" value="1" class="cnt"><button class="primary" data-act="fiveAdd">＋ Encounterbe</button><button data-act="fiveSave">📚 Könyvtárba</button></div>`;
+  }).join('');
+}
+function applyMod(o, mods) {
+  const nm = x => typeof x === 'string' ? x : x?.name;
+  for (const [key, v] of Object.entries(mods || {})) {
+    for (const op of [].concat(v)) {
+      try {
+        if (key === '*') {
+          if (op.mode === 'replaceTxt') {
+            const re = new RegExp(op.replace, op.flags || 'g');
+            for (const k of ['trait', 'action', 'bonus', 'reaction', 'legendary']) if (o[k]) o[k] = JSON.parse(JSON.stringify(o[k]).replace(re, op.with));
+          }
+          continue;
+        }
+        const arr = o[key] ? [...o[key]] : [];
+        const items = [].concat(op.items || []);
+        if (op.mode === 'appendArr') o[key] = [...arr, ...items];
+        else if (op.mode === 'prependArr') o[key] = [...items, ...arr];
+        else if (op.mode === 'replaceArr') {
+          const target = typeof op.replace === 'object' && op.replace.index != null ? nm(arr[op.replace.index]) : op.replace;
+          const i = arr.findIndex(x => nm(x) === target);
+          if (i >= 0) arr.splice(i, 1, ...items);
+          o[key] = arr;
+        } else if (op.mode === 'removeArr') {
+          const names = [].concat(op.names || op.items || []).map(nm);
+          o[key] = arr.filter(x => !names.includes(nm(x)));
+        }
+      } catch {}
+    }
+  }
+}
+async function resolveCopy(m, depth = 0) {
+  if (!m._copy || depth > 4) return m;
+  const {name, source} = m._copy;
+  const arr = await loadFiveSource(source).catch(() => []);
+  let base = arr.find(x => x.name.toLowerCase() === name.toLowerCase());
+  if (!base) return m;
+  base = await resolveCopy(structuredClone(base), depth + 1);
+  const out = {...base, ...m};
+  delete out._copy;
+  if (m._copy._mod) applyMod(out, m._copy._mod);
+  return out;
+}
+const SIZE = {T: 'Tiny', S: 'Small', M: 'Medium', L: 'Large', H: 'Huge', G: 'Gargantuan'};
+const ALIGN = {L: 'lawful', N: 'neutral', NX: 'neutral', NY: 'neutral', C: 'chaotic', G: 'good', E: 'evil', U: 'unaligned', A: 'any alignment'};
+const ABIL_5E = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
+function tagRender(tag, body) {
+  const parts = body.split('|');
+  switch (tag) {
+    case 'atk': return ({mw: 'Melee Weapon Attack:', rw: 'Ranged Weapon Attack:', 'mw,rw': 'Melee or Ranged Weapon Attack:', ms: 'Melee Spell Attack:', rs: 'Ranged Spell Attack:', 'ms,rs': 'Melee or Ranged Spell Attack:'}[body] || 'Attack:');
+    case 'atkr': return ({m: 'Melee Attack Roll:', r: 'Ranged Attack Roll:', 'm,r': 'Melee or Ranged Attack Roll:'}[body] || 'Attack Roll:');
+    case 'hit': return sgn(+parts[0] || 0);
+    case 'h': return 'Hit: ';
+    case 'hom': return 'Hit or Miss: ';
+    case 'damage': case 'dice': case 'autodice': return parts[0];
+    case 'd20': return sgn(+parts[0] || 0);
+    case 'dc': return 'DC ' + parts[0];
+    case 'recharge': return '(Recharge ' + (parts[0] ? parts[0] + '–6' : '6') + ')';
+    case 'actSave': return (ABIL_5E[parts[0]] || parts[0]) + ' Saving Throw:';
+    case 'actSaveFail': return 'Failure:';
+    case 'actSaveSuccess': return 'Success:';
+    case 'actSaveSuccessOrFail': return 'Failure or Success:';
+    case 'actTrigger': return 'Trigger:';
+    case 'actResponse': return 'Response:';
+    case 'chance': return parts[0] + '%';
+    default: return parts[2] || parts[0];
+  }
+}
+function tagStrip(s) {
+  s = String(s ?? '');
+  let prev;
+  do { prev = s; s = s.replace(/\{@(\w+)\s?([^{}]*)\}/g, (m, t, b) => tagRender(t, b)); } while (s !== prev);
+  return s;
+}
+function entriesToText(e) {
+  if (e == null) return '';
+  if (typeof e === 'string') return tagStrip(e);
+  if (Array.isArray(e)) return e.map(entriesToText).filter(Boolean).join('\n');
+  if (e.type === 'list') return (e.items || []).map(i => '• ' + entriesToText(i)).join('\n');
+  if (e.type === 'item') return (e.name ? tagStrip(e.name) + ' ' : '') + entriesToText(e.entry ?? e.entries);
+  if (e.type === 'table') return (e.rows || []).map(r => r.map(entriesToText).join(' | ')).join('\n');
+  if (e.entries) return (e.name ? tagStrip(e.name) + '. ' : '') + entriesToText(e.entries);
+  if (e.entry) return entriesToText(e.entry);
+  return '';
+}
+function fiveType(t) {
+  if (!t) return '';
+  if (typeof t === 'string') return t;
+  let s = typeof t.type === 'string' ? t.type : (t.type?.choose || []).join('/');
+  if (t.tags?.length) s += ` (${t.tags.map(x => typeof x === 'string' ? x : x.tag).join(', ')})`;
+  return s;
+}
+function fiveAlign(a) {
+  if (!a) return '';
+  return a.map(x => typeof x === 'string' ? (ALIGN[x] || x) : x.alignment ? fiveAlign(x.alignment) : (x.special || '')).join(' ');
+}
+function fiveSpeed(sp) {
+  if (sp == null) return '';
+  if (typeof sp === 'number') return sp + ' ft.';
+  const out = [];
+  for (const k of ['walk', 'burrow', 'climb', 'fly', 'swim']) {
+    let v = sp[k]; if (v == null) continue;
+    if (v === true) v = sp.walk;
+    const n = typeof v === 'object' ? v.number : v;
+    const cond = typeof v === 'object' && v.condition ? ' ' + tagStrip(v.condition) : '';
+    out.push((k === 'walk' ? '' : k + ' ') + n + ' ft.' + cond + (k === 'fly' && sp.canHover ? ' (hover)' : ''));
+  }
+  return out.join(', ');
+}
+function fiveList(l, key) {
+  if (!l) return '';
+  return l.map(x => typeof x === 'string' ? x : x.special ? x.special : `${x.preNote || ''} ${fiveList(x[key], key)} ${x.note || ''}`.trim()).map(tagStrip).join(', ');
+}
+function fiveAc(ac) {
+  if (ac == null) return {ac: 10, note: ''};
+  const a = [].concat(ac)[0];
+  if (typeof a === 'number') return {ac: a, note: ''};
+  if (a.special) return {ac: parseInt(a.special) || 10, note: a.special};
+  return {ac: a.ac || 10, note: [...(a.from || []).map(tagStrip), a.condition ? tagStrip(a.condition) : ''].filter(Boolean).join(', ')};
+}
+function crNum(cr) { if (cr == null) return 0; const s = String(cr); if (s.includes('/')) { const [a, b] = s.split('/'); return +a / +b; } return +s || 0; }
+const crToPb = cr => { const n = crNum(cr); return n < 5 ? 2 : Math.floor((n - 1) / 4) + 2; };
+const ordinal = n => n + (n == 1 ? 'st' : n == 2 ? 'nd' : n == 3 ? 'rd' : 'th');
+function fiveSpellText(sc) {
+  const lines = [];
+  const sp = a => (a || []).map(x => tagStrip(typeof x === 'string' ? x : x.entry || '')).join(', ');
+  if (sc.headerEntries) lines.push(entriesToText(sc.headerEntries));
+  if (sc.will) lines.push('At will: ' + sp(sc.will));
+  for (const [per, lbl] of [['daily', '/day'], ['rest', '/rest'], ['weekly', '/week']])
+    if (sc[per]) for (const [k, v] of Object.entries(sc[per])) lines.push(`${k.replace('e', '')}${lbl}${k.endsWith('e') ? ' each' : ''}: ${sp(v)}`);
+  if (sc.spells) for (const [lvl, o] of Object.entries(sc.spells))
+    lines.push(`${lvl === '0' ? 'Cantrips (at will)' : ordinal(+lvl) + ' level' + (o.slots ? ` (${o.slots} slots)` : '')}: ${sp(o.spells)}`);
+  if (sc.footerEntries) lines.push(entriesToText(sc.footerEntries));
+  return lines.join('\n');
+}
+function convert5e(m) {
+  const abilities = {}; ABIL.forEach(a => abilities[a] = m[a] ?? 10);
+  const cr = typeof m.cr === 'object' ? m.cr?.cr : m.cr;
+  const pb = crToPb(cr);
+  const saves = {}; for (const [k, v] of Object.entries(m.save || {})) if (ABIL.includes(k)) saves[k] = parseInt(v) || 0;
+  const skills = Object.entries(m.skill || {}).filter(([, v]) => typeof v === 'string').map(([k, v]) => cap(k) + ' ' + v).join(', ');
+  const acx = fiveAc(m.ac);
+  let initBonus = null;
+  if (typeof m.initiative === 'number') initBonus = m.initiative;
+  else if (m.initiative?.initiative != null) initBonus = m.initiative.initiative;
+  else if (m.initiative?.proficiency) initBonus = mod(abilities.dex) + pb * m.initiative.proficiency;
+  const ent = arr => (arr || []).map(e => ({name: tagStrip(e.name || ''), text: entriesToText(e.entries ?? e.entry ?? [])}));
+  const c = {
+    name: m.name, kind: 'monster', source: '5e.tools · ' + (m.source || ''),
+    size: (m.size || []).map(s => SIZE[s] || s).join('/'), type: fiveType(m.type), alignment: fiveAlign(m.alignment),
+    ac: acx.ac, acNote: acx.note,
+    hp: {max: m.hp?.average ?? (parseInt(m.hp?.special) || 1), formula: m.hp?.formula || m.hp?.special || ''},
+    speed: fiveSpeed(m.speed), abilities, saves, skills,
+    senses: [...(m.senses || []).map(tagStrip), m.passive != null ? `passive Perception ${m.passive}` : ''].filter(Boolean).join(', '),
+    languages: (m.languages || []).map(tagStrip).join(', '), cr: cr ?? '', initBonus,
+    resist: fiveList(m.resist, 'resist'), immune: fiveList(m.immune, 'immune'), vuln: fiveList(m.vulnerable, 'vulnerable'),
+    condImmune: fiveList(m.conditionImmune, 'conditionImmune'),
+    traits: ent(m.trait), actions: ent(m.action), bonusActions: ent(m.bonus), reactions: ent(m.reaction), legendary: ent(m.legendary),
+    legendaryCount: m.legendary ? (m.legendaryActions || 3) : 0,
+    portrait: m.hasToken ? `https://raw.githubusercontent.com/5etools-mirror-3/5etools-img/main/bestiary/tokens/${encodeURIComponent(m.token?.source || m.source)}/${encodeURIComponent(m.token?.name || m.name)}.webp` : ''
+  };
+  for (const sc of m.spellcasting || []) {
+    const e = {name: tagStrip(sc.name || 'Spellcasting'), text: fiveSpellText(sc)};
+    const target = {action: 'actions', bonus: 'bonusActions', reaction: 'reactions', legendary: 'legendary'}[sc.displayAs] || 'traits';
+    c[target].push(e);
+  }
+  return normCreature(c);
+}
+
+// ---------- D&D Beyond ----------
+// könyvjelző: a D&D Beyond karakterlapján futva lekéri a karaktert, és a vágólapra másolja
+const BOOKMARKLET = "javascript:(async()=>{const m=location.pathname.match(/characters\\/(\\d+)/);" +
+  "if(!m||!/dndbeyond\\.com$/.test(location.hostname)){alert('Nyisd meg a karakterlapot a D&D Beyondon, és ott kattints erre a könyvjelzőre!');return}" +
+  "const ok='Kimásolva! Most a DM Screenben: Hozzáadás → D&D Beyond fül → Ctrl+V a mezőbe.';" +
+  "try{const r=await fetch('https://character-service.dndbeyond.com/character/v5/character/'+m[1],{credentials:'include'});" +
+  "if(!r.ok)throw new Error('HTTP '+r.status+(r.status===403||r.status===404?' – privát a karakter?':''));const t=await r.text();" +
+  "try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}" +
+  "alert(ok)}catch(e){alert('Nem sikerült letölteni a karaktert: '+e.message)}})()";
+function ddbTabHtml() {
+  return `<h3 style="margin-top:0">1. Egyszeri beállítás: könyvjelző</h3>
+    <p>Fogd meg az egérrel ezt a gombot, és <b>húzd fel a böngésző könyvjelzősávjára</b>:
+      <a href="${esc(BOOKMARKLET)}" class="primary" style="display:inline-block;background:var(--accent);color:#1a1405;font-weight:700;padding:6px 14px;border-radius:6px;text-decoration:none;margin-left:6px" onclick="alert('Ezt nem itt kell megnyomni: húzd fel a könyvjelzősávra, és a D&D Beyond karakterlapján kattints rá.');return false">📋 DM Screen import</a></p>
+    <p class="hint">Ha nem látod a könyvjelzősávot: Ctrl+Shift+B.</p>
+    <h3>2. Importálás</h3>
+    <p>Nyisd meg a karakter lapját a D&D Beyondon (pl. <code>dndbeyond.com/characters/12345678</code>), és kattints a <b>📋 DM Screen import</b> könyvjelzőre. Utána gyere vissza ide, és illeszd be (Ctrl+V) a lenti mezőbe – magától importálja.</p>
+    <textarea id="ddbPaste" rows="4" placeholder="Ide illeszd be (Ctrl+V)…"></textarea>
+    <div class="toolbar"><button data-act="ddbClipboard">📋 Beillesztés a vágólapról</button><button data-act="ddbPasteImport">Importálás</button></div>
+    <div id="ddbMsg"></div>
+    <p class="hint">A nyilvános karakterek biztosan működnek (karakter → Edit → Home → Character Privacy: Public). A HP, AC, mentők, fegyveres támadások, képességek, varázslatok és a portré importálódik; az AC-t érdemes egyszer ellenőrizni. Újraimportálás (pl. szintlépés után) felülírja a könyvtárban a korábbi változatot.</p>`;
+}
+function ddbImportText(t) {
+  try { ddbDone(convertDDB(JSON.parse(t))); $('#ddbPaste').value = ''; }
+  catch (err) { $('#ddbMsg').innerHTML = `<p style="color:var(--red)">Ez nem D&D Beyond karakter – a könyvjelzővel másold ki újra. (${esc(err.message)})</p>`; }
+}
+function ddbDone(c) {
+  c = upsertLibrary(c);
+  $('#ddbMsg').innerHTML = `<div class="lrow" data-lib="${c.id}"><span class="nm">✓ <b>${esc(c.name)}</b><small>${esc(c.type)} · AC ${c.ac} · HP ${c.hp.max}</small></span>
+    <input type="number" class="cnt" value="1" hidden><button class="primary" data-act="libAdd">＋ Encounterbe</button><button data-act="libEdit">✎ Ellenőrzés</button></div>`;
+}
+function stripHtml(h) { const d = document.createElement('div'); d.innerHTML = String(h || ''); return d.textContent.replace(/\s+\n/g, '\n').trim(); }
+function convertDDB(raw) {
+  const d = raw.data || raw;
+  if (!Array.isArray(d.stats)) throw new Error('Ez nem D&D Beyond karakter JSON');
+  const mods = Object.values(d.modifiers || {}).flat().filter(Boolean);
+  const SUB = {str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma'};
+  const sum = (type, sub) => mods.filter(m => m.type === type && m.subType === sub).reduce((s, m) => s + (m.value || 0), 0);
+  const abilities = {};
+  ABIL.forEach((a, i) => {
+    const id = i + 1;
+    const over = d.overrideStats?.find(s => s.id === id)?.value;
+    let v = (d.stats.find(s => s.id === id)?.value || 10) + (d.bonusStats?.find(s => s.id === id)?.value || 0) + sum('bonus', SUB[a] + '-score');
+    const sets = mods.filter(m => m.type === 'set' && m.subType === SUB[a] + '-score').map(m => m.value || 0);
+    if (sets.length) v = Math.max(v, ...sets);
+    abilities[a] = over || v;
+  });
+  const M = a => mod(abilities[a]);
+  const classes = d.classes || [];
+  const level = classes.reduce((s, c) => s + (c.level || 0), 0) || 1;
+  const pb = Math.floor((level - 1) / 4) + 2;
+  const hpMax = d.overrideHitPoints || ((d.baseHitPoints || 0) + (d.bonusHitPoints || 0) + (M('con') + sum('bonus', 'hit-points-per-level')) * level);
+  const hpCur = Math.max(0, hpMax - (d.removedHitPoints || 0));
+  // AC
+  const inv = (d.inventory || []).filter(i => i.equipped && i.definition);
+  const armor = inv.find(i => [1, 2, 3].includes(i.definition.armorTypeId));
+  const shield = inv.find(i => i.definition.armorTypeId === 4);
+  const dex = M('dex');
+  let ac;
+  if (armor) {
+    const t = armor.definition.armorTypeId;
+    ac = (armor.definition.armorClass || 10) + (t === 1 ? dex : t === 2 ? Math.min(dex, 2) : 0) + sum('bonus', 'armored-armor-class');
+  } else {
+    ac = 10 + dex;
+    mods.filter(m => m.subType === 'unarmored-armor-class' && m.type === 'set').forEach(m => {
+      if (m.statId) ac += mod(abilities[ABIL[m.statId - 1]]);
+      else if (m.value) ac = Math.max(ac, m.value + dex);
+    });
+    ac += sum('bonus', 'unarmored-armor-class');
+  }
+  if (shield) ac += shield.definition.armorClass || 2;
+  ac += sum('bonus', 'armor-class');
+  const prof = sub => mods.some(m => m.type === 'proficiency' && m.subType === sub);
+  const expert = sub => mods.some(m => m.type === 'expertise' && m.subType === sub);
+  const saves = {}; ABIL.forEach(a => { if (prof(SUB[a] + '-saving-throws')) saves[a] = M(a) + pb; });
+  const SK = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
+  const skillBonus = k => M(SK[k]) + (expert(k) ? 2 * pb : prof(k) ? pb : 0);
+  const skills = Object.keys(SK).filter(k => prof(k) || expert(k)).map(k => k.split('-').map(cap).join(' ') + ' ' + sgn(skillBonus(k))).join(', ');
+  const passive = 10 + skillBonus('perception');
+  const dv = Math.max(0, ...mods.filter(m => m.subType === 'darkvision').map(m => m.value || 0));
+  const langs = [...new Set(mods.filter(m => m.type === 'language').map(m => m.friendlySubtypeName))].join(', ');
+  // támadások
+  const actions = [], bonusActions = [], reactions = [], traits = [];
+  inv.filter(i => i.definition.damage || i.definition.filterType === 'Weapon').forEach(w => {
+    const def = w.definition;
+    const props = (def.properties || []).map(p => p.name);
+    const ranged = def.attackType === 2;
+    const ab = ranged ? 'dex' : props.includes('Finesse') && M('dex') > M('str') ? 'dex' : 'str';
+    const magic = (def.grantedModifiers || []).filter(m => m.type === 'bonus' && m.subType === 'magic').reduce((s, m) => s + (m.value || 0), 0);
+    const hit = M(ab) + pb + magic, dm = M(ab) + magic;
+    const dice = def.damage?.diceString || '1';
+    const reach = ranged ? `range ${def.range || '?'}/${def.longRange || '?'} ft.` : `reach ${props.includes('Reach') ? 10 : 5} ft.`;
+    let text = `${ranged ? 'Ranged' : 'Melee'} Weapon Attack: ${sgn(hit)} to hit, ${reach} Hit: ${dice}${dm ? sgn(dm) : ''} ${(def.damageType || '').toLowerCase()} damage.`;
+    const vers = def.properties?.find(p => p.name === 'Versatile')?.notes;
+    if (vers) text += ` Versatile: ${vers}${dm ? sgn(dm) : ''}.`;
+    actions.push({name: w.definition.name, text});
+  });
+  Object.values(d.actions || {}).flat().filter(Boolean).forEach(a => {
+    const e = {name: a.name, text: stripHtml(a.snippet || a.description).slice(0, 500)};
+    const t = a.activation?.activationType;
+    (t === 1 ? actions : t === 3 ? bonusActions : t === 4 ? reactions : traits).push(e);
+  });
+  // varázslatok
+  const byLvl = {};
+  const addSpell = s => { const def = s.definition; if (!def) return; (byLvl[def.level] = byLvl[def.level] || new Set()).add(def.name); };
+  (d.classSpells || []).forEach(cs => (cs.spells || []).filter(s => s.prepared || s.alwaysPrepared || s.definition?.level === 0 || s.countsAsKnownSpell).forEach(addSpell));
+  Object.values(d.spells || {}).flat().filter(Boolean).forEach(addSpell);
+  const lvls = Object.keys(byLvl).sort((a, b) => a - b);
+  if (lvls.length) {
+    const casters = classes.filter(c => c.definition?.spellCastingAbilityId).map(c => {
+      const a = ABIL[c.definition.spellCastingAbilityId - 1];
+      return `${c.definition.name}: spell save DC ${8 + pb + M(a)}, ${sgn(pb + M(a))} to hit`;
+    });
+    traits.push({name: 'Varázslatok', text: [...casters, ...lvls.map(l => `${l == 0 ? 'Cantrips' : ordinal(+l) + ' level'}: ${[...byLvl[l]].join(', ')}`)].join('\n')});
+  }
+  const clsStr = classes.map(c => `${c.definition?.name || ''} ${c.level}${c.subclassDefinition ? ' (' + c.subclassDefinition.name + ')' : ''}`).join(' / ');
+  return normCreature({
+    name: d.name, kind: 'pc', source: 'D&D Beyond', ddbId: d.id,
+    type: [d.race?.fullName, clsStr].filter(Boolean).join(' — '), cr: 'Szint ' + level,
+    ac, hp: {max: hpMax, cur: hpCur, formula: ''},
+    speed: (d.race?.weightSpeeds?.normal?.walk || 30) + ' ft.',
+    abilities, saves, skills,
+    senses: [dv ? `darkvision ${dv} ft.` : '', `passive Perception ${passive}`].filter(Boolean).join(', '),
+    languages: langs, initBonus: dex + sum('bonus', 'initiative'),
+    portrait: d.decorations?.avatarUrl || d.avatarUrl || '',
+    traits, actions, bonusActions, reactions
+  });
+}
+
+// ---------- JSON / sablon ----------
+function jsonTabHtml() {
+  return `<p>Illessz be JSON-t: a saját sablon szerinti lényt (egyet vagy tömböt), 5e.tools szörny JSON-t vagy D&D Beyond karakter JSON-t – a program felismeri.</p>
+    <div class="toolbar"><button data-act="downloadTemplate">⬇ Sablon letöltése</button><button data-act="showTemplate">Sablon betöltése ide</button><button data-act="importFile">Fájl megnyitása…</button><button data-act="newCreature">✎ Új lény űrlappal</button></div>
+    <textarea id="jsonIn" rows="16" placeholder='{ "name": "...", "ac": 13, "hp": {"max": 22}, ... }'></textarea>
+    <div class="toolbar"><button class="primary" data-act="jsonImport">Importálás a könyvtárba</button><span id="jsonMsg" class="hint"></span></div>`;
+}
+const is5e = o => o.hp?.average != null || Array.isArray(o.ac) || Array.isArray(o.size) || !!o._copy || (Array.isArray(o.action) && o.action[0]?.entries);
+const isDDB = o => (o.data && Array.isArray(o.data.stats)) || (Array.isArray(o.stats) && o.stats[0]?.id != null);
+async function importAny(obj) {
+  const arr = Array.isArray(obj) ? obj : obj.monster || obj.creatures || (obj.library && !obj.enc ? obj.library : null) || [obj];
+  const out = [];
+  for (const o of arr) {
+    if (isDDB(o)) out.push(convertDDB(o));
+    else if (is5e(o)) out.push(convert5e(await resolveCopy(o)));
+    else out.push(normCreature({...o, id: uid()}));
+  }
+  return out.map(upsertLibrary);
+}
+function download(name, obj) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], {type: 'application/json'}));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+let fileMode = 'creatures';
+$('#fileIn').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const obj = JSON.parse(await f.text());
+    if (fileMode === 'all') {
+      if (!obj.library || !obj.enc) throw new Error('Ez nem teljes DM Screen mentés');
+      if (!confirm('Felülírja a jelenlegi könyvtárat és encountert. Folytatod?')) return;
+      S = {...S, ...obj, settings: {...S.settings, ...(obj.settings || {})}};
+      closeModal(); save(); render();
+    } else {
+      const res = await importAny(obj);
+      openLib('lib');
+      log(`📚 ${res.length} lény importálva: ${esc(res.map(c => c.name).join(', '))}`);
+    }
+  } catch (err) { alert('Hibás fájl: ' + err.message); }
+});
+
+// ---------- mentett encounterek ----------
+function encTabHtml() {
+  return `<p>Előre összerakott harcok. Mentéskor az encounterben lévő <b>nem játékos</b> lények kerülnek bele; betöltéskor hozzáadódnak a mostani encounterhez (a játékosok maradnak).</p>
+    <div class="toolbar"><input id="encName" placeholder="Encounter neve, pl. Romos kápolna – kultisták" style="flex:1"><button class="primary" data-act="encSave">Jelenlegi mentése</button></div>
+    <div class="rows">${S.saved.length ? S.saved.map((e, i) => `<div class="lrow" data-enc="${i}"><span class="nm"><b>${esc(e.name)}</b><small>${esc(summarize(e.list))}</small></span>
+      <button class="primary" data-act="encLoad">Betöltés</button><button class="small" data-act="encDel">🗑</button></div>`).join('') : '<p class="muted">Még nincs mentett encounter.</p>'}</div>`;
+}
+function summarize(list) {
+  const cnt = {}; list.forEach(c => cnt[c.name] = (cnt[c.name] || 0) + 1);
+  return Object.entries(cnt).map(([n, k]) => (k > 1 ? k + '× ' : '') + n).join(', ');
+}
+
+// ---------- szerkesztő ----------
+let editCb = null;
+function sectionToText(arr) { return arr.map(e => (e.name ? e.name + '. ' : '') + e.text).join('\n\n'); }
+function textToSection(t) { return t.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean).map(splitEntry); }
+function openEditor(creature, cb, title = 'Lény szerkesztése') {
+  const c = normCreature(structuredClone(creature));
+  editCb = cb;
+  const f = (k, l, cls = '', type = 'text') => `<label class="${cls}">${l}<input type="${type}" name="${k}" value="${esc(c[k] ?? '')}"></label>`;
+  openModal(`<h2>${esc(title)}</h2>
+    <form id="edForm" class="form" onsubmit="return false">
+      ${f('name', 'Név', 'w2')}
+      <label>Típus<select name="kind">${Object.entries(KIND_HU).map(([k, l]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${f('cr', 'CR / szint')}
+      ${f('size', 'Méret')}${f('type', 'Fajta (type)')}${f('alignment', 'Alignment')}${f('source', 'Forrás')}
+      ${f('ac', 'AC', '', 'number')}${f('acNote', 'AC megjegyzés')}
+      <label>HP max<input type="number" name="hpMax" value="${c.hp.max}"></label>
+      <label>HP formula<input name="hpFormula" value="${esc(c.hp.formula)}" placeholder="pl. 8d8+16"></label>
+      ${f('speed', 'Speed', 'w2')}
+      <label>Initiative bónusz<input name="initBonus" value="${c.initBonus ?? ''}" placeholder="üres = DEX"></label>
+      ${f('legendaryCount', 'Legendás akció / kör', '', 'number')}
+      <div class="w4" style="display:flex;gap:10px;align-items:center">
+        <img class="pv" id="portraitPv" src="${esc(c.portrait || '')}" alt="" ${c.portrait ? '' : 'style="visibility:hidden"'}>
+        <label style="flex:1">Portré – kép linkje, vagy tölts fel egy képet a gépedről
+          <input id="portraitUrl" value="${c.portrait?.startsWith('data:') ? '' : esc(c.portrait || '')}" placeholder="${c.portrait?.startsWith('data:') ? '(feltöltött kép)' : 'https://…'}"></label>
+        <input type="hidden" name="portrait" value="${esc(c.portrait || '')}">
+        <button type="button" data-act="portraitUpload">Kép feltöltése…</button>
+        <button type="button" data-act="portraitClear">Törlés</button>
+        <input type="file" id="portraitFile" accept="image/*" hidden>
+      </div>
+      <div class="w4" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">${ABIL.map(a => `<label>${a.toUpperCase()}<input type="number" name="ab_${a}" value="${c.abilities[a]}"></label>`).join('')}</div>
+      <label class="w2">Mentők (pl. dex +5, wis +3)<input name="saves" value="${esc(ABIL.filter(a => c.saves[a] != null).map(a => a + ' ' + sgn(+c.saves[a])).join(', '))}"></label>
+      ${f('skills', 'Skills', 'w2')}${f('senses', 'Senses', 'w2')}${f('languages', 'Languages', 'w2')}
+      ${f('resist', 'Resistances', 'w2')}${f('immune', 'Immunities', 'w2')}${f('vuln', 'Vulnerabilities', 'w2')}${f('condImmune', 'Condition immunities', 'w2')}
+      ${SECTIONS.map(k => `<label class="w4">${SECTION_HU[k]} <span class="hint">– elemenként: „Név. Szöveg”, az elemek között üres sor</span><textarea name="sec_${k}" rows="${k === 'actions' ? 7 : 3}">${esc(sectionToText(c[k]))}</textarea></label>`).join('')}
+      <label class="w4">Jegyzet<textarea name="notes" rows="2">${esc(c.notes)}</textarea></label>
+    </form>
+    <div class="toolbar" style="margin-top:12px"><button class="primary" data-act="edSave">Mentés</button><button data-act="edCancel">Mégse</button></div>`);
+  $('#edForm')._base = c;
+}
+function readEditor() {
+  const fm = $('#edForm'), c = fm._base, v = n => fm.elements[n].value;
+  for (const k of ['name', 'kind', 'cr', 'size', 'type', 'alignment', 'source', 'acNote', 'speed', 'skills', 'senses', 'languages', 'resist', 'immune', 'vuln', 'condImmune', 'notes']) c[k] = v(k);
+  c.ac = +v('ac') || 10;
+  c.hp = {...c.hp, max: +v('hpMax') || 1, formula: v('hpFormula')};
+  c.initBonus = v('initBonus').trim() === '' ? null : parseInt(v('initBonus'));
+  c.legendaryCount = +v('legendaryCount') || 0;
+  c.portrait = v('portrait');
+  ABIL.forEach(a => c.abilities[a] = +v('ab_' + a) || 10);
+  c.saves = {};
+  for (const m of v('saves').matchAll(/(str|dex|con|int|wis|cha)\w*\s*([+\-−]?\s*\d+)/gi)) c.saves[m[1].toLowerCase()] = parseInt(m[2].replace(/[−\s]/g, s => s === '−' ? '-' : ''));
+  SECTIONS.forEach(k => c[k] = textToSection(v('sec_' + k)));
+  return normCreature(c);
+}
+
+// ---------- események ----------
+document.addEventListener('click', async e => {
+  const t = e.target;
+  // dobások
+  const r = t.closest('.roll');
+  if (r) {
+    const cidEl = r.closest('[data-cid]');
+    const x = cidEl ? byId(cidEl.dataset.cid) : null;
+    const who = x ? nameOf(x) : '';
+    const label = r.closest('[data-label]')?.dataset.label || r.dataset.label || '';
+    if (r.dataset.hit) rollHit(r.dataset.hit, who, label || 'Támadás', e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : '');
+    else if (r.dataset.roll) rollDmg(r.dataset.roll, who, label || 'Dobás', e.shiftKey);
+    else if (r.dataset.rech) {
+      const d = rnd(6), ok = d >= +r.dataset.rech;
+      log(`<span class="who">${esc(who)}</span> ${esc(label || 'Recharge')}: d6 = <b>${d}</b> — ${ok ? 'feltöltődött ✓' : 'nem töltődött'}`, ok ? 'crit' : '');
+    }
+    return;
+  }
+  const chk = t.closest('[data-check],[data-save]');
+  if (chk) {
+    const x = byId(chk.closest('[data-cid]')?.dataset.cid); if (!x) return;
+    const sv = t.closest('[data-save]');
+    if (sv) rollHit(sgn(+x.c.saves[sv.dataset.save]), nameOf(x), ABIL_FULL[sv.dataset.save] + ' mentő', e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : '');
+    else { const a = chk.dataset.check; rollHit(sgn(mod(x.c.abilities[a])), nameOf(x), ABIL_FULL[a] + ' próba', e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : ''); }
+    return;
+  }
+  if (t.dataset.die) { rollDmg(t.dataset.die, '', t.dataset.die.replace('1', '')); return; }
+  if (t.dataset.tab) { libTab = t.dataset.tab; renderLib(); return; }
+
+  const el = t.closest('[data-act]'); if (!el) return;
+  const act = el.dataset.act;
+  const x = byId(el.closest('[data-cid]')?.dataset.cid);
+  const libEl = el.closest('[data-lib]'), lib = libEl && S.library.find(c => c.id === libEl.dataset.lib);
+  const cnt = () => Math.max(1, +(el.closest('.lrow')?.querySelector('.cnt')?.value) || 1);
+
+  switch (act) {
+    case 'next': step(1); break;
+    case 'prev': step(-1); break;
+    case 'rollInit': openInitMenu(); break;
+    case 'init': rollInitiative(el.dataset.mode); break;
+    case 'openLib': openLib(); break;
+    case 'menu': openMenu(); break;
+    case 'rollCustom': { const v = $('#diceInput').value.trim(); if (v) rollDmg(v, '', v); break; }
+    case 'select': selected = x.cid; render(); break;
+    case 'deselect': selected = null; render(); break;
+    case 'dmg': case 'heal': {
+      const n = Math.abs(parseInt(el.closest('.tile').querySelector('.hpin').value));
+      if (n > 0) { act === 'dmg' ? damage(x, n) : heal(x, n); save(); render(); }
+      break;
+    }
+    case 'temp': {
+      const n = parseInt(el.closest('.tile').querySelector('.hpin').value);
+      if (n >= 0) { x.temp = n; log(`${esc(nameOf(x))}: ${n} temp HP`); save(); render(); }
+      break;
+    }
+    case 'toggleConc': x.conc = !x.conc; save(); render(); break;
+    case 'toggleDead': x.dead = !x.dead; save(); render(); break;
+    case 'toggleSide': x.side = sideOf(x) === 'enemy' ? 'ally' : 'enemy'; save(); render(); break;
+    case 'toggleHidden': x.hiddenP = !x.hiddenP; save(); render(); break;
+    case 'openPlayer': window.open('player.html','dmscreen-player', 'popup,width=1280,height=800'); break;
+    case 'portraitUpload': $('#portraitFile').click(); break;
+    case 'portraitClear': setPortrait(''); $('#portraitUrl').value = ''; break;
+    case 'diffInfo': openDiffInfo(); break;
+    case 'dup': addToEncounter({...x.c, id: x.c.libId || x.c.id}, 1); break;
+    case 'remove':
+      if (confirm(`Eltávolítod: ${nameOf(x)}?`)) {
+        if (S.enc.active === x.cid) step(1);
+        S.enc.list = S.enc.list.filter(y => y !== x);
+        if (S.enc.active === x.cid) S.enc.active = null;
+        save(); render();
+      }
+      break;
+    case 'rmCond': x.cond.splice(+el.dataset.i, 1); save(); render(); break;
+    case 'leg': { const i = +el.dataset.i; x.leg = x.leg === i + 1 ? i : i + 1; save(); render(); break; }
+    case 'addCond': {
+      const name = $('#condSel').value || $('#condCustom').value.trim();
+      if (!name) break;
+      const rounds = parseInt($('#condRounds').value);
+      x.cond.push({name, rounds: rounds > 0 ? rounds : null});
+      save(); render(); break;
+    }
+    case 'editCombatant':
+      openEditor(x.c, c => {
+        const oldMax = x.c.hp.max;
+        c.libId = x.c.libId; x.c = c;
+        x.hp = x.hp === oldMax ? c.hp.max : Math.min(x.hp, c.hp.max);
+      }, 'Adatlap szerkesztése (csak ebben a harcban)');
+      break;
+    case 'saveToLib': {
+      const c = structuredClone(x.c);
+      c.id = c.libId && S.library.some(l => l.id === c.libId) ? c.libId : uid();
+      if (c.kind === 'pc') c.hp.cur = x.hp;
+      const saved = upsertLibrary(c);
+      x.c.libId = saved.id;
+      log(`📚 ${esc(saved.name)} elmentve a könyvtárba`); save();
+      break;
+    }
+    case 'newCreature': openEditor(blankCreature(), c => { upsertLibrary(c); log(`📚 ${esc(c.name)} létrehozva`); }, 'Új lény'); break;
+    case 'edSave': { const c = readEditor(); const cb = editCb; closeModal(); cb && cb(c); save(); render(); break; }
+    case 'edCancel': closeModal(); break;
+
+    // könyvtár
+    case 'libAdd': addToEncounter(lib, cnt()); log(`＋ ${cnt()}× ${esc(lib.name)}`); break;
+    case 'libEdit': openEditor(lib, c => { c.id = lib.id; upsertLibrary(c); setTimeout(() => openLib('lib')); }); break;
+    case 'libExport': download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', lib); break;
+    case 'libDel': if (confirm(`Törlöd a könyvtárból: ${lib.name}?`)) { S.library = S.library.filter(c => c !== lib); save(); filterLib(); } break;
+    case 'addAllPcs': {
+      const pcs = S.library.filter(c => c.kind === 'pc' && !S.enc.list.some(x => x.c.libId === c.id));
+      pcs.forEach(c => addToEncounter(c, 1));
+      log(`＋ ${pcs.length} játékos hozzáadva`); closeModal(); break;
+    }
+    case 'fiveSearch': fiveSearch(); break;
+    case 'fiveAdd': case 'fiveSave': {
+      const m = fiveResults[+el.closest('[data-five]').dataset.five];
+      const c = convert5e(await resolveCopy(structuredClone(m)));
+      if (act === 'fiveAdd') { addToEncounter(c, cnt()); log(`＋ ${cnt()}× ${esc(c.name)}`); }
+      else { upsertLibrary(c); el.textContent = '✓ Mentve'; }
+      break;
+    }
+    case 'ddbPasteImport': ddbImportText($('#ddbPaste').value); break;
+    case 'ddbClipboard':
+      try { ddbImportText(await navigator.clipboard.readText()); }
+      catch { $('#ddbMsg').innerHTML = '<p class="muted">A böngésző nem engedte olvasni a vágólapot – kattints a mezőbe, és nyomj Ctrl+V-t.</p>'; }
+      break;
+    case 'signIn': window.DMAuth?.signIn(); break;
+    case 'signOut': closeModal(); window.DMAuth?.signOut(); break;
+    case 'reload': location.reload(); break;
+    case 'jsonImport':
+      try {
+        const res = await importAny(JSON.parse($('#jsonIn').value));
+        $('#jsonMsg').textContent = `✓ ${res.length} lény importálva: ${res.map(c => c.name).join(', ')}`;
+      } catch (err) { $('#jsonMsg').textContent = '⚠ ' + err.message; }
+      break;
+    case 'showTemplate': $('#jsonIn').value = JSON.stringify(TEMPLATE, null, 2); break;
+    case 'downloadTemplate': download('dmscreen-sablon.json', TEMPLATE); break;
+    case 'importFile': fileMode = 'creatures'; $('#fileIn').click(); break;
+    case 'encSave': {
+      const list = S.enc.list.filter(y => y.c.kind !== 'pc').map(y => y.c);
+      if (!list.length) { alert('Nincs nem-játékos lény az encounterben.'); break; }
+      S.saved.push({id: uid(), name:$('#encName').value.trim() || 'Encounter ' + (S.saved.length + 1), list: structuredClone(list)});
+      save(); renderLib(); break;
+    }
+    case 'encLoad': {
+      const enc = S.saved[+el.closest('[data-enc]').dataset.enc];
+      const groups = {};
+      enc.list.forEach(c => (groups[c.name] = groups[c.name] || []).push(c));
+      Object.values(groups).forEach(g => addToEncounter(g[0], g.length));
+      log(`⚔ ${esc(enc.name)} betöltve`); closeModal(); break;
+    }
+    case 'encDel': if (confirm('Törlöd ezt a mentett encountert?')) { S.saved.splice(+el.closest('[data-enc]').dataset.enc, 1); save(); renderLib(); } break;
+
+    // menü
+    case 'newFight':
+      S.enc.list = S.enc.list.filter(y => y.c.kind === 'pc');
+      S.enc.list.forEach(y => { y.init = null; y.cond = []; y.conc = false; y.leg = 0; });
+      S.enc.round = 1; S.enc.active = null; selected = null;
+      log('— Új harc —', 'round'); closeModal(); save(); render(); break;
+    case 'clearAll':
+      if (confirm('Mindenkit eltávolítasz az encounterből?')) { S.enc = {list: [], round: 1, active: null}; selected = null; closeModal(); save(); render(); }
+      break;
+    case 'exportAll': download(`dmscreen-mentes-${new Date().toISOString().slice(0, 10)}.json`, S); break;
+    case 'importAll': fileMode = 'all'; $('#fileIn').click(); break;
+  }
+});
+
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.setting) { S.settings[t.dataset.setting] = t.checked; save(); return; }
+  if (t.dataset.src) {
+    const s = new Set(S.settings.sources);
+    t.checked ? s.add(t.dataset.src) : s.delete(t.dataset.src);
+    S.settings.sources = [...s]; save(); return;
+  }
+  if (t.id === 'libKind') { filterLib(); return; }
+  const x = byId(t.closest('[data-cid]')?.dataset.cid);
+  if (!x) return;
+  if (t.classList.contains('init')) { x.init = t.value === '' ? null : +t.value; save(); render(); return; }
+  const f = t.dataset.f;
+  if (!f || f === 'notes') return;
+  if (f === 'conc') x.conc = t.checked;
+  else if (f === 'init') x.init = t.value === '' ? null : +t.value;
+  else if (f === 'hp') { x.hp = Math.max(0, +t.value || 0); x.dead = x.hp === 0 && x.c.kind !== 'pc'; }
+  else if (f === 'max') x.c.hp.max = Math.max(1, +t.value || 1);
+  else if (f === 'temp') x.temp = Math.max(0, +t.value || 0);
+  else if (f === 'ac') x.c.ac = +t.value || 0;
+  else if (f === 'side') x.side = t.value;
+  else if (f === 'hiddenP') x.hiddenP = t.checked;
+  else if (f === 'pubName') x.publicName = t.value.trim();
+  save(); render();
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.id === 'libSearch') filterLib();
+  if (t.dataset.f === 'notes') { const x = byId(t.closest('[data-cid]')?.dataset.cid); if (x) { x.notes = t.value; save(); } }
+});
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (selected) { selected = null; render(); } return; }
+  if (t.classList?.contains('hpin') && e.key === 'Enter') {
+    const x = byId(t.closest('[data-cid]').dataset.cid), n = parseInt(t.value);
+    if (n > 0) damage(x, n); else if (n < 0) heal(x, -n);
+    if (n) { save(); render(); }
+    return;
+  }
+  if (t.id === 'diceInput' && e.key === 'Enter') { const v = t.value.trim(); if (v) rollDmg(v, '', v); return; }
+  if (t.id === 'fiveQ' && e.key === 'Enter') { fiveSearch(); return; }
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || !$('#modal').hidden) return;
+  if (e.key === 'n' || e.key === 'N' || e.key === ' ') { e.preventDefault(); step(1); }
+  else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); step(-1); }
+});
+
+// beillesztéskor magától importál
+document.addEventListener('paste', e => {
+  if (e.target.id !== 'ddbPaste') return;
+  const t = e.clipboardData?.getData('text');
+  if (t && t.trim().startsWith('{')) { e.preventDefault(); ddbImportText(t); }
+});
+
+// ---------- indulás ----------
+render();
+</script>
+
+<script src="firebase-config.js"></script>
+<script type="module">
+// Firebase: Google-belépés + Firestore (ugyanaz a projekt, mint a Házi Naplóé, külön gyűjteményekben)
+const V = '10.12.2';
+const cfg = window.FIREBASE_CONFIG;
+if (!cfg || !cfg.apiKey || location.protocol === 'file:') {
+  window.DMApp.setAuth({status: 'unconfigured'});
+} else {
+  try {
+    const {initializeApp} = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+    const A = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
+    const F = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+    const app = initializeApp(cfg);
+    const auth = A.getAuth(app);
+    const fs = F.initializeFirestore(app, {localCache: F.persistentLocalCache({tabManager: F.persistentMultipleTabManager()})});
+    const db = {
+      get: async p => { const s = await F.getDoc(F.doc(fs, p)); return s.exists() ? s.data() : null; },
+      list: async p => (await F.getDocs(F.collection(fs, p))).docs.map(d => ({...d.data(), id: d.id})),
+      set: (p, d) => F.setDoc(F.doc(fs, p), d),
+      del: p => F.deleteDoc(F.doc(fs, p)),
+    };
+    const provider = new A.GoogleAuthProvider();
+    provider.setCustomParameters({prompt: 'select_account'});
+    window.DMAuth = {
+      async signIn() {
+        try { await A.signInWithPopup(auth, provider); }
+        catch (e) {
+          if (e.code === 'auth/popup-blocked') return A.signInWithRedirect(auth, provider);
+          if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request')
+            window.DMApp.setAuth({status: 'signedOut', error: 'A belépés nem sikerült (' + e.code + ').'});
+        }
+      },
+      signOut: () => A.signOut(auth),
+      email: () => auth.currentUser?.email || '',
+    };
+    A.onAuthStateChanged(auth, u => window.DMApp.setAuth(u ? {status: 'signedIn', email: u.email, db} : {status: 'signedOut'}));
+  } catch (e) {
+    // nincs internet a legelső betöltéskor: helyi mód
+    window.DMApp.setAuth({status: 'unconfigured'});
+  }
+}
+</script>
+</body>
+</html>
