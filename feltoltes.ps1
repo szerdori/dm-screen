@@ -1,7 +1,9 @@
 ﻿# Feltölti (commit + push) a változásokat a GitHubra; a GitHub Pages 1-2 percen belül kiteszi az új verziót.
 # Használat:  .\feltoltes.ps1 "Mit változtattunk"
 # Üzenet nélkül indítva rákérdez.
-param([string]$Uzenet)
+# Feltöltés előtt lefuttatja a regressziós teszteket (teszt.ps1); ha valamelyik hibás, nem tölt fel.
+# Végszükség esetén:  .\feltoltes.ps1 "Üzenet" -TesztNelkul
+param([string]$Uzenet, [switch]$TesztNelkul)
 
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
@@ -12,6 +14,12 @@ $valtozasok = & $git status --porcelain
 if (-not $valtozasok) {
   Write-Host 'Nincs feltöltendő változás.' -ForegroundColor Yellow
   exit 0
+}
+
+if (-not $TesztNelkul) {
+  & (Join-Path $PSScriptRoot 'teszt.ps1')
+  if ($LASTEXITCODE -ne 0) { Write-Host 'A tesztek nem mentek át, ezért NEM töltöttem fel. Javítsd a hibát, és próbáld újra.' -ForegroundColor Red; exit 1 }
+  Write-Host ''
 }
 
 Write-Host 'Ezek a fájlok változtak:' -ForegroundColor Cyan

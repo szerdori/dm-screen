@@ -629,6 +629,7 @@ function tileHtml(x) {
   if (x.cid === S.enc.active) cls.push('active');
   if (x.cid === selected) cls.push('selected');
   if (x.dead) cls.push('dead');
+  if (x.hiddenP) cls.push('hiddenp');
   const hpCls = pct <= 25 ? 'low' : pct <= 50 ? 'mid' : '';
   const tmpPct = x.temp ? Math.min(100, x.temp / max * 100) : 0;
   const chips = (x.conc ? `<span class="chip conc" data-act="toggleConc" title="Koncentráció – kattints a megszüntetéshez">Koncentráció</span>` : '') +
@@ -1493,7 +1494,8 @@ render();
 // Firebase: Google-belépés + Firestore (ugyanaz a projekt, mint a Házi Naplóé, külön gyűjteményekben)
 const V = '10.12.2';
 const cfg = window.FIREBASE_CONFIG;
-if (!cfg || !cfg.apiKey || location.protocol === 'file:') {
+// ?test = automata tesztek (tests/): helyi mód, a felhőhöz nem nyúl
+if (!cfg || !cfg.apiKey || location.protocol === 'file:' || new URLSearchParams(location.search).has('test')) {
   window.DMApp.setAuth({status: 'unconfigured'});
 } else {
   try {

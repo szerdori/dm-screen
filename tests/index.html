@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<title>DM Screen – tesztek</title>
+<style>
+body{font:14px/1.4 "Segoe UI",sans-serif;background:#121418;color:#e7e7e9;margin:16px}
+h1{color:#e2a63b;margin:0 0 8px}
+#summary{font-size:18px;font-weight:700;margin:8px 0}
+#summary.ok{color:#4caf6a} #summary.bad{color:#d9534f}
+#report{white-space:pre-wrap;font:13px Consolas,monospace;background:#0d0f12;padding:10px;border-radius:6px}
+.frames{display:flex;gap:8px;margin-top:12px}
+iframe{border:1px solid #333;background:#fff}
+</style>
+</head>
+<body>
+<h1>DM Screen – regressziós tesztek</h1>
+<div id="summary">Futtatás…</div>
+<pre id="report"></pre>
+<div class="frames" id="frames"></div>
+<script src="tests.js"></script>
+</body>
+</html>

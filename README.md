@@ -8,4 +8,11 @@ Harckezelő D&D 5e (2014) mesélőknek: initiative-sorrend csempéken, HP, AC, t
 - Az adatok a Firebase-ben (Firestore) vannak, Google-belépéssel érhetők el; a tárolóban csak a program kódja van.
 - A játékos képernyő (`player.html`) a DM ablakból nyílik, és ugyanabban a böngészőben élőben követi a harcot.
 
-Frissítés feltöltése: `.\feltoltes.ps1 "Mit változtattunk"`
+Frissítés feltöltése: `.\feltoltes.ps1 "Mit változtattunk"` – előtte automatikusan lefutnak a tesztek, és hiba esetén nem tölt fel.
+
+## Tesztek
+
+- `.\teszt.ps1` (vagy dupla kattintás a `teszt.cmd`-n): lefuttatja a regressziós teszteket láthatatlan Chrome-ban, kb. fél perc.
+- `.\teszt.ps1 -Online`: az 5e.tools adatok elérhetőségét is ellenőrzi.
+- `.\teszt.ps1 -Bongeszo`: látható böngészőben futtatja (hibakereséshez).
+- Új teszt: `tests\tests.js`, a megfelelő `describe(...)` blokkba egy `test('név', () => { ... })` sor. A fájl elején leírás van a segédfüggvényekről.
