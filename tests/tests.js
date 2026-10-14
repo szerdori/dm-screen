@@ -49,7 +49,7 @@ function fresh() {
   A(`DB = null; authInfo = {status: 'unconfigured'}; clearTimeout(saveTimer); saveTimer = null;
      S = {library: [], enc: {list: [], round: 1, active: null}, saved: [], settings: {groupInit: true, rollHp: false, sources: ['MM']}};
      selected = null; logLines = []; libTab = 'lib'; lastSaved = {state: '', lib: {}, saved: {}};
-     fiveIndex = null; fiveData = {}; fiveResults = [];
+     fiveIndex = null; fiveData = {}; fiveResults = []; backupWarn = '';
      closeModal(); renderGate(null); render();`);
   W.document.getElementById('log').innerHTML = '';
 }
@@ -167,7 +167,7 @@ describe('Szerkesztő', () => {
   test('mentők szövegből (kis/nagybetű, unicode mínusz)', () => {
     W.openEditor(W.normCreature({}), () => {});
     $('#edForm').elements.saves.value = 'dex +5, WIS −1, con 3';
-    eq(W.readEditor().saves, {dex: 5, wis: -1, con: 3});
+    eq(W.readEditor().saves, {dex: 5, con: 3, wis: -1});
   });
   test('szekciók üres sorral elválasztva', () => {
     W.openEditor(W.normCreature({}), () => {});
@@ -716,7 +716,7 @@ describe('Felhő mentés (ál-adatbázissal)', () => {
     const f = fakeDb();
     f.store['dmscreen_library/a'] = {name: 'A'}; f.store['dmscreen_library/b'] = {name: 'B'}; f.store['dmscreen/state'] = {enc: {list: [], round: 1, active: null}, settings: {}};
     await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db});
-    await wait(500); eq(f.log, [], 'betöltés után nem kellene írni');
+    await wait(500); eq(f.log.splice(0).filter(l => !l.includes('backup')), [], 'betöltés után (a napi mentésen kívül) nem kellene írni');
     A('S.library.find(c => c.id === "a").ac = 17; save()'); await wait(500);
     eq(f.log.splice(0), ['set dmscreen_library/a']);
     add(mk()); await wait(500);
@@ -876,6 +876,168 @@ describe('Online (csak  .\\teszt.ps1 -Online  esetén)', () => {
 });
 
 // ======================================================================
+// ál-adatbázis a felhős funkciókhoz (a Firestore-adapter felületét utánozza)
+function makeFakeDb(initial = {}) {
+  const store = structuredClone(initial), log = [];
+  return {store, log, db: {
+    get: async p => store[p] ? structuredClone(store[p]) : null,
+    list: async col => Object.entries(store).filter(([k]) => k.startsWith(col + '/')).map(([k, v]) => ({...structuredClone(v), id: k.split('/')[1]})),
+    set: async (p, d) => { JSON.stringify(d); store[p] = structuredClone(d); log.push('set ' + p); },
+    del: async p => { delete store[p]; log.push('del ' + p); }
+  }};
+}
+
+// rosszindulatú adatok: ha bármelyik lefut, beállítja a window.__xss jelzőt
+const XSS = '<img src=x onerror="window.__xss=1">';
+const XQ = '" onmouseover="window.__xss=1" x="';
+const evilCreature = () => ({
+  name: XSS, kind: XQ, id: XQ, libId: XQ, portrait: 'javascript:window.__xss=1', cr: XSS, ac: XSS, acNote: XSS, type: XSS, source: XSS, speed: XSS, notes: XSS,
+  hp: {max: XSS, cur: XQ, formula: XSS}, abilities: {str: XSS, dex: XQ}, saves: {con: XSS, wis: XQ}, legendaryCount: XSS, initBonus: XQ,
+  actions: [{name: XSS, text: XSS + ' Melee Weapon Attack: +4 to hit. Hit: 1d6+2 slashing damage.'}], legendary: [{name: XSS, text: XSS}], traits: 'nem tömb'
+});
+const evilCombatant = () => ({cid: XQ, num: XSS, c: evilCreature(), hp: XSS, temp: XQ, init: XQ, cond: [{name: XSS, rounds: XQ}], side: XQ, group: XQ, publicName: XSS, notes: XSS, leg: XQ});
+async function renderEverywhere() {
+  // minden nézet kirajzolása, ahol a lény adatai megjelenhetnek
+  W.render();
+  const first = A('order()')[0];
+  if (first) { A(`selected = ${JSON.stringify(first.cid)}`); W.render(); W.step(1); }
+  for (const t of ['lib', 'enc']) W.openLib(t);
+  if (A('S.library.length')) W.openEditor(A('S.library[0]'), () => {});
+  W.closeModal(); W.openDiffInfo(); W.closeModal(); W.broadcast();
+  await wait(300);
+}
+function assertNoXss() {
+  for (const [nm, doc] of [['DM képernyő', W.document], ['játékos képernyő', P.document]]) {
+    eq(doc.querySelectorAll('[onmouseover]').length, 0, nm + ': attribútum-befecskendezés');
+    eq(doc.querySelectorAll('img[src="x"]').length, 0, nm + ': HTML-befecskendezés');
+  }
+  eq(W.__xss, undefined, 'lefutott a befecskendezett kód'); eq(P.__xss, undefined, 'lefutott a kód a játékos képernyőn');
+}
+
+describe('Biztonság (befecskendezett kód ellen)', () => {
+  test('lény-adatok tisztítása: számok, típus, azonosító, portré', () => {
+    const c = W.normCreature(evilCreature());
+    eq([c.kind, c.ac, c.hp.max, c.hp.cur, c.abilities.str, c.abilities.dex, c.legendaryCount, c.initBonus, c.portrait, c.traits], ['monster', 10, 10, 10, 10, 10, 0, null, '', []]);
+    eq(c.saves, {});
+    ok(/^[A-Za-z0-9_-]+$/.test(c.id) && /^[A-Za-z0-9_-]+$/.test(c.libId), 'nem biztonságos azonosító: ' + c.id);
+    eq(c.name, XSS, 'a név szövegként megmarad (kiíráskor escape-elődik)');
+  });
+  test('érvényes értékek érintetlenek maradnak', () => {
+    const c = W.normCreature({id: 'abc_12-x', kind: 'pc', ac: '17', hp: {max: '45', cur: 30}, abilities: {dex: '16'}, saves: {dex: '+5'}, portrait: 'https://example.com/a.png', initBonus: '3', legendaryCount: 3});
+    eq([c.id, c.kind, c.ac, c.hp.max, c.hp.cur, c.abilities.dex, c.saves, c.portrait, c.initBonus, c.legendaryCount], ['abc_12-x', 'pc', 17, 45, 30, 16, {dex: 5}, 'https://example.com/a.png', 3, 3]);
+    eq(W.normCreature({portrait: 'data:image/png;base64,AAAA'}).portrait, 'data:image/png;base64,AAAA');
+  });
+  test('harc-résztvevő tisztítása (oldal, számok, állapotok)', () => {
+    const x = W.normCombatant(evilCombatant());
+    eq([x.num, x.hp, x.temp, x.init, x.leg, 'side' in x, x.cond[0].rounds], [0, 10, 0, null, 0, false, 0]);
+    ok(/^[A-Za-z0-9_-]+$/.test(x.cid) && /^[A-Za-z0-9_-]+$/.test(x.group), 'nem biztonságos azonosító');
+  });
+  test('JSON-import: semmi nem fut le, sehol', async () => {
+    const [c] = await W.importAny(evilCreature());
+    add(c); await renderEverywhere();
+    assertNoXss();
+    has($('.tile .t-name').textContent, '<img', 'a nevet szövegként kell mutatni');
+  });
+  test('teljes mentésfájl visszatöltése: semmi nem fut le', async () => {
+    W.importBackup({library: [evilCreature()], saved: [{id: XQ, name: XSS, list: [evilCreature()]}],
+      enc: {list: [evilCombatant(), evilCombatant()], round: XSS, active: XQ}, settings: {sources: [XSS, 'MM'], groupInit: XQ, lastExport: XSS}});
+    eq([A('S.enc.round'), A('S.settings.sources'), A('S.settings.groupInit'), A('S.settings.lastExport')], [1, ['MM'], true, '']);
+    await renderEverywhere();
+    assertNoXss();
+  });
+  test('hibás mentésfájl: hibaüzenet, az adatok nem változnak', () => {
+    add(mk());
+    let err = null; try { W.importBackup({foo: 1}); } catch (e) { err = e; }
+    ok(err, 'nem dobott hibát'); eq(list().length, 1);
+  });
+  test('a felhőből érkező rosszindulatú adat sem fut le', async () => {
+    const f = makeFakeDb({'dmscreen_library/a': evilCreature(), 'dmscreen/state': {enc: {list: [evilCombatant()], round: 2, active: null}, settings: {}}});
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db});
+    await renderEverywhere();
+    assertNoXss();
+  });
+  test('a böngésző tárolójából érkező rosszindulatú adat sem fut le', async () => {
+    W.localStorage.setItem('dmscreen', JSON.stringify({library: [evilCreature()], enc: {list: [evilCombatant()]}, saved: []}));
+    await W.DMApp.setAuth({status: 'unconfigured'});
+    W.localStorage.removeItem('dmscreen');
+    await renderEverywhere();
+    assertNoXss();
+  });
+});
+
+// ======================================================================
+describe('Biztonsági mentések', () => {
+  const withData = () => ({'dmscreen_library/a': {name: 'Zombie', kind: 'monster'}, 'dmscreen/state': {enc: {list: [], round: 1, active: null}, settings: {}}});
+  test('betöltéskor elkészül a napi felhős mentés, ugyanaznap nem ismétlődik', async () => {
+    const f = makeFakeDb(withData());
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    const today = A('localDate()');
+    ok(f.store['dmscreen_backup/' + today], 'nincs mai mentés');
+    eq(f.store['dmscreen/backups'].items.map(b => [b.id, b.note, b.library]), [[today, 'napi', 1]]);
+    eq(JSON.parse(f.store['dmscreen_backup/' + today].data).library[0].name, 'Zombie');
+    f.log.length = 0;
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    eq(f.log.filter(l => l.includes('backup')), []);
+  });
+  test('üres adatnál nem készül mentés', async () => {
+    const f = makeFakeDb();
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    ok(!f.store['dmscreen/backups'], 'üres állapotról is készült mentés');
+  });
+  test('legfeljebb 14 mentés marad, a legrégebbiek törlődnek', async () => {
+    const init = withData(), items = [];
+    for (let i = 1; i <= 14; i++) { const id = `2020-01-${String(i).padStart(2, '0')}`; items.push({id, note: 'napi'}); init['dmscreen_backup/' + id] = {data: '{}'}; }
+    init['dmscreen/backups'] = {items};
+    const f = makeFakeDb(init);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(300);
+    const ids = f.store['dmscreen/backups'].items.map(b => b.id);
+    eq(ids.length, 14); eq(ids[0], A('localDate()')); ok(!ids.includes('2020-01-01'), 'a legrégebbi megmaradt');
+    ok(!f.store['dmscreen_backup/2020-01-01'], 'a legrégebbi mentés dokumentuma nem törlődött');
+    ok(f.store['dmscreen_backup/2020-01-02'], 'túl sok törlődött');
+  });
+  test('túl nagy adatnál a felhős mentés kimarad, figyelmeztetéssel', async () => {
+    const init = withData(); init['dmscreen_library/a'].notes = 'x'.repeat(950000);
+    const f = makeFakeDb(init);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    ok(!f.store['dmscreen/backups'], 'a túl nagy mentés mégis elkészült');
+    has(A('backupWarn'), 'túl nagy');
+  });
+  test('visszaállítás: a régi állapot visszajön, előtte a mostaniról is mentés készül', async () => {
+    const old = {library: [{id: 'a', name: 'Régi Zombie'}], saved: [], enc: {list: [], round: 4, active: null}, settings: {}};
+    const init = withData(); init['dmscreen_library/b'] = {name: 'Új Ghoul'};
+    init['dmscreen_backup/2026-01-01'] = {data: JSON.stringify(old)}; init['dmscreen/backups'] = {items: [{id: '2026-01-01', note: 'napi'}]};
+    const f = makeFakeDb(init);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    await W.restoreBackup('2026-01-01'); await wait(500);
+    eq([A('S.library').map(c => c.name), A('S.enc.round')], [['Régi Zombie'], 4]);
+    ok(!f.store['dmscreen_library/b'], 'a régi mentésben nem szereplő lény nem törlődött a felhőből');
+    ok(f.store['dmscreen/backups'].items.some(b => b.note === 'visszaállítás előtt'), 'nem készült mentés a visszaállítás előtt');
+  });
+  test('Menü: mentések listája, „Mentés most”, visszaállítás gomb', async () => {
+    const f = makeFakeDb(withData());
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    W.openMenu(); click('[data-act="openBackups"]'); await until(() => $$('[data-backup]').length === 1, 2000, 'lista');
+    click('[data-act="backupNow"]'); await until(() => $$('[data-backup]').length === 2, 2000, '„Mentés most”');
+    has($('#modalBox').textContent, 'kézi mentés');
+    click($$('[data-act="backupRestore"]')[1]); await wait(300);
+    has(allLog(), 'visszaállítva');
+  });
+  test('emlékeztető a fájlba mentésre: üresen nincs, 7 nap után van, mentés után eltűnik', () => {
+    W.render(); ok($('#backupNag').hidden, 'üres adatnál is megjelent');
+    add(mk()); has($('#backupNag').textContent, 'még sosem'); ok(!$('#backupNag').hidden);
+    const d = new W.Date(); d.setDate(d.getDate() - 8); A(`S.settings.lastExport = localDate(new Date(${d.getTime()}))`); W.render();
+    has($('#backupNag').textContent, '8 napja');
+    d.setDate(d.getDate() + 3); A(`S.settings.lastExport = localDate(new Date(${d.getTime()}))`); W.render();
+    ok($('#backupNag').hidden, '5 napnál még nem kellene szólnia');
+    A(`S.settings.lastExport = ''`); W.render();
+    let fname = ''; W.download = n => fname = n;
+    click('#backupNag');
+    eq([fname, A('S.settings.lastExport')], [`dmscreen-mentes-${A('localDate()')}.json`, A('localDate()')]);
+    ok($('#backupNag').hidden, 'mentés után is látszik');
+  });
+});
+
+// ======================================================================
 describe('Általános', () => {
   test('nem volt JavaScript-hiba az app futása közben', () => eq(appErrors, []));
 });
@@ -893,7 +1055,7 @@ async function run() {
   const plF = frame('player', '../player.html', 1000, 600);
   await new Promise(r => plF.onload = r);
   P = plF.contentWindow;
-  for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'confirm', 'alert']) ORIG[k] = W[k];
+  for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'confirm', 'alert', 'download']) ORIG[k] = W[k];
   // a „const f = ...” segédfüggvények nem window-tulajdonságok, ezért elérhetővé tesszük őket W.f néven
   for (const k of ['sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB']) W[k] = A(k);
   for (const t of TESTS) {

@@ -148,6 +148,7 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
   <button data-act="newCreature">✎ Új lény</button>
   <button data-act="openPlayer" title="Külön ablakban megnyitja a játékosoknak szánt képernyőt – húzd át a másik monitorra, és nyomj F11-et">📺 Játékos képernyő</button>
   <span class="grow"></span>
+  <button id="backupNag" data-act="exportAll" hidden title="Biztonsági másolat letöltése a gépedre (a felhőtől független)" style="border-color:var(--orange);color:var(--orange)"></button>
   <span id="saveState"></span>
   <button data-act="menu">⋯ Menü</button>
 </header>
@@ -185,7 +186,7 @@ const CONDITIONS = ['Blinded','Charmed','Deafened','Exhaustion','Frightened','Gr
 const SECTIONS = ['traits','actions','bonusActions','reactions','legendary'];
 const SECTION_HU = {traits:'Tulajdonságok', actions:'Akciók', bonusActions:'Bónusz akciók', reactions:'Reakciók', legendary:'Legendás akciók'};
 const KIND_HU = {monster:'Szörny', npc:'NPC', pc:'Játékos'};
-const sideOf = x => x.side || (x.c.kind === 'monster' ? 'enemy' : 'ally');
+const sideOf = x => x.side === 'enemy' || x.side === 'ally' ? x.side : (x.c.kind === 'monster' ? 'enemy' : 'ally');
 const SIDE_HU = {enemy: 'Ellenfél', ally: 'Csapattárs'};
 const mod = s => Math.floor(((+s || 10) - 10) / 2);
 const sgn = n => (n >= 0 ? '+' : '') + n;
@@ -225,19 +226,69 @@ function blankCreature() {
     initBonus: null, resist: '', immune: '', vuln: '', condImmune: '',
     traits: [], actions: [], bonusActions: [], reactions: [], legendary: [], legendaryCount: 0, notes: ''};
 }
+// ---------- bejövő adatok tisztítása ----------
+// Minden betöltött adat (import, felhő, böngésző-tároló, mentésfájl) ezeken megy át, hogy egy
+// rosszindulatú fájl se tudjon kódot becsempészni: a számok számok, a típusok csak megengedett
+// értékek, az azonosítók csak biztonságos karakterek, a portré csak kép-link lehet.
+const KINDS = ['monster', 'npc', 'pc'], SIDES = ['enemy', 'ally'];
+const num = (v, def = 0) => { if (v === null || v === '' || typeof v === 'boolean') return def; const n = Number(v); return Number.isFinite(n) ? n : def; };
+const str = v => v == null ? '' : typeof v === 'object' ? '' : String(v);
+const safeId = v => { const s = typeof v === 'number' ? String(v) : v; return typeof s === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(s) ? s : uid(); };
+const safeUrl = v => typeof v === 'string' && /^(https?:\/\/|data:image\/)/i.test(v.trim()) ? v.trim() : '';
+const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 function normCreature(c) {
+  c = isObj(c) ? c : {};
   const b = blankCreature();
   const o = {...b, ...c};
   delete o._leiras;
-  o.abilities = {...b.abilities, ...(c.abilities || {})};
-  o.hp = typeof c.hp === 'number' ? {max: c.hp, formula: ''} : {...b.hp, ...(c.hp || {})};
-  o.ac = +o.ac || 10;
-  o.saves = o.saves || {};
-  for (const k of SECTIONS) o[k] = (o[k] || []).map(e => typeof e === 'string' ? splitEntry(e) : {name: e.name || '', text: e.text || ''});
-  if (o.initBonus === '' || o.initBonus === undefined) o.initBonus = null;
-  if (o.initBonus !== null) o.initBonus = +o.initBonus;
-  if (!o.id) o.id = uid();
+  for (const k of ['name', 'source', 'size', 'type', 'alignment', 'cr', 'acNote', 'speed', 'skills', 'senses', 'languages', 'resist', 'immune', 'vuln', 'condImmune', 'notes']) o[k] = str(o[k]);
+  o.kind = KINDS.includes(o.kind) ? o.kind : 'monster';
+  o.id = safeId(o.id);
+  if (o.libId != null) o.libId = safeId(o.libId);
+  if (o.ddbId != null) o.ddbId = num(o.ddbId, null);
+  o.portrait = safeUrl(o.portrait);
+  const ab = isObj(c.abilities) ? c.abilities : {};
+  o.abilities = {}; ABIL.forEach(a => o.abilities[a] = num(ab[a], 10));
+  const hp = isObj(c.hp) ? c.hp : c.hp != null ? {max: c.hp} : {};
+  o.hp = {max: Math.max(1, num(hp.max, 10)), formula: str(hp.formula)};
+  if (hp.cur != null) o.hp.cur = Math.max(0, num(hp.cur, o.hp.max));
+  o.ac = num(o.ac, 10) || 10;
+  o.legendaryCount = Math.max(0, Math.min(10, Math.floor(num(o.legendaryCount, 0))));
+  const sv = isObj(c.saves) ? c.saves : {};
+  o.saves = {}; ABIL.forEach(a => { const v = num(sv[a], null); if (v !== null) o.saves[a] = v; });
+  for (const k of SECTIONS) o[k] = (Array.isArray(o[k]) ? o[k] : []).map(e => typeof e === 'string' ? splitEntry(e) : {name: str(e?.name), text: str(e?.text)});
+  o.initBonus = num(o.initBonus, null);
   return o;
+}
+function normCombatant(x) {
+  x = isObj(x) ? x : {};
+  const c = normCreature(x.c);
+  delete c.hp.cur;
+  const o = {
+    cid: safeId(x.cid), num: Math.max(0, Math.floor(num(x.num, 0))), c,
+    hp: Math.max(0, num(x.hp, c.hp.max)), temp: Math.max(0, num(x.temp, 0)), init: num(x.init, null),
+    cond: (Array.isArray(x.cond) ? x.cond : []).map(k => ({name: str(k?.name), rounds: k?.rounds == null ? null : Math.max(0, Math.floor(num(k.rounds, 0)))})),
+    conc: !!x.conc, dead: !!x.dead, notes: str(x.notes), leg: Math.max(0, Math.floor(num(x.leg, 0))),
+    group: x.group == null ? null : safeId(x.group), hiddenP: !!x.hiddenP, publicName: str(x.publicName)
+  };
+  if (SIDES.includes(x.side)) o.side = x.side;
+  return o;
+}
+function sanitizeState(d) {
+  d = isObj(d) ? d : {};
+  const enc = isObj(d.enc) ? d.enc : {}, st = isObj(d.settings) ? d.settings : {};
+  const list = (Array.isArray(enc.list) ? enc.list : []).map(normCombatant);
+  return {
+    library: (Array.isArray(d.library) ? d.library : []).map(normCreature),
+    saved: (Array.isArray(d.saved) ? d.saved : []).map(e => ({id: safeId(e?.id), name: str(e?.name), list: (Array.isArray(e?.list) ? e.list : []).map(normCreature)})),
+    enc: {list, round: Math.max(1, Math.floor(num(enc.round, 1))), active: list.some(x => x.cid === enc.active) ? enc.active : null},
+    settings: {
+      groupInit: typeof st.groupInit === 'boolean' ? st.groupInit : S.settings.groupInit,
+      rollHp: typeof st.rollHp === 'boolean' ? st.rollHp : S.settings.rollHp,
+      sources: Array.isArray(st.sources) ? st.sources.filter(s => typeof s === 'string' && /^[\w-]{1,30}$/.test(s)) : S.settings.sources,
+      lastExport: typeof st.lastExport === 'string' && /^\d{4}-\d{2}-\d{2}/.test(st.lastExport) ? st.lastExport.slice(0, 10) : (S.settings.lastExport || '')
+    }
+  };
 }
 function splitEntry(s) {
   s = s.trim();
@@ -289,7 +340,13 @@ window.addEventListener('beforeunload', e => {
   try { localStorage.setItem('dmscreen', JSON.stringify(S)); } catch {}
   if (saveTimer) { doSave(); e.preventDefault(); }
 });
-function applyLoaded(d) { S = {...S, ...d, settings: {...S.settings, ...(d.settings || {})}}; ensureIds(); }
+function applyLoaded(d) { S = sanitizeState({...S, ...d}); }
+// teljes mentésfájl visszatöltése (Menü → Importálás)
+function importBackup(obj) {
+  if (!isObj(obj) || !Array.isArray(obj.library) || !isObj(obj.enc)) throw new Error('Ez nem teljes DM Screen mentés');
+  applyLoaded(obj); selected = null;
+  save(); render();
+}
 function loadLocal() {
   try { const t = localStorage.getItem('dmscreen'); if (t) applyLoaded(JSON.parse(t)); } catch {}
 }
@@ -306,6 +363,64 @@ async function loadFromDb() {
     if (S.library.length || S.enc.list.length || S.saved.length) save();
   }
 }
+// ---------- biztonsági mentések ----------
+// 1) Felhőben: naponta az első betöltéskor egy pillanatkép (dmscreen_backup/{nap}), az utolsó 14 marad meg.
+//    A lista egy kis tartalomjegyzékben van (dmscreen/backups), hogy induláskor ne kelljen mindet letölteni.
+// 2) Fájlba: a fejléc emlékeztet, ha 7 napja nem volt Exportálás (ez a Firebase-től független másolat).
+const BACKUP_KEEP = 14, BACKUP_MAX = 900000, EXPORT_DAYS = 7;
+let backupWarn = '';
+const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const hasData = () => S.library.length || S.enc.list.length || S.saved.length;
+async function backupIndex() { const d = await DB.get('dmscreen/backups'); return Array.isArray(d?.items) ? d.items : []; }
+async function addBackup(id, note, idx) {
+  idx = idx || await backupIndex();
+  const data = JSON.stringify({library: S.library, saved: S.saved, enc: S.enc, settings: S.settings});
+  if (data.length > BACKUP_MAX) { backupWarn = 'A felhős biztonsági mentés kimaradt, mert túl nagy az adat (valószínűleg sok feltöltött portré). Mentsd fájlba rendszeresen!'; return false; }
+  await DB.set('dmscreen_backup/' + id, {data});
+  idx = [{id, note, createdAt: new Date().toISOString(), library: S.library.length, saved: S.saved.length}, ...idx.filter(b => b.id !== id)]
+    .sort((a, b) => b.id.localeCompare(a.id));
+  for (const b of idx.slice(BACKUP_KEEP)) await DB.del('dmscreen_backup/' + b.id);
+  await DB.set('dmscreen/backups', {items: idx.slice(0, BACKUP_KEEP)});
+  backupWarn = '';
+  return true;
+}
+async function dailyBackup() {
+  if (!DB || !hasData()) return;
+  try {
+    const idx = await backupIndex();
+    if (!idx.some(b => b.id === localDate())) await addBackup(localDate(), 'napi', idx);
+  } catch (e) { backupWarn = 'Nem sikerült a napi biztonsági mentés (' + (e.code || e.message) + ').'; }
+}
+const timeStamp = () => { const d = new Date(); return localDate(d) + '-' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0'); };
+async function restoreBackup(id) {
+  const doc = await DB.get('dmscreen_backup/' + id);
+  if (typeof doc?.data !== 'string') throw new Error('a mentés nem található');
+  const parsed = JSON.parse(doc.data);
+  await addBackup(timeStamp() + '-elotte', 'visszaállítás előtt');  // a mostani állapotot is megőrizzük
+  applyLoaded(parsed); selected = null;
+  save(); render();
+}
+async function openBackups() {
+  openModal('<h2>Biztonsági mentések</h2><p class="muted">Betöltés…</p>');
+  let idx = [];
+  try { idx = await backupIndex(); } catch (e) { $('#modalBox').innerHTML = `<h2>Biztonsági mentések</h2><p style="color:var(--red)">Nem sikerült betölteni (${esc(e.code || e.message)}).</p>`; return; }
+  const when = b => { const d = new Date(b.createdAt); return isNaN(d) ? '' : d.toLocaleString('hu-HU', {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}); };
+  $('#modalBox').innerHTML = `<h2>Biztonsági mentések</h2>
+    <p class="hint">Naponta az első megnyitáskor automatikusan készül egy mentés a felhőbe, az utolsó ${BACKUP_KEEP} marad meg. Visszaállítás előtt a mostani állapotról is készül egy mentés, így az is visszahozható.</p>
+    ${backupWarn ? `<p style="color:var(--orange)">⚠ ${esc(backupWarn)}</p>` : ''}
+    <div class="toolbar"><button data-act="backupNow">Mentés most</button><button data-act="exportAll">💾 Mentés fájlba</button></div>
+    <div class="rows">${idx.length ? idx.map(b => `<div class="lrow" data-backup="${esc(b.id)}"><span class="nm"><b>${esc(when(b))}</b><small>${esc(b.note || '')} · ${esc(num(b.library))} lény · ${esc(num(b.saved))} mentett encounter</small></span>
+      <button data-act="backupRestore">Visszaállítás</button></div>`).join('') : '<p class="muted">Még nincs felhős mentés.</p>'}</div>`;
+}
+function renderNag() {
+  const el = $('#backupNag'); if (!el) return;
+  const last = S.settings.lastExport;
+  const days = last ? Math.floor((new Date(localDate()) - new Date(last)) / 86400000) : null;
+  const show = hasData() && (days === null || days >= EXPORT_DAYS);
+  el.hidden = !show;
+  if (show) el.textContent = `💾 Mentés fájlba (${days === null ? 'még sosem volt' : days + ' napja'})`;
+}
+
 // a Firebase-modul hívja (lent), amikor kiderül, be vagy-e lépve
 window.DMApp = {
   async setAuth(a) {
@@ -313,7 +428,7 @@ window.DMApp = {
     if (a.status === 'signedIn') {
       DB = a.db;
       renderGate('Adatok betöltése…');
-      try { await loadFromDb(); renderGate(null); }
+      try { await loadFromDb(); renderGate(null); dailyBackup(); }
       catch (e) {
         DB = null;
         renderGate(e.code === 'permission-denied'
@@ -486,7 +601,7 @@ function damage(x, n) {
   let rem = n;
   if (x.temp) { const t = Math.min(x.temp, rem); x.temp -= t; rem -= t; }
   x.hp = Math.max(0, x.hp - rem);
-  log(`<span class="who">${esc(nameOf(x))}</span> −${n} HP → <b>${x.hp}</b>/${max}${x.temp ? ` (+${x.temp} temp)` : ''}`);
+  log(`<span class="who">${esc(nameOf(x))}</span> −${esc(n)} HP → <b>${esc(x.hp)}</b>/${esc(max)}${x.temp ? ` (+${esc(x.temp)} temp)` : ''}`);
   if (x.conc && n > 0) log(`⚠ ${esc(nameOf(x))}: koncentráció mentő, DC ${Math.max(10, Math.floor(n / 2))}`, 'warn');
   if (x.hp === 0) {
     if (x.c.kind === 'pc') log(`⚠ ${esc(nameOf(x))} 0 HP-n – death save-ek!`, 'warn');
@@ -496,13 +611,13 @@ function damage(x, n) {
 function heal(x, n) {
   x.hp = Math.min(x.c.hp.max, x.hp + n);
   if (x.hp > 0) x.dead = false;
-  log(`<span class="who">${esc(nameOf(x))}</span> +${n} HP → <b>${x.hp}</b>/${x.c.hp.max}`);
+  log(`<span class="who">${esc(nameOf(x))}</span> +${esc(n)} HP → <b>${esc(x.hp)}</b>/${esc(x.c.hp.max)}`);
 }
 
 // ---------- megjelenítés ----------
 function render() {
   $('#roundNo').textContent = S.enc.round || 1;
-  renderTiles(); renderDetail(); renderDiff(); broadcast();
+  renderTiles(); renderDetail(); renderDiff(); renderNag(); broadcast();
 }
 
 // ---------- játékos képernyő ----------
@@ -648,14 +763,14 @@ function tileHtml(x) {
   c.reactions.forEach(a => others.push('R: ' + a.name));
   const legN = c.legendary.length ? (c.legendaryCount || 3) : 0;
   const pips = legN ? `<span class="pips" title="Legendás akciók">LA ${Array.from({length: legN}, (_, i) => `<span class="pip ${i < x.leg ? 'used' : 'free'}" data-act="leg" data-i="${i}"></span>`).join('')}</span>` : '';
-  return `<div class="${cls.join(' ')}" data-cid="${x.cid}">
+  return `<div class="${esc(cls.join(' '))}" data-cid="${esc(x.cid)}">
     <div class="t-head">
-      <input class="init" type="number" value="${x.init ?? ''}" placeholder="${sgn(initBonusOf(c))}" title="Initiative (bónusz: ${sgn(initBonusOf(c))})">
+      <input class="init" type="number" value="${esc(x.init ?? '')}" placeholder="${sgn(initBonusOf(c))}" title="Initiative (bónusz: ${sgn(initBonusOf(c))})">
       ${c.portrait ? `<img class="av" src="${esc(c.portrait)}" alt="" data-act="select" onerror="this.style.display='none'">` : ''}
       <div class="t-name" data-act="select" title="Részletek">${esc(nameOf(x))} <small>${esc(crLabel(c))}</small></div>
-      <div class="ac" title="AC${c.acNote ? ' – ' + esc(c.acNote) : ''}">🛡 ${c.ac}</div>
+      <div class="ac" title="AC${c.acNote ? ' – ' + esc(c.acNote) : ''}">🛡 ${esc(c.ac)}</div>
     </div>
-    <div class="hpbar ${hpCls}"><div class="fill" style="width:${pct}%"></div>${tmpPct ? `<div class="tmp" style="width:${tmpPct}%"></div>` : ''}<span>${x.hp} / ${max}${x.temp ? ' +' + x.temp : ''}</span></div>
+    <div class="hpbar ${hpCls}"><div class="fill" style="width:${pct}%"></div>${tmpPct ? `<div class="tmp" style="width:${tmpPct}%"></div>` : ''}<span>${esc(x.hp)} / ${esc(max)}${x.temp ? ' +' + esc(x.temp) : ''}</span></div>
     <div class="hp-ctl">
       <input class="hpin" type="number" placeholder="±HP" title="Pozitív szám = sebzés, negatív (pl. -10) = gyógyítás, Enter-rel alkalmazod">
       <button class="dmg" data-act="dmg" title="Sebzés">−</button>
@@ -665,7 +780,7 @@ function tileHtml(x) {
     ${chips ? `<div class="conds">${chips}</div>` : ''}
     ${atkRows.length ? `<div class="atks">${atkRows.slice(0, 6).join('')}</div>` : ''}
     ${others.length ? `<div class="other">${esc(others.join(' · '))}</div>` : ''}
-    <div class="t-foot"><button class="sidebtn ${sideOf(x)}" data-act="toggleSide" title="Kattints az oldal váltásához (ellenfél ↔ csapattárs)">${SIDE_HU[sideOf(x)]}</button>${pips}<span class="grow"></span>
+    <div class="t-foot"><button class="sidebtn ${esc(sideOf(x))}" data-act="toggleSide" title="Kattints az oldal váltásához (ellenfél ↔ csapattárs)">${SIDE_HU[sideOf(x)]}</button>${pips}<span class="grow"></span>
       <button class="small ${x.conc ? 'on' : ''}" data-act="toggleConc" title="Koncentráció">C</button>
       <button class="small ${x.hiddenP ? 'on' : ''}" data-act="toggleHidden" title="Elrejtés a játékos képernyőről (pl. lesben álló ellenfél)">🙈</button>
       <button class="small" data-act="toggleDead" title="Halott / él">💀</button>
@@ -683,10 +798,10 @@ function statblock(c) {
     ${c.portrait ? `<img class="portrait" src="${esc(c.portrait)}" alt="" onerror="this.style.display='none'">` : ''}
     <h2>${esc(c.name)}</h2>
     <div class="sub">${esc([[c.size, c.type].filter(Boolean).join(' '), c.alignment].filter(Boolean).join(', '))}${c.source ? ' · ' + esc(c.source) : ''}</div>
-    <p class="line"><b>AC</b> ${c.ac}${c.acNote ? ' (' + esc(c.acNote) + ')' : ''} &nbsp; <b>HP</b> ${c.hp.max}${c.hp.formula ? ' (' + linkify(c.hp.formula) + ')' : ''} &nbsp;
+    <p class="line"><b>AC</b> ${esc(c.ac)}${c.acNote ? ' (' + esc(c.acNote) + ')' : ''} &nbsp; <b>HP</b> ${esc(c.hp.max)}${c.hp.formula ? ' (' + linkify(c.hp.formula) + ')' : ''} &nbsp;
       <b>Init</b> <span class="roll hit" data-hit="${sgn(initBonusOf(c))}" data-label="Initiative" title="${TIP_HIT}">${sgn(initBonusOf(c))}</span></p>
     ${line('Speed', c.speed)}
-    <div class="abil">${ABIL.map(a => `<div data-check="${a}" title="Kattints: ${ABIL_FULL[a]} próba${c.saves[a] != null ? '' : ' / mentő'}"><small>${a.toUpperCase()}</small>${c.abilities[a]} (${sgn(mod(c.abilities[a]))})${c.saves[a] != null ? `<div class="sv" data-save="${a}">mentő ${sgn(+c.saves[a])}</div>` : ''}</div>`).join('')}</div>
+    <div class="abil">${ABIL.map(a => `<div data-check="${a}" title="Kattints: ${ABIL_FULL[a]} próba${c.saves[a] != null ? '' : ' / mentő'}"><small>${a.toUpperCase()}</small>${esc(c.abilities[a])} (${sgn(mod(c.abilities[a]))})${c.saves[a] != null ? `<div class="sv" data-save="${a}">mentő ${sgn(+c.saves[a])}</div>` : ''}</div>`).join('')}</div>
     ${line('Saving Throws', saves)}${line('Skills', c.skills)}${line('Damage Vulnerabilities', c.vuln)}${line('Damage Resistances', c.resist)}
     ${line('Damage Immunities', c.immune)}${line('Condition Immunities', c.condImmune)}${line('Senses', c.senses)}${line('Languages', c.languages)}
     ${c.cr ? `<p class="line"><b>${c.kind === 'pc' ? 'Szint' : 'CR'}</b> ${esc(String(c.cr).replace(/^Szint /, ''))}</p>` : ''}
@@ -700,16 +815,16 @@ function renderDetail() {
     Gyorsbillentyűk: <span class="kbd">N</span> / <span class="kbd">Szóköz</span> következő, <span class="kbd">P</span> előző, <span class="kbd">Esc</span> ablak bezárása.<br>
     Dobások: kattints a <span class="roll">1d6+2</span> / <span class="roll hit">+4</span> értékekre. Shift = előny / kritikus, Ctrl = hátrány.</div>`; return; }
   const c = x.c;
-  $('#detail').innerHTML = `<div data-cid="${x.cid}">
+  $('#detail').innerHTML = `<div data-cid="${esc(x.cid)}">
     <div class="ctl">
       <div class="row"><b style="flex:1">${esc(nameOf(x))}</b><span class="muted">${KIND_HU[c.kind] || ''}</span>
         <select data-f="side">${Object.entries(SIDE_HU).map(([k, l]) => `<option value="${k}" ${sideOf(x) === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
         ${selected && selected !== S.enc.active ? '<button class="small" data-act="deselect">aktuálishoz vissza</button>' : ''}</div>
       <div class="row">
-        <label>Init</label><input type="number" data-f="init" value="${x.init ?? ''}" style="width:52px">
-        <label>HP</label><input type="number" data-f="hp" value="${x.hp}"> / <input type="number" data-f="max" value="${c.hp.max}">
-        <label>Temp</label><input type="number" data-f="temp" value="${x.temp}" style="width:52px">
-        <label>AC</label><input type="number" data-f="ac" value="${c.ac}" style="width:52px">
+        <label>Init</label><input type="number" data-f="init" value="${esc(x.init ?? '')}" style="width:52px">
+        <label>HP</label><input type="number" data-f="hp" value="${esc(x.hp)}"> / <input type="number" data-f="max" value="${esc(c.hp.max)}">
+        <label>Temp</label><input type="number" data-f="temp" value="${esc(x.temp)}" style="width:52px">
+        <label>AC</label><input type="number" data-f="ac" value="${esc(c.ac)}" style="width:52px">
       </div>
       <div class="row">
         <select id="condSel">${CONDITIONS.map(k => `<option>${k}</option>`).join('')}<option value="">egyéni…</option></select>
@@ -741,6 +856,7 @@ function openMenu() {
     <div class="lrow"><span class="nm">Mindenki eltávolítása az encounterből</span><button data-act="clearAll">Ürítés</button></div>
     <div class="lrow"><span class="nm">Teljes mentés letöltése fájlba (könyvtár + encounter)</span><button data-act="exportAll">Exportálás</button></div>
     <div class="lrow"><span class="nm">Teljes mentés visszatöltése fájlból (felülírja a mostanit)</span><button data-act="importAll">Importálás</button></div>
+    ${DB ? `<div class="lrow"><span class="nm">Felhős biztonsági mentések (naponta automatikusan, az utolsó ${BACKUP_KEEP} megmarad) – visszaállítás${backupWarn ? ` <span style="color:var(--orange)">⚠ ${esc(backupWarn)}</span>` : ''}</span><button data-act="openBackups">Megnyitás</button></div>` : ''}
     <div class="lrow"><span class="nm">Kitölthető sablon letöltése saját lényhez</span><button data-act="downloadTemplate">Sablon letöltése</button></div>
   ${DB ? `<div class="lrow"><span class="nm">Belépve: <b>${esc(authInfo.email || '')}</b></span><button data-act="signOut">Kilépés</button></div>` : ''}
   </div>
@@ -786,8 +902,8 @@ function filterLib() {
   const q = ($('#libSearch')?.value || '').toLowerCase(), k = $('#libKind')?.value || '';
   const items = S.library.filter(c => (!k || c.kind === k) && c.name.toLowerCase().includes(q))
     .sort((a, b) => (a.kind === 'pc' ? 0 : 1) - (b.kind === 'pc' ? 0 : 1) || a.name.localeCompare(b.name, 'hu'));
-  $('#libRows').innerHTML = items.length ? items.map(c => `<div class="lrow" data-lib="${c.id}">
-      <span class="nm"><b>${esc(c.name)}</b><small>${KIND_HU[c.kind]} · ${esc(crLabel(c))} · AC ${c.ac} · HP ${c.hp.max} · ${esc(c.source || '')}</small></span>
+  $('#libRows').innerHTML = items.length ? items.map(c => `<div class="lrow" data-lib="${esc(c.id)}">
+      <span class="nm"><b>${esc(c.name)}</b><small>${KIND_HU[c.kind]} · ${esc(crLabel(c))} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)} · ${esc(c.source || '')}</small></span>
       <input type="number" min="1" value="1" class="cnt" title="Darabszám">
       <button class="primary" data-act="libAdd">＋ Encounterbe</button>
       <button class="small" data-act="libEdit" title="Szerkesztés">✎</button>
@@ -1056,7 +1172,7 @@ function ddbImportText(t) {
 }
 function ddbDone(c) {
   c = upsertLibrary(c);
-  $('#ddbMsg').innerHTML = `<div class="lrow" data-lib="${c.id}"><span class="nm">✓ <b>${esc(c.name)}</b><small>${esc(c.type)} · AC ${c.ac} · HP ${c.hp.max}</small></span>
+  $('#ddbMsg').innerHTML = `<div class="lrow" data-lib="${esc(c.id)}"><span class="nm">✓ <b>${esc(c.name)}</b><small>${esc(c.type)} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)}</small></span>
     <input type="number" class="cnt" value="1" hidden><button class="primary" data-act="libAdd">＋ Encounterbe</button><button data-act="libEdit">✎ Ellenőrzés</button></div>`;
 }
 function stripHtml(h) { const d = document.createElement('div'); d.innerHTML = String(h || ''); return d.textContent.replace(/\s+\n/g, '\n').trim(); }
@@ -1189,10 +1305,8 @@ $('#fileIn').addEventListener('change', async e => {
   try {
     const obj = JSON.parse(await f.text());
     if (fileMode === 'all') {
-      if (!obj.library || !obj.enc) throw new Error('Ez nem teljes DM Screen mentés');
       if (!confirm('Felülírja a jelenlegi könyvtárat és encountert. Folytatod?')) return;
-      S = {...S, ...obj, settings: {...S.settings, ...(obj.settings || {})}};
-      closeModal(); save(); render();
+      importBackup(obj); closeModal();
     } else {
       const res = await importAny(obj);
       openLib('lib');
@@ -1228,7 +1342,7 @@ function openEditor(creature, cb, title = 'Lény szerkesztése') {
       ${f('cr', 'CR / szint')}
       ${f('size', 'Méret')}${f('type', 'Fajta (type)')}${f('alignment', 'Alignment')}${f('source', 'Forrás')}
       ${f('ac', 'AC', '', 'number')}${f('acNote', 'AC megjegyzés')}
-      <label>HP max<input type="number" name="hpMax" value="${c.hp.max}"></label>
+      <label>HP max<input type="number" name="hpMax" value="${esc(c.hp.max)}"></label>
       <label>HP formula<input name="hpFormula" value="${esc(c.hp.formula)}" placeholder="pl. 8d8+16"></label>
       ${f('speed', 'Speed', 'w2')}
       <label>Initiative bónusz<input name="initBonus" value="${c.initBonus ?? ''}" placeholder="üres = DEX"></label>
@@ -1242,7 +1356,7 @@ function openEditor(creature, cb, title = 'Lény szerkesztése') {
         <button type="button" data-act="portraitClear">Törlés</button>
         <input type="file" id="portraitFile" accept="image/*" hidden>
       </div>
-      <div class="w4" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">${ABIL.map(a => `<label>${a.toUpperCase()}<input type="number" name="ab_${a}" value="${c.abilities[a]}"></label>`).join('')}</div>
+      <div class="w4" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">${ABIL.map(a => `<label>${a.toUpperCase()}<input type="number" name="ab_${a}" value="${esc(c.abilities[a])}"></label>`).join('')}</div>
       <label class="w2">Mentők (pl. dex +5, wis +3)<input name="saves" value="${esc(ABIL.filter(a => c.saves[a] != null).map(a => a + ' ' + sgn(+c.saves[a])).join(', '))}"></label>
       ${f('skills', 'Skills', 'w2')}${f('senses', 'Senses', 'w2')}${f('languages', 'Languages', 'w2')}
       ${f('resist', 'Resistances', 'w2')}${f('immune', 'Immunities', 'w2')}${f('vuln', 'Vulnerabilities', 'w2')}${f('condImmune', 'Condition immunities', 'w2')}
@@ -1427,7 +1541,22 @@ document.addEventListener('click', async e => {
     case 'clearAll':
       if (confirm('Mindenkit eltávolítasz az encounterből?')) { S.enc = {list: [], round: 1, active: null}; selected = null; closeModal(); save(); render(); }
       break;
-    case 'exportAll': download(`dmscreen-mentes-${new Date().toISOString().slice(0, 10)}.json`, S); break;
+    case 'exportAll':
+      S.settings.lastExport = localDate();
+      download(`dmscreen-mentes-${localDate()}.json`, S);
+      save(); render(); break;
+    case 'openBackups': openBackups(); break;
+    case 'backupNow':
+      try { if (await addBackup(timeStamp() + '-kezi', 'kézi mentés')) log('💾 Biztonsági mentés elkészült a felhőben'); }
+      catch (err) { backupWarn = 'Nem sikerült a mentés (' + (err.code || err.message) + ').'; }
+      openBackups(); break;
+    case 'backupRestore': {
+      const id = el.closest('[data-backup]').dataset.backup;
+      if (!confirm('Visszaállítod ezt a mentést? A mostani állapotról előbb automatikusan mentés készül.')) break;
+      try { await restoreBackup(id); closeModal(); log('↺ Biztonsági mentés visszaállítva'); }
+      catch (err) { alert('A visszaállítás nem sikerült: ' + (err.code || err.message)); }
+      break;
+    }
     case 'importAll': fileMode = 'all'; $('#fileIn').click(); break;
   }
 });

@@ -60,14 +60,17 @@ function avatar(e) {
     ? `<img class="av" src="${esc(e.portrait)}" alt="" onerror="this.outerHTML='<div class=&quot;av&quot;>${letter}</div>'">`
     : `<div class="av">${letter}</div>`;
 }
+const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 function entry(e, i) {
-  const cls = ['e', e.side, e.kind === 'pc' ? 'pc' : '', e.active ? 'active' : '', e.status === 'dead' ? 'out' : ''].join(' ');
+  const side = e.side === 'ally' ? 'ally' : 'enemy', status = ST[e.status] ? e.status : '';
+  const cls = ['e', side, e.kind === 'pc' ? 'pc' : '', e.active ? 'active' : '', status === 'dead' ? 'out' : ''].join(' ');
   let right;
   if (e.hp != null) {
-    const pct = Math.max(0, Math.min(100, e.hp / e.max * 100));
+    const hp = num(e.hp), max = num(e.max) || 1, temp = num(e.temp);
+    const pct = Math.max(0, Math.min(100, hp / max * 100));
     right = `<div class="hp"><div class="bar ${pct <= 25 ? 'low' : pct <= 50 ? 'mid' : ''}"><div class="fill" style="width:${pct}%"></div>
-      <span>${e.hp} / ${e.max}${e.temp ? ' +' + e.temp : ''}</span></div>${e.hp <= 0 ? '<div class="st dying" style="margin-top:6px;text-align:center">Haldoklik</div>' : ''}</div>`;
-  } else right = `<div class="st ${e.status}">${ST[e.status] || ''}</div>`;
+      <span>${hp} / ${max}${temp ? ' +' + temp : ''}</span></div>${hp <= 0 ? '<div class="st dying" style="margin-top:6px;text-align:center">Haldoklik</div>' : ''}</div>`;
+  } else right = `<div class="st ${status}">${ST[status] || ''}</div>`;
   const conds = e.cond.map(k => `<span class="cond ${k === 'Koncentráció' ? 'conc' : ''}">${esc(k)}</span>`).join('');
   return `<div class="${cls}"><div class="pos">${i + 1}.</div>${avatar(e)}
     <div class="main"><div class="name">${esc(e.name)}</div>${conds ? `<div class="sub">${conds}</div>` : ''}</div>${right}</div>`;
@@ -87,7 +90,7 @@ function render() {
   const i = view.list.findIndex(e => e.active);
   if (view.started && i >= 0) {
     const nxt = view.list.slice(i + 1).concat(view.list.slice(0, i)).find(e => e.status !== 'dead');
-    $('#now').innerHTML = `${view.round}. kör · Soron: <b>${esc(view.list[i].name)}</b>`;
+    $('#now').innerHTML = `${num(view.round)}. kör · Soron: <b>${esc(view.list[i].name)}</b>`;
     $('#next').textContent = nxt ? 'Következik: ' + nxt.name : '';
   } else { $('#now').textContent = view.started ? `${view.round}. kör` : 'A harc hamarosan kezdődik'; $('#next').textContent = ''; }
 }
