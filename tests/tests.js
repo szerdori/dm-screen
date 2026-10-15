@@ -50,6 +50,7 @@ function fresh() {
      S = {library: [], enc: {list: [], round: 1, active: null}, saved: [], settings: {groupInit: true, rollHp: false, sources: ['MM']}};
      selected = null; logLines = []; libTab = 'lib'; lastSaved = {state: '', lib: {}, saved: {}};
      fiveIndex = null; fiveData = {}; fiveResults = []; backupWarn = ''; lootData = null; lootResult = null;
+     partySort = {p: {col: null, dir: 1}, s: {col: null, dir: 1}};
      closeModal(); renderGate(null); render();`);
   W.document.getElementById('log').innerHTML = '';
 }
@@ -1222,12 +1223,12 @@ describe('Csapat nézet (harcon kívül)', () => {
     W.upsertLibrary(W.convertDDB(ddbParty())); W.upsertLibrary(manualPc()); W.upsertLibrary(W.normCreature(mk()));
     W.openParty();
     const [pt, st] = $$('.ptable');
-    eq([...pt.rows].map(r => [...r.cells].slice(0, 4).map(c => c.textContent.trim())), [['Játékos', 'Passive Perception', 'Passive Investigation', 'Passive Insight'], ['Borin', '15', '9', '12'], ['Teszt Tünde', '17', '12', '12']]);
+    eq([...pt.rows].map(r => [...r.cells].slice(0, 4).map(c => c.textContent.trim())), [['Név', 'Passive Perception', 'Passive Investigation', 'Passive Insight'], ['Borin', '15', '9', '12'], ['Teszt Tünde', '17', '12', '12']]);
     eq([...pt.rows[2].cells].slice(1, 4).map(c => c.classList.contains('best')), [true, true, true]);
     const stealth = [...st.rows].find(r => r.cells[0].textContent.startsWith('Stealth'));
     eq([...stealth.cells].slice(1, 3).map(c => c.textContent), ['+1', '+9◆']);
     ok(stealth.cells[2].classList.contains('best'));
-    hasNot($('#modalBox').textContent, 'Goblin');
+    hasNot($$('.ptable').map(t => t.textContent).join('') + $('.pcards').textContent, 'Goblin');
   });
   test('titkos dobás cellára kattintva, előnnyel, és csoportos dobás', () => {
     W.upsertLibrary(W.convertDDB(ddbParty())); W.upsertLibrary(manualPc()); W.openParty();
@@ -1282,6 +1283,91 @@ describe('Csapat nézet (harcon kívül)', () => {
       inventory: [{name: XSS, note: XSS, container: XSS, rarity: XQ, qty: XQ}], currency: {gp: XSS}, skillMods: {stealth: {b: XSS, p: XQ}}}));
     W.openParty(); setVal('#partySearch', 'img', 'input'); click('td.sk[data-sk="stealth"]');
     await wait(200); assertNoXss();
+  });
+});
+
+// ======================================================================
+const partyNames = () => $$('.ptable')[0] ? [...$$('.ptable')[0].rows].slice(1).map(r => r.cells[0].textContent.trim()) : [];
+const setupParty = () => {
+  W.upsertLibrary(W.convertDDB(ddbParty()));  // Teszt Tünde: P.Perc 17, P.Inv 12, P.Ins 12
+  W.upsertLibrary(manualPc());                 // Borin: 15, 9, 12
+  W.upsertLibrary(W.normCreature({name: 'Aria', kind: 'pc', abilities: {wis: 18, int: 16}}));  // 14, 13, 14
+  W.upsertLibrary(W.normCreature({name: 'Kísérő Bard', kind: 'npc', abilities: {wis: 10}}));
+  W.upsertLibrary(W.normCreature(mk()));
+};
+describe('Csapat: tagok és rendezés', () => {
+  test('alapból az összes játékos a csapatban, NPC és szörny nem', () => {
+    setupParty(); W.openParty();
+    eq(partyNames(), ['Aria', 'Borin', 'Teszt Tünde']);
+    eq($$('[data-act="partyRemove"]').length, 3);
+  });
+  test('kivétel a csapatból (✕), a beállítás elmentődik', () => {
+    setupParty(); W.openParty();
+    click($$('[data-act="partyRemove"]').find(c => c.textContent.includes('Borin')));
+    eq(partyNames(), ['Aria', 'Teszt Tünde']);
+    eq(A('S.settings.partyIds').length, 2); hasNot($('#modalBox .pcards').textContent, 'Borin');
+  });
+  test('hozzáadás a könyvtárból (NPC is), a listában csak a nem-tagok vannak', () => {
+    setupParty(); W.openParty();
+    const opts = [...$('#partyAddSel').options].slice(1).map(o => o.textContent);
+    eq(opts, ['Kísérő Bard (NPC)', 'Goblin (Szörny)'], 'előbb az NPC-k, aztán a szörnyek');
+    setVal('#partyAddSel', $$('#partyAddSel option').find(o => o.textContent.startsWith('Kísérő')).value);
+    eq(partyNames(), ['Aria', 'Borin', 'Kísérő Bard', 'Teszt Tünde']);
+    has($('#modalBox .pcards').textContent, 'Kísérő Bard');
+  });
+  test('könyvtár: 👥 gomb ki-be kapcsolja a tagságot', () => {
+    setupParty(); W.openLib('lib');
+    const btn = name => $$('#libRows .lrow').find(r => r.querySelector('b').textContent === name).querySelector('[data-act="libParty"]');
+    ok(btn('Aria').classList.contains('on') && !btn('Goblin').classList.contains('on'), 'rossz kezdőállapot');
+    click(btn('Aria')); click(btn('Goblin'));
+    ok(!btn('Aria').classList.contains('on') && btn('Goblin').classList.contains('on'), 'nem váltott');
+    W.openParty(); eq(partyNames(), ['Borin', 'Goblin', 'Teszt Tünde']);
+  });
+  test('törölt könyvtári lény eltűnik a csapatból; üres csapat üzenet', () => {
+    setupParty(); W.openParty();
+    ['Aria', 'Borin'].forEach(n => click($$('[data-act="partyRemove"]').find(c => c.textContent.includes(n))));
+    A('S.library = S.library.filter(c => c.name !== "Teszt Tünde")'); W.openParty();
+    has($('#modalBox').textContent, 'Nincs senki a csapatban'); ok($('#partyAddSel'), 'nincs hozzáadás lista');
+  });
+  test('tagság mentése és betöltése (tisztítással)', () => {
+    setupParty();
+    const id = A('S.library').find(c => c.name === 'Aria').id;
+    W.importBackup({library: A('S.library'), enc: {list: []}, settings: {partyIds: [id, id, '"><img>', 5]}});
+    eq(A('S.settings.partyIds'), [id]);
+    W.importBackup({library: A('S.library'), enc: {list: []}, settings: {partyIds: 'nem tömb'}});
+    eq(A('S.settings.partyIds'), null); W.openParty(); eq(partyNames(), ['Aria', 'Borin', 'Teszt Tünde']);
+  });
+  test('felhőbe is elmentődik a tagság', async () => {
+    const f = makeFakeDb(); await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db});
+    setupParty(); W.openParty(); click($$('[data-act="partyRemove"]')[0]); await wait(500);
+    eq(f.store['dmscreen/state'].settings.partyIds.length, 2);
+  });
+  test('passzív táblázat rendezése oszlopra: először csökkenő, újra kattintva növekvő; név szerint', () => {
+    setupParty(); W.openParty();
+    const th = txt => $$('.ptable')[0].querySelectorAll('th.sortable')[txt];
+    click(th(1)); eq(partyNames(), ['Teszt Tünde', 'Borin', 'Aria']); has(th(1).textContent, '▼');
+    click(th(1)); eq(partyNames(), ['Aria', 'Borin', 'Teszt Tünde']); has(th(1).textContent, '▲');
+    click(th(3)); eq(partyNames(), ['Aria', 'Borin', 'Teszt Tünde'], 'Insight csökkenő, egyenlőségnél ábécé (14, 12, 12)');
+    click(th(0)); eq(partyNames(), ['Aria', 'Borin', 'Teszt Tünde']); click(th(0)); eq(partyNames(), ['Teszt Tünde', 'Borin', 'Aria']);
+  });
+  test('skill-táblázat rendezése egy tag oszlopa szerint, ábécébe, és vissza az alap sorrendhez', () => {
+    setupParty(); W.openParty();
+    const skillOrder = () => [...$$('.ptable')[1].rows].slice(1).map(r => r.cells[0].firstChild.textContent.trim());
+    eq(skillOrder()[0], 'Athletics');
+    click($$('.ptable')[1].querySelector('th[data-col="skill"]'));
+    eq(skillOrder().slice(0, 3), ['Acrobatics', 'Animal Handling', 'Arcana']);
+    const tundeTh = () => [...$$('.ptable')[1].querySelectorAll('th.sortable')].find(t => t.textContent.startsWith('Teszt Tünde'));
+    click(tundeTh());
+    eq(skillOrder()[0], 'Stealth', 'Tünde legjobb skillje (+9) kerül előre'); has(tundeTh().textContent, '▼');
+    click(tundeTh()); eq(skillOrder().slice(-1)[0], 'Stealth');
+    click('[data-act="partySortReset"]'); eq(skillOrder()[0], 'Athletics'); ok(!$('[data-act="partySortReset"]'), 'a gomb nem tűnt el');
+  });
+  test('rendezéskor a keresés és az utolsó dobás megmarad', () => {
+    setupParty(); W.openParty();
+    stubRnd(10); click($$('td.sk')[0]); const roll = $('#partyRoll').textContent;
+    setVal('#partySearch', 'rope', 'input');
+    click($$('.ptable')[0].querySelectorAll('th.sortable')[1]);
+    eq([$('#partyRoll').textContent, $('#partySearch').value, $('#partySearchInfo').textContent], [roll, 'rope', '2 találat']);
   });
 });
 

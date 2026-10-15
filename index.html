@@ -119,6 +119,7 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 .ptable th:first-child,.ptable td:first-child{text-align:left}
 .ptable td.best{color:var(--accent);font-weight:700}
 .ptable td.sk{cursor:pointer} .ptable td.sk:hover{background:#3a2f15}
+.ptable th.sortable{cursor:pointer;user-select:none} .ptable th.sortable:hover{color:var(--accent)}
 .ptable .ab{color:var(--muted);font-size:11px}
 .pmark{font-size:10px;color:var(--muted);margin-left:2px}
 .pcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px}
@@ -325,7 +326,8 @@ function sanitizeState(d) {
       groupInit: typeof st.groupInit === 'boolean' ? st.groupInit : S.settings.groupInit,
       rollHp: typeof st.rollHp === 'boolean' ? st.rollHp : S.settings.rollHp,
       sources: Array.isArray(st.sources) ? st.sources.filter(s => typeof s === 'string' && /^[\w-]{1,30}$/.test(s)) : S.settings.sources,
-      lastExport: typeof st.lastExport === 'string' && /^\d{4}-\d{2}-\d{2}/.test(st.lastExport) ? st.lastExport.slice(0, 10) : (S.settings.lastExport || '')
+      lastExport: typeof st.lastExport === 'string' && /^\d{4}-\d{2}-\d{2}/.test(st.lastExport) ? st.lastExport.slice(0, 10) : (S.settings.lastExport || ''),
+      partyIds: Array.isArray(st.partyIds) ? [...new Set(st.partyIds.filter(id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id)))] : null
     }
   };
 }
@@ -803,7 +805,27 @@ async function rollLootUi() {
 const PASSIVES = [['perception', 'Perception'], ['investigation', 'Investigation'], ['insight', 'Insight']];
 const PROF_MARK = {2: '◆', 1: '●', 0.5: '½', 0: ''};
 const PROF_HU = {2: 'expertise', 1: 'jártas', 0.5: 'fél jártasság (Jack of All Trades)', 0: ''};
-const partyMembers = () => S.library.filter(c => c.kind === 'pc').sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+// csapattagok: amíg nincs beállítva (partyIds = null), az összes játékos; utána a kiválasztottak
+const byName = (a, b) => a.name.localeCompare(b.name, 'hu');
+function partyMembers() {
+  const ids = S.settings.partyIds;
+  if (!Array.isArray(ids)) return S.library.filter(c => c.kind === 'pc').sort(byName);
+  return ids.map(id => S.library.find(c => c.id === id)).filter(Boolean).sort(byName);
+}
+function setPartyMember(id, on) {
+  const ids = new Set(partyMembers().map(c => c.id));
+  on ? ids.add(id) : ids.delete(id);
+  S.settings.partyIds = [...ids];
+  save();
+}
+// oszlop szerinti rendezés: p = passzív táblázat (sorok = játékosok), s = skill-táblázat (sorok = skillek)
+let partySort = {p: {col: null, dir: 1}, s: {col: null, dir: 1}};
+const sortArrow = (t, col) => partySort[t].col === col ? (partySort[t].dir > 0 ? ' ▲' : ' ▼') : '';
+function setPartySort(t, col) {
+  const s = partySort[t];
+  if (s.col === col) s.dir = -s.dir;
+  else { s.col = col; s.dir = col === 'name' || col === 'skill' ? 1 : -1; }  // számoknál először a legnagyobb
+}
 // skill-bónusz: D&D Beyondról pontosan; kézzel felvitt játékosnál a „Skills” mezőből, különben a képességmódosító
 function partySkill(c, k) {
   if (c.skillMods?.[k]) return c.skillMods[k];
@@ -824,25 +846,49 @@ function textToInventory(text, old = []) {
   });
 }
 function openParty() { openModal(partyHtml(), true); }
+// újrarajzolás úgy, hogy a keresés és az utolsó dobás eredménye megmaradjon
+function rerenderParty() {
+  const q = $('#partySearch')?.value || '', roll = $('#partyRoll')?.innerHTML || '', top = $('#modalBox').scrollTop;
+  openParty();
+  if ($('#partyRoll')) $('#partyRoll').innerHTML = roll;
+  if (q && $('#partySearch')) { $('#partySearch').value = q; filterPartyItems(q); }
+  $('#modalBox').scrollTop = top;
+}
+function partyMembersBar(pcs) {
+  const inParty = new Set(pcs.map(c => c.id));
+  const cand = S.library.filter(c => !inParty.has(c.id)).sort((a, b) => (KINDS.indexOf(b.kind) - KINDS.indexOf(a.kind)) || byName(a, b));
+  return `<div class="toolbar"><b>Tagok:</b>
+    ${pcs.map(c => `<span class="chip" data-act="partyRemove" data-pc="${esc(c.id)}" title="Kivétel a csapatból">${esc(c.name)} ✕</span>`).join('') || '<span class="muted">senki</span>'}
+    ${cand.length ? `<select id="partyAddSel"><option value="">＋ Hozzáadás a könyvtárból…</option>${cand.map(c => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(KIND_HU[c.kind])})</option>`).join('')}</select>` : ''}</div>`;
+}
 function partyHtml() {
   const pcs = partyMembers();
-  if (!pcs.length) return `<h2>👥 Csapat</h2><p class="muted">Még nincs játékos a könyvtárban. Importáld őket a <b>＋ Hozzáadás / Könyvtár → D&D Beyond</b> fülön, vagy hozz létre egy „Játékos” típusú lényt.</p>`;
-  const head = pcs.map(c => `<th>${esc(c.name)}</th>`).join('');
-  // passzív értékek
-  const pv = pcs.map(c => PASSIVES.map(([k]) => passiveScore(c, k)));
-  const pBest = PASSIVES.map((_, i) => Math.max(...pv.map(r => r[i])));
-  const passives = `<table class="ptable"><tr><th>Játékos</th>${PASSIVES.map(([, l]) => `<th>Passive ${l}</th>`).join('')}<th>Látás</th><th>Nyelvek</th></tr>
-    ${pcs.map((c, r) => `<tr><td><b>${esc(c.name)}</b></td>${pv[r].map((v, i) => `<td class="${v === pBest[i] ? 'best' : ''}">${esc(v)}</td>`).join('')}
+  if (!pcs.length) return `<h2>👥 Csapat</h2>${partyMembersBar(pcs)}<p class="muted">${S.library.length
+    ? 'Nincs senki a csapatban. Tegyél be valakit a fenti listából.'
+    : 'Még nincs játékos a könyvtárban. Importáld őket a <b>＋ Hozzáadás / Könyvtár → D&D Beyond</b> fülön, vagy hozz létre egy „Játékos” típusú lényt.'}</p>`;
+  const head = pcs.map(c => `<th class="sortable" data-sort="s" data-col="${esc(c.id)}" title="Rendezés ${esc(c.name)} skilljei szerint">${esc(c.name)}${sortArrow('s', c.id)}</th>`).join('');
+  // passzív értékek (sorok rendezhetők)
+  const prow = pcs.map(c => ({c, v: PASSIVES.map(([k]) => passiveScore(c, k))}));
+  const pBest = PASSIVES.map((_, i) => Math.max(...prow.map(r => r.v[i])));
+  const ps = partySort.p;
+  if (ps.col === 'name') prow.sort((a, b) => byName(a.c, b.c) * ps.dir);
+  else if (ps.col != null) prow.sort((a, b) => ((a.v[ps.col] - b.v[ps.col]) || byName(a.c, b.c) * ps.dir) * ps.dir);  // egyenlőségnél mindig ábécérend
+  const passives = `<table class="ptable"><tr><th class="sortable" data-sort="p" data-col="name">Név${sortArrow('p', 'name')}</th>${PASSIVES.map(([, l], i) => `<th class="sortable" data-sort="p" data-col="${i}">Passive ${l}${sortArrow('p', i)}</th>`).join('')}<th>Látás</th><th>Nyelvek</th></tr>
+    ${prow.map(({c, v}) => `<tr><td><b>${esc(c.name)}</b></td>${v.map((x, i) => `<td class="${x === pBest[i] ? 'best' : ''}">${esc(x)}</td>`).join('')}
       <td>${esc((c.senses.match(/darkvision\s*\d+\s*ft\.?/i) || ['–'])[0])}</td><td style="white-space:normal;text-align:left">${esc(c.languages || '–')}</td></tr>`).join('')}</table>`;
-  // skill-táblázat képességek szerint
-  const rows = ['str', 'dex', 'int', 'wis', 'cha'].flatMap(a => Object.keys(SKILLS).filter(k => SKILLS[k] === a)).map(k => {
+  // skill-táblázat: alapból képességek szerint; rendezhető ábécébe vagy egy tag bónusza szerint
+  let keys = ['str', 'dex', 'int', 'wis', 'cha'].flatMap(a => Object.keys(SKILLS).filter(k => SKILLS[k] === a));
+  const ss = partySort.s, sortPc = pcs.find(c => c.id === ss.col);
+  if (ss.col === 'skill') keys.sort((a, b) => a.localeCompare(b) * ss.dir);
+  else if (sortPc) keys = keys.map((k, i) => [k, i]).sort((a, b) => ((partySkill(sortPc, a[0]).b - partySkill(sortPc, b[0]).b) * ss.dir) || a[1] - b[1]).map(x => x[0]);
+  const rows = keys.map(k => {
     const vals = pcs.map(c => partySkill(c, k)), top = Math.max(...vals.map(v => v.b));
     return `<tr><td>${esc(skillLabel(k))} <span class="ab">${SKILLS[k].toUpperCase()}</span></td>
       ${vals.map((v, i) => `<td class="sk ${v.b === top ? 'best' : ''}" data-pc="${esc(pcs[i].id)}" data-sk="${k}" title="${esc(pcs[i].name)} – ${esc(skillLabel(k))}${v.p ? ' (' + PROF_HU[v.p] + ')' : ''}. Kattints: titkos dobás · Shift: előny · Ctrl: hátrány">${esc(sgn(v.b))}<span class="pmark">${PROF_MARK[v.p]}</span></td>`).join('')}
       <td><button class="small" data-act="partyGroup" data-sk="${k}" title="Mindenki dob erre a skillre">Mindenki</button></td></tr>`;
   }).join('');
-  const skills = `<table class="ptable"><tr><th>Skill</th>${head}<th></th></tr>${rows}</table>
-    <p class="hint">● jártas · ◆ expertise · ½ fél jártasság (Jack of All Trades) · aranyszínű = a csapat legjobbja</p>`;
+  const skills = `<table class="ptable"><tr><th class="sortable" data-sort="s" data-col="skill">Skill${sortArrow('s', 'skill')}</th>${head}<th>${ss.col ? '<button class="small" data-act="partySortReset" title="Vissza a képességek szerinti sorrendhez">alap sorrend</button>' : ''}</th></tr>${rows}</table>
+    <p class="hint">● jártas · ◆ expertise · ½ fél jártasság (Jack of All Trades) · aranyszínű = a csapat legjobbja · a fejlécre kattintva rendezhető (▼ csökkenő, ▲ növekvő)</p>`;
   // karakterkártyák
   const item = i => `<li data-item="${esc((i.name + ' ' + i.note + ' ' + i.container).toLowerCase())}"><span class="${i.magic ? 'mag' : ''}" title="${esc(i.rarity)}">${i.qty !== 1 ? esc(i.qty) + '× ' : ''}${esc(i.name)}</span>${i.attuned ? '<span class="flag">✦ hangolva</span>' : i.equipped ? '<span class="flag">viselve</span>' : ''}${i.note ? `<br><span class="note">${esc(i.note)}</span>` : ''}</li>`;
   const card = c => {
@@ -862,6 +908,7 @@ function partyHtml() {
   };
   const total = {}; pcs.forEach(c => COINS.forEach(k => total[k] = (total[k] || 0) + (c.currency[k] || 0)));
   return `<h2>👥 Csapat</h2>
+    ${partyMembersBar(pcs)}
     <div id="partyRoll" class="le"></div>
     <h3>Passzív értékek</h3>${passives}
     <h3>Skillek</h3>${skills}
@@ -1165,10 +1212,12 @@ function filterLib() {
   const q = ($('#libSearch')?.value || '').toLowerCase(), k = $('#libKind')?.value || '';
   const items = S.library.filter(c => (!k || c.kind === k) && c.name.toLowerCase().includes(q))
     .sort((a, b) => (a.kind === 'pc' ? 0 : 1) - (b.kind === 'pc' ? 0 : 1) || a.name.localeCompare(b.name, 'hu'));
+  const party = new Set(partyMembers().map(c => c.id));
   $('#libRows').innerHTML = items.length ? items.map(c => `<div class="lrow" data-lib="${esc(c.id)}">
       <span class="nm"><b>${esc(c.name)}</b><small>${KIND_HU[c.kind]} · ${esc(crLabel(c))} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)} · ${esc(c.source || '')}</small></span>
       <input type="number" min="1" value="1" class="cnt" title="Darabszám">
       <button class="primary" data-act="libAdd">＋ Encounterbe</button>
+      <button class="small ${party.has(c.id) ? 'on' : ''}" data-act="libParty" title="${party.has(c.id) ? 'A csapatban van – kattints a kivételhez' : 'Betétel a csapatba (👥 Csapat nézet)'}">👥</button>
       <button class="small" data-act="libEdit" title="Szerkesztés">✎</button>
       <button class="small" data-act="libExport" title="Letöltés JSON-ként">⬇</button>
       <button class="small" data-act="libDel" title="Törlés">🗑</button>
@@ -1679,6 +1728,8 @@ document.addEventListener('click', async e => {
   // Csapat nézet: titkos skill-dobás egy játékosnak
   const sk = t.closest('td.sk');
   if (sk) { partyRoll([sk.dataset.pc], sk.dataset.sk, e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : ''); return; }
+  const th = t.closest('th.sortable');
+  if (th) { setPartySort(th.dataset.sort, /^\d+$/.test(th.dataset.col) ? +th.dataset.col : th.dataset.col); rerenderParty(); return; }
   // dobások
   const r = t.closest('.roll');
   if (r) {
@@ -1741,6 +1792,9 @@ document.addEventListener('click', async e => {
     case 'diffInfo': openDiffInfo(); break;
     case 'openLoot': openLoot(); break;
     case 'openParty': openParty(); break;
+    case 'partyRemove': setPartyMember(el.dataset.pc, false); rerenderParty(); break;
+    case 'partySortReset': partySort.s = {col: null, dir: 1}; rerenderParty(); break;
+    case 'libParty': setPartyMember(lib.id, !partyMembers().some(c => c.id === lib.id)); filterLib(); break;
     case 'partyGroup': partyRoll(partyMembers().map(c => c.id), el.dataset.sk, e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : ''); break;
     case 'partyEdit': {
       const pcLib = S.library.find(c => c.id === el.dataset.pc);
@@ -1879,6 +1933,7 @@ document.addEventListener('change', e => {
     S.settings.sources = [...s]; save(); return;
   }
   if (t.id === 'libKind') { filterLib(); return; }
+  if (t.id === 'partyAddSel') { if (t.value) { setPartyMember(t.value, true); rerenderParty(); } return; }
   const x = byId(t.closest('[data-cid]')?.dataset.cid);
   if (!x) return;
   if (t.classList.contains('init')) { x.init = t.value === '' ? null : +t.value; save(); render(); return; }
