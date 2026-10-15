@@ -49,7 +49,7 @@ function fresh() {
   A(`DB = null; authInfo = {status: 'unconfigured'}; clearTimeout(saveTimer); saveTimer = null;
      S = {library: [], enc: {list: [], round: 1, active: null}, saved: [], settings: {groupInit: true, rollHp: false, sources: ['MM']}};
      selected = null; logLines = []; libTab = 'lib'; lastSaved = {state: '', lib: {}, saved: {}};
-     fiveIndex = null; fiveData = {}; fiveResults = []; backupWarn = '';
+     fiveIndex = null; fiveData = {}; fiveResults = []; backupWarn = ''; lootData = null; lootResult = null;
      closeModal(); renderGate(null); render();`);
   W.document.getElementById('log').innerHTML = '';
 }
@@ -1038,6 +1038,129 @@ describe('Biztonsági mentések', () => {
 });
 
 // ======================================================================
+// a DMG kincstáblák felépítését követő mintaadat (5e.tools loot.json formátum)
+const LOOT = {
+  individual: [
+    {source: 'XDMG', crMin: 0, crMax: 4, table: [{min: 1, max: 100, coins: {pp: '1'}}]},
+    {source: 'DMG', crMin: 0, crMax: 4, table: [{min: 1, max: 50, coins: {cp: '5d6'}}, {min: 51, max: 100, coins: {gp: '3d6'}}]},
+    {source: 'DMG', crMin: 5, crMax: 10, table: [{min: 1, max: 100, coins: {gp: '2d6*10', ep: '1d6*10'}}]}
+  ],
+  hoard: [{source: 'DMG', crMin: 0, crMax: 4, coins: {cp: '6d6*100', gp: '2d6*10'}, table: [
+    {min: 1, max: 50},
+    {min: 51, max: 100, gems: {type: 10, amount: '2'}, artObjects: {type: 25, amount: '1'}, magicItems: [{type: 'A', amount: '1'}, {type: 'G', amount: '2'}]}
+  ]}],
+  gems: [{source: 'DMG', type: 10, table: ['{@item Azurite} (opaque mottled deep blue)', 'Hematite']}],
+  artObjects: [{source: 'DMG', type: 25, table: ['{@item Silver ewer}']}],
+  magicItems: [
+    {source: 'DMG', type: 'A', table: [{min: 1, max: 100, item: '{@item Potion of Healing}'}]},
+    {source: 'DMG', type: 'G', table: [
+      {min: 1, max: 50, choose: {fromGeneric: ['+2 Weapon']}},
+      {min: 51, max: 100, item: 'Figurine', table: [{min: 1, item: '{@item Figurine, Bronze Griffon}'}, {min: 2, max: 3, item: '{@item Figurine, Onyx Dog}'}]}
+    ]}
+  ]
+};
+const stubLoot = (data = LOOT) => { W.loadLoot = async () => structuredClone(data); };
+
+describe('Zsákmány (DMG 2014 kincstáblák)', () => {
+  test('CR-sávok: 0–4, 5–10, 11–16, 17+', () => eq(['0', '1/4', '4', '5', '10', '11', '16', '17', '30', '', 'CR 7'].map(W.crBand), [0, 0, 0, 1, 1, 2, 2, 3, 3, 0, 1]));
+  test('mennyiség-kifejezések: kocka, szorzó, konstans', () => {
+    stubRnd(3); eq(W.rollAmount('2d6*100'), 600);
+    eq(W.rollAmount('4'), 4);
+    stubRnd(5); eq(W.rollAmount('1d6'), 5);
+  });
+  test('csak a DMG (2014) táblákat használja, az XDMG-t nem', () => eq(W.dmgTable(LOOT.individual, 0).source, 'DMG'));
+  test('egyéni kincs: a d100 szerinti sor érméi', () => {
+    const [g] = add(mk()); const [o] = add(ogre('Ogre')); o.c.cr = '7';
+    stubRnd(60, 2, 3, 4, 50, 1, 1, 3);  // goblin: d100=60 → 3d6 gp; ogre: d100=50 → 2d6×10 gp, 1d6×10 ep
+    const r = W.generateLoot(LOOT, [g, o], 'individual', 0);
+    eq(r.creatures.map(c => c.coins), [{gp: 9}, {gp: 20, ep: 30}]);
+    eq(r.hoard, null);
+  });
+  test('kincshalom maximális dobásokkal: érmék, drágakövek, műtárgy, mágikus tárgyak, beágyazott tábla', () => {
+    W.rnd = d => d;
+    const r = W.generateLoot(LOOT, [], 'hoard', 0);
+    eq(r.hoard.coins, {cp: 3600, gp: 120});
+    eq(r.hoard.gems.map(g => g.name), ['Hematite', 'Hematite']);
+    eq(r.hoard.art.map(a => a.name), ['Silver ewer']);
+    eq(r.hoard.items.map(i => [i.name, i.table]), [['Potion of Healing', 'A'], ['Figurine, Onyx Dog', 'G'], ['Figurine, Onyx Dog', 'G']]);
+  });
+  test('kincshalom minimális dobásokkal: csak érmék', () => {
+    W.rnd = () => 1;
+    const h = W.generateLoot(LOOT, [], 'hoard', 0).hoard;
+    eq([h.coins, h.gems.length, h.art.length, h.items.length], [{cp: 600, gp: 20}, 0, 0, 0]);
+  });
+  test('„válassz” típusú tárgy (pl. +2 Weapon) olvasható névvel', () => {
+    eq(W.lootItemName({choose: {fromGeneric: ['+2 Weapon']}}), '+2 Weapon (válassz konkrét tárgyat)');
+    eq(W.lootItemName({item: '{@item Bag of Holding}'}), 'Bag of Holding');
+  });
+  test('felszerelés: fegyverek és páncél igen, természetes támadás és varázslat nem', () => {
+    const c = W.normCreature({acNote: 'leather armor, shield', actions: [
+      {name: 'Scimitar', text: 'Melee Weapon Attack: +4 to hit.'}, {name: 'Shortbow', text: 'Ranged Weapon Attack: +4 to hit.'},
+      {name: 'Bite', text: 'Melee Weapon Attack: +5 to hit.'}, {name: 'Guiding Bolt (1/encounter)', text: 'Ranged Spell Attack: +4 to hit.'},
+      {name: 'Dagger (Recharge 6)', text: 'Melee Attack Roll: +3.'}, {name: 'Multiattack', text: 'Two attacks.'},
+      {name: 'Leadership', text: 'Each creature can add a d4 to its attack roll or saving throw.'}]});
+    eq(W.gearOf(c), ['Scimitar', 'Shortbow', 'Dagger', 'leather armor', 'shield']);
+    eq(W.gearOf(W.normCreature({acNote: 'natural armor', actions: [{name: 'Claw', text: 'Melee Weapon Attack: +2 to hit.'}]})), []);
+  });
+  test('összesítés: arany-egyenérték drágakövekkel és műtárgyakkal, fejenkénti rész', () => {
+    ['A', 'B', 'C', 'D'].forEach(n => add(pc(n))); const [g] = add(mk());
+    W.rnd = d => d;
+    const t = W.lootTotals(W.generateLoot(LOOT, [g], 'both', 0));
+    eq(t.coins, {gp: 138, cp: 3600}); eq([t.gp, t.party, t.each], [219, 4, 54.75]);
+  });
+  test('alapértelmezett kijelölés: a legyőzöttek, állat nélkül; ha senki nem halt meg, mindenki', () => {
+    const [a] = add(mk('Goblin')), [b] = add(mk('Farkas', {type: 'beast'})), [c] = add(mk('Ork')); add(pc('Rella'));
+    a.dead = true; b.dead = true;
+    W.openLoot();
+    // initiative-sorrendben jelennek meg (azonos értéknél ábécérendben)
+    eq($$('.lootPick').map(i => [i.closest('.lrow').querySelector('b').textContent, i.checked]), [['Farkas', false], ['Goblin', true], ['Ork', false]]);
+    a.dead = false; b.dead = false; W.openLoot();
+    eq($$('.lootPick').map(i => i.checked), [false, true, true]);
+  });
+  test('kincshalom szintje alapból a legerősebb kiválasztott ellenfél szerint', () => {
+    const [g] = add(mk()), [o] = add(ogre()); o.c.cr = '12'; g.dead = true; o.dead = true;
+    W.openLoot(); eq($('#lootBand').value, '2');
+  });
+  test('ablak: generálás, újradobás, naplóba, mágikus tárgy link', async () => {
+    stubLoot(); ['A', 'B'].forEach(n => add(pc(n))); const [g] = add(mk()); g.dead = true;
+    W.openLoot(); $('#lootMode').value = 'both';
+    W.rnd = d => d; click('[data-act="lootRoll"]');
+    await until(() => $('#lootOut').textContent.includes('Összesen'), 2000, 'eredmény');
+    const out = $('#lootOut').textContent;
+    has(out, 'Goblin'); has(out, 'Felszerelés: Scimitar'); has(out, '2× Hematite (10 gp)'); has(out, 'Potion of Healing'); has(out, 'fejenként');
+    ok($('#lootOut a[href*="5e.tools/items.html#potion%20of%20healing_dmg"]'), 'nincs link a mágikus tárgyhoz');
+    W.rnd = () => 1; click('#lootOut [data-act="lootRoll"]');
+    await until(() => !$('#lootOut').textContent.includes('Hematite') && $('#lootOut').textContent.includes('Összesen'), 2000, 'újradobás');
+    click('#lootOut [data-act="lootLog"]'); has(allLog(), '🎁'); has(allLog(), 'Kincshalom');
+  });
+  test('ha nem érhetők el a táblák: érthető hibaüzenet', async () => {
+    W.loadLoot = async () => { throw new Error('offline'); };
+    add(mk()); W.openLoot(); click('[data-act="lootRoll"]');
+    await until(() => $('#lootOut').textContent.includes('Nem sikerült'), 2000, 'hibaüzenet');
+  });
+  test('ellenfél nélkül csak kincshalom', () => {
+    add(pc('Rella')); W.openLoot();
+    eq([$$('.lootPick').length, $('#lootMode').value], [0, 'hoard']);
+  });
+  test('a táblákból jövő nevek nem tudnak kódot befecskendezni', async () => {
+    const evil = structuredClone(LOOT); evil.gems[0].table = [XSS, XSS]; evil.magicItems[0].table[0].item = XSS;
+    stubLoot(evil); const [g] = add(mk(XSS)); g.dead = true;
+    W.openLoot(); $('#lootMode').value = 'both'; W.rnd = d => d; click('[data-act="lootRoll"]');
+    await until(() => $('#lootOut').textContent.includes('Összesen'), 2000, 'eredmény');
+    click('#lootOut [data-act="lootLog"]'); await wait(100);
+    assertNoXss();
+  });
+  test('valódi DMG kincstáblák elérhetők és használhatók', async () => {
+    W.loadLoot = ORIG.loadLoot;
+    const data = await W.loadLoot();
+    for (let b = 0; b < 4; b++) { ok(W.dmgTable(data.individual, b), 'nincs egyéni tábla: ' + b); ok(W.dmgTable(data.hoard, b), 'nincs kincshalom tábla: ' + b); }
+    for (const t of 'ABCDEFGHI') ok(data.magicItems.some(m => m.source === 'DMG' && m.type === t), 'nincs mágikustárgy-tábla: ' + t);
+    const [o] = add(ogre()); o.c.cr = '17';
+    for (let i = 0; i < 30; i++) { const r = W.generateLoot(data, [o], 'both', i % 4); ok(W.lootTotals(r).gp >= 0); r.hoard.items.forEach(it => ok(it.name && !it.name.includes('{@'), 'feldolgozatlan név: ' + it.name)); }
+  }, {online: true});
+});
+
+// ======================================================================
 describe('Általános', () => {
   test('nem volt JavaScript-hiba az app futása közben', () => eq(appErrors, []));
 });
@@ -1055,9 +1178,9 @@ async function run() {
   const plF = frame('player', '../player.html', 1000, 600);
   await new Promise(r => plF.onload = r);
   P = plF.contentWindow;
-  for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'confirm', 'alert', 'download']) ORIG[k] = W[k];
+  for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'loadLoot', 'confirm', 'alert', 'download']) ORIG[k] = W[k];
   // a „const f = ...” segédfüggvények nem window-tulajdonságok, ezért elérhetővé tesszük őket W.f néven
-  for (const k of ['sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB']) W[k] = A(k);
+  for (const k of ['sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure']) W[k] = A(k);
   for (const t of TESTS) {
     if (t.online && !ONLINE) { skip++; continue; }
     try {
