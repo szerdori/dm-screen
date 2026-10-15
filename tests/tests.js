@@ -1161,6 +1161,131 @@ describe('Zsákmány (DMG 2014 kincstáblák)', () => {
 });
 
 // ======================================================================
+// a D&D Beyond minta bővítése felszereléssel, pénzzel, egyedi nevekkel, Jack of All Trades-szel
+function ddbParty() {
+  const d = structuredClone(DDB);
+  d.data.currencies = {cp: 7, sp: 20, ep: 0, gp: 150, pp: 2};
+  d.data.inventory = [
+    {id: 1, containerEntityId: 424242, quantity: 1, equipped: true, isAttuned: true, definition: {name: 'Ring of Protection', magic: true, rarity: 'Rare'}},
+    {id: 2, containerEntityId: 424242, quantity: 1, equipped: false, definition: {name: 'Backpack', isContainer: true}},
+    {id: 3, containerEntityId: 2, quantity: 5, definition: {name: 'Rations (1 day)'}},
+    {id: 4, containerEntityId: 2, quantity: 1, definition: {name: 'Rope, Hempen (50 feet)'}},
+    {id: 5, containerEntityId: 424242, quantity: 1, definition: {name: 'Spell Scroll (1st Level)', magic: true, rarity: 'Common'}},
+    {id: 6, containerEntityId: 424242, quantity: 0, definition: {name: 'Hand Drum'}},
+    {id: 7, containerEntityId: 424242, quantity: 1, equipped: true, definition: {name: 'Breastplate', armorTypeId: 2, armorClass: 14}}
+  ];
+  d.data.characterValues = [{typeId: 8, valueId: 5, value: 'Mage Armor'}, {typeId: 9, valueId: 1, value: 'a nagymamától'}];
+  d.data.modifiers.class.push(
+    {type: 'half-proficiency', subType: 'ability-checks'}, {type: 'half-proficiency', subType: 'initiative'},
+    {type: 'bonus', subType: 'passive-perception', value: 5},
+    {type: 'proficiency', subType: 'thieves-tools', friendlySubtypeName: "Thieves' Tools"}, {type: 'proficiency', subType: 'lute', friendlySubtypeName: 'Lute'},
+    {type: 'proficiency', subType: 'longsword', friendlySubtypeName: 'Longsword'}, {type: 'proficiency', subType: 'light-armor', friendlySubtypeName: 'Light Armor'},
+    {type: 'proficiency', subType: 'simple-weapons', friendlySubtypeName: 'Simple Weapons'});
+  return d;
+}
+const manualPc = () => W.normCreature({name: 'Borin', kind: 'pc', cr: 'Szint 5', abilities: {str: 16, dex: 12, con: 14, int: 8, wis: 14, cha: 10},
+  skills: 'Perception +5, Sleight of Hand +7', senses: 'darkvision 60 ft.', languages: 'Common, Dwarvish',
+  inventory: [{name: 'Torch', qty: 10, container: 'Backpack'}, {name: 'Rope, Silk (50 feet)', qty: 1}], currency: {gp: 40, sp: 5}, tools: "Smith's Tools"});
+
+describe('Csapat nézet (harcon kívül)', () => {
+  test('D&D Beyond: felszerelés tárolókkal, egyedi névvel, jegyzettel; 0 darabos kimarad', () => {
+    const inv = W.convertDDB(ddbParty()).inventory;
+    eq(inv.map(i => [i.name, i.qty, i.container]), [['Ring of Protection', 1, ''], ['Backpack', 1, ''], ['Rations (1 day)', 5, 'Backpack'], ['Rope, Hempen (50 feet)', 1, 'Backpack'], ['Mage Armor (Spell Scroll (1st Level))', 1, ''], ['Breastplate', 1, '']]);
+    eq([inv[0].attuned, inv[0].equipped, inv[0].magic, inv[0].rarity, inv[0].note], [true, true, true, 'Rare', 'a nagymamától']);
+  });
+  test('tárolóazonosító nélküli tárgyak a fő listába kerülnek', () => {
+    eq(W.convertDDB(DDB).inventory.map(i => i.container), ['', '', '', '', '', '', '']);
+  });
+  test('D&D Beyond: pénz, eszköz- és hangszer-jártasság (fegyver/páncél nélkül), import dátuma', () => {
+    const c = W.convertDDB(ddbParty());
+    eq(c.currency, {pp: 2, gp: 150, ep: 0, sp: 20, cp: 7});
+    eq(c.tools, "Thieves' Tools, Lute");
+    eq(c.importedAt, A('localDate()').slice(0, 4) + c.importedAt.slice(4)); ok(/^\d{4}-\d{2}-\d{2}$/.test(c.importedAt));
+  });
+  test('Jack of All Trades: fél jártasság a nem jártas skillekre és az initiative-ra', () => {
+    const c = W.convertDDB(ddbParty());  // 5. szint → jártassági bónusz 3, a fele 1
+    eq(c.skillMods.perception, {b: 2, p: 0.5});
+    eq(c.skillMods.athletics, {b: 6, p: 1}); eq(c.skillMods.stealth, {b: 9, p: 2});
+    eq(c.initBonus, 3 + 2 + 1);
+  });
+  test('passzív érték: 10 + skill + passzív bónusz (pl. Observant)', () => {
+    const c = W.convertDDB(ddbParty());
+    eq([W.passiveScore(c, 'perception'), W.passiveScore(c, 'investigation'), W.passiveScore(c, 'insight')], [17, 12, 12]);
+    has(c.senses, 'passive Perception 17');
+  });
+  test('kézzel felvitt játékos: skill a „Skills” mezőből, különben képességmódosító', () => {
+    const c = manualPc();
+    eq([W.partySkill(c, 'perception'), W.partySkill(c, 'sleight-of-hand'), W.partySkill(c, 'arcana')], [{b: 5, p: 1}, {b: 7, p: 1}, {b: -1, p: 0}]);
+    eq(W.skillLabel('sleight-of-hand'), 'Sleight of Hand');
+  });
+  test('nézet: passzív táblázat és skill-táblázat, a legjobb kiemelve; szörny nem jelenik meg', () => {
+    W.upsertLibrary(W.convertDDB(ddbParty())); W.upsertLibrary(manualPc()); W.upsertLibrary(W.normCreature(mk()));
+    W.openParty();
+    const [pt, st] = $$('.ptable');
+    eq([...pt.rows].map(r => [...r.cells].slice(0, 4).map(c => c.textContent.trim())), [['Játékos', 'Passive Perception', 'Passive Investigation', 'Passive Insight'], ['Borin', '15', '9', '12'], ['Teszt Tünde', '17', '12', '12']]);
+    eq([...pt.rows[2].cells].slice(1, 4).map(c => c.classList.contains('best')), [true, true, true]);
+    const stealth = [...st.rows].find(r => r.cells[0].textContent.startsWith('Stealth'));
+    eq([...stealth.cells].slice(1, 3).map(c => c.textContent), ['+1', '+9◆']);
+    ok(stealth.cells[2].classList.contains('best'));
+    hasNot($('#modalBox').textContent, 'Goblin');
+  });
+  test('titkos dobás cellára kattintva, előnnyel, és csoportos dobás', () => {
+    W.upsertLibrary(W.convertDDB(ddbParty())); W.upsertLibrary(manualPc()); W.openParty();
+    stubRnd(12); click($$('td.sk[data-sk="stealth"]')[1]);
+    has($('#partyRoll').textContent, 'Teszt Tünde Stealth: 21'); has(allLog(), 'Stealth');
+    stubRnd(3, 15); click($$('td.sk[data-sk="perception"]')[0], {shiftKey: true});
+    has($('#partyRoll').textContent, 'Borin Perception: 20'); has($('#partyRoll').textContent, 'előny');
+    stubRnd(10); click('[data-act="partyGroup"][data-sk="insight"]');
+    has($('#partyRoll').textContent, 'Borin Insight: 12'); has($('#partyRoll').textContent, 'Teszt Tünde Insight: 12');
+  });
+  test('kereső a tárgyak között: találatszám, elrejtés, a találat nélküli kártya halványabb', () => {
+    W.upsertLibrary(W.convertDDB(ddbParty())); W.upsertLibrary(manualPc()); W.openParty();
+    setVal('#partySearch', 'ROPE', 'input');
+    eq($('#partySearchInfo').textContent, '2 találat');
+    eq($$('#modalBox [data-item]:not([hidden])').map(li => li.textContent), ['Rope, Silk (50 feet)', 'Rope, Hempen (50 feet)']);
+    setVal('#partySearch', 'torch', 'input');
+    eq($$('.pcard').map(c => c.style.opacity), ['1', '0.35']);
+    setVal('#partySearch', 'nagymamától', 'input'); eq($('#partySearchInfo').textContent, '1 találat');
+    setVal('#partySearch', '', 'input'); eq($$('#modalBox [data-item][hidden]').length, 0);
+  });
+  test('kártyák: pénz, tárolók, hangolt/viselt jelölés, eszközök; a csapat összes pénze', () => {
+    W.upsertLibrary(W.convertDDB(ddbParty())); W.upsertLibrary(manualPc()); W.openParty();
+    const tunde = $$('.pcard')[1].textContent;
+    has(tunde, '2 pp, 150 gp, 20 sp, 7 cp'); has(tunde, '🎒 Backpack'); has(tunde, '5× Rations'); has(tunde, '✦ hangolva'); has(tunde, 'viselve'); has(tunde, "Thieves' Tools, Lute");
+    has(tunde, 'D&D Beyond import:');
+    has($('#modalBox').textContent, 'Csapat pénze: 2 pp, 190 gp, 25 sp, 7 cp');
+    eq(W.coinsGp({pp: 2, gp: 190, sp: 25, cp: 7}), 212.57);
+  });
+  test('üres csapat: útmutató üzenet', () => { W.openParty(); has($('#modalBox').textContent, 'Még nincs játékos'); });
+  test('szerkesztő: felszerelés szövegként (darab, tároló), a jelölések megmaradnak; pénz és eszközök', async () => {
+    const c = W.upsertLibrary(W.convertDDB(ddbParty())); W.openParty();
+    click('.pcard [data-act="partyEdit"]');
+    const f = $('#edForm').elements;
+    has(f.inventory.value, '5× Rations (1 day) [Backpack]');
+    f.inventory.value = f.inventory.value + '\n3× Fáklya [Backpack]\nVarázspálca';
+    f.cur_gp.value = '999'; f.tools.value = "Thieves' Tools, Lute, Flute";
+    click('[data-act="edSave"]');
+    const s = A('S.library')[0];
+    ok(s.inventory.find(i => i.name === 'Ring of Protection').attuned, 'elveszett a hangolás');
+    eq(s.inventory.filter(i => ['Fáklya', 'Varázspálca'].includes(i.name)).map(i => [i.name, i.qty, i.container]), [['Fáklya', 3, 'Backpack'], ['Varázspálca', 1, '']]);
+    eq([s.currency.gp, s.currency.pp, s.tools, s.id], [999, 2, "Thieves' Tools, Lute, Flute", c.id]);
+    await until(() => !$('#modal').hidden && $('#modalBox').textContent.includes('Passzív értékek'), 2000, 'visszatérés a Csapat nézetre');
+  });
+  test('tisztítás: hibás felszerelés-, pénz- és skilladatok', () => {
+    const c = W.normCreature({inventory: ['szöveg', {name: {x: 1}}, {name: 'Kötél', qty: 'sok', equipped: 'igen'}], currency: {gp: -5, pp: 'x'},
+      skillMods: {stealth: {b: '4', p: 7}, hacking: {b: 9, p: 1}}, passiveBonus: {perception: 'x'}, importedAt: '<b>'});
+    eq(c.inventory, [{name: 'Kötél', qty: 1, equipped: true, attuned: false, magic: false, rarity: '', container: '', note: ''}]);
+    eq([c.currency.gp, c.currency.pp, c.skillMods, c.passiveBonus.perception, c.importedAt], [0, 0, {stealth: {b: 4, p: 0}}, 0, '']);
+  });
+  test('a felszerelés és a nyelvek nem tudnak kódot befecskendezni', async () => {
+    W.upsertLibrary(W.normCreature({name: XSS, kind: 'pc', languages: XSS, tools: XSS, senses: XSS, notes: XSS, type: XSS,
+      inventory: [{name: XSS, note: XSS, container: XSS, rarity: XQ, qty: XQ}], currency: {gp: XSS}, skillMods: {stealth: {b: XSS, p: XQ}}}));
+    W.openParty(); setVal('#partySearch', 'img', 'input'); click('td.sk[data-sk="stealth"]');
+    await wait(200); assertNoXss();
+  });
+});
+
+// ======================================================================
 describe('Általános', () => {
   test('nem volt JavaScript-hiba az app futása közben', () => eq(appErrors, []));
 });
@@ -1180,7 +1305,7 @@ async function run() {
   P = plF.contentWindow;
   for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'loadLoot', 'confirm', 'alert', 'download']) ORIG[k] = W[k];
   // a „const f = ...” segédfüggvények nem window-tulajdonságok, ezért elérhetővé tesszük őket W.f néven
-  for (const k of ['sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure']) W[k] = A(k);
+  for (const k of ['sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp']) W[k] = A(k);
   for (const t of TESTS) {
     if (t.online && !ONLINE) { skip++; continue; }
     try {

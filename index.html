@@ -112,6 +112,23 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 #modal{position:fixed;inset:0;background:#000a;display:flex;align-items:flex-start;justify-content:center;padding:30px;z-index:10}
 #modal[hidden]{display:none}
 .modal-box{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:min(980px,100%);max-height:calc(100vh - 60px);overflow:auto;padding:16px}
+.modal-box.wide{width:min(1500px,100%)}
+/* Csapat nézet */
+.ptable{border-collapse:collapse;width:100%;font-size:13px;margin:4px 0 14px}
+.ptable th,.ptable td{border-bottom:1px solid var(--line);padding:4px 8px;text-align:center;white-space:nowrap}
+.ptable th:first-child,.ptable td:first-child{text-align:left}
+.ptable td.best{color:var(--accent);font-weight:700}
+.ptable td.sk{cursor:pointer} .ptable td.sk:hover{background:#3a2f15}
+.ptable .ab{color:var(--muted);font-size:11px}
+.pmark{font-size:10px;color:var(--muted);margin-left:2px}
+.pcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:10px}
+.pcard{background:var(--panel2);border-radius:8px;padding:10px}
+.pcard h3{margin:0 0 4px;color:var(--accent);display:flex;align-items:center;gap:8px}
+.pcard h4{margin:8px 0 2px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.inv{list-style:none;margin:0;padding:0;font-size:13px}
+.inv li{padding:1px 0}
+.inv .mag{color:#c9a0ff} .inv .flag{font-size:11px;color:var(--accent);margin-left:4px} .inv .note{color:var(--muted);font-size:11px}
+#partyRoll{min-height:22px;margin:6px 0}
 .modal-box h2{margin:0 0 10px;color:var(--accent)}
 .tabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
 .tabs button.on{background:var(--accent);color:#1a1405}
@@ -144,6 +161,7 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
   <button class="primary" data-act="next" title="Következő (N vagy Szóköz)">Következő ▶</button>
   <button data-act="rollInit">🎲 Initiative</button>
   <button data-act="openLoot" title="Zsákmány a legyőzött ellenfelek alapján (DMG 2014 kincstáblák)">🎁 Loot</button>
+  <button data-act="openParty" title="Harcon kívül: a játékosok passzív értékei, skilljei, felszerelése és pénze">👥 Csapat</button>
   <span class="sep"></span>
   <button data-act="openLib">＋ Hozzáadás / Könyvtár</button>
   <button data-act="newCreature">✎ Új lény</button>
@@ -237,6 +255,15 @@ const str = v => v == null ? '' : typeof v === 'object' ? '' : String(v);
 const safeId = v => { const s = typeof v === 'number' ? String(v) : v; return typeof s === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(s) ? s : uid(); };
 const safeUrl = v => typeof v === 'string' && /^(https?:\/\/|data:image\/)/i.test(v.trim()) ? v.trim() : '';
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
+const skillLabel = k => k.split('-').map(w => w === 'of' ? w : cap(w)).join(' ');
+const WEAPON_ARMOR_PROF = /^(simple|martial)-weapons$|-armor$|^shields$|^(club|dagger|greatclub|handaxe|javelin|light-hammer|mace|quarterstaff|sickle|spear|crossbow-light|crossbow-heavy|crossbow-hand|dart|shortbow|sling|battleaxe|flail|glaive|greataxe|greatsword|halberd|lance|longsword|maul|morningstar|pike|rapier|scimitar|shortsword|trident|war-pick|warhammer|whip|blowgun|longbow|net|firearms)$/;
+function normInventory(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 1000).filter(isObj).map(i => ({
+    name: str(i.name), qty: Math.max(0, Math.floor(num(i.qty, 1))), equipped: !!i.equipped, attuned: !!i.attuned,
+    magic: !!i.magic, rarity: str(i.rarity), container: str(i.container), note: str(i.note)
+  })).filter(i => i.name);
+}
 function normCreature(c) {
   c = isObj(c) ? c : {};
   const b = blankCreature();
@@ -259,6 +286,17 @@ function normCreature(c) {
   o.saves = {}; ABIL.forEach(a => { const v = num(sv[a], null); if (v !== null) o.saves[a] = v; });
   for (const k of SECTIONS) o[k] = (Array.isArray(o[k]) ? o[k] : []).map(e => typeof e === 'string' ? splitEntry(e) : {name: str(e?.name), text: str(e?.text)});
   o.initBonus = num(o.initBonus, null);
+  // harcon kívüli adatok (Csapat nézet)
+  o.inventory = normInventory(c.inventory);
+  const cur = isObj(c.currency) ? c.currency : {};
+  o.currency = {}; ['pp', 'gp', 'ep', 'sp', 'cp'].forEach(k => o.currency[k] = Math.max(0, num(cur[k], 0)));
+  const sm = isObj(c.skillMods) ? c.skillMods : null;
+  if (sm) { o.skillMods = {}; for (const k of Object.keys(SKILLS)) if (isObj(sm[k])) o.skillMods[k] = {b: num(sm[k].b, 0), p: [0, 0.5, 1, 2].includes(sm[k].p) ? sm[k].p : 0}; }
+  else delete o.skillMods;
+  const pbo = isObj(c.passiveBonus) ? c.passiveBonus : {};
+  o.passiveBonus = {perception: num(pbo.perception, 0), investigation: num(pbo.investigation, 0), insight: num(pbo.insight, 0)};
+  o.tools = str(o.tools);
+  o.importedAt = typeof c.importedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c.importedAt) ? c.importedAt : '';
   return o;
 }
 function normCombatant(x) {
@@ -490,7 +528,9 @@ function rollHit(bonus, who, label, mode) {
   const d = mode === 'adv' ? Math.max(a, a2) : mode === 'dis' ? Math.min(a, a2) : a;
   const tag = mode === 'adv' ? ` előny [${a},${a2}]` : mode === 'dis' ? ` hátrány [${a},${a2}]` : ` [${a}]`;
   const cls = d === 20 ? 'crit' : d === 1 ? 'fumble' : '';
-  log(`<span class="who">${esc(who)}</span> ${esc(label)}: <b>${d + b}</b> <small>d20${tag} ${sgn(b)}${d === 20 ? ' — KRITIKUS!' : d === 1 ? ' — elvétve' : ''}</small>`, cls);
+  const html = `<span class="who">${esc(who)}</span> ${esc(label)}: <b>${d + b}</b> <small>d20${tag} ${sgn(b)}${d === 20 ? ' — KRITIKUS!' : d === 1 ? ' — elvétve' : ''}</small>`;
+  log(html, cls);
+  return {html, cls, total: d + b};
 }
 function rollDmg(expr, who, label, crit) {
   if (crit) expr = expr.replace(/(\d*)d(\d+)/g, (m, n, d) => `${2 * (+n || 1)}d${d}`);
@@ -759,6 +799,90 @@ async function rollLootUi() {
     <div class="toolbar"><button data-act="lootRoll">🎲 Újradobás</button><button data-act="lootCopy">📋 Másolás</button><button data-act="lootLog">Naplóba</button></div>`;
 }
 
+// ---------- Csapat nézet (harcon kívül): passzív értékek, skillek, felszerelés ----------
+const PASSIVES = [['perception', 'Perception'], ['investigation', 'Investigation'], ['insight', 'Insight']];
+const PROF_MARK = {2: '◆', 1: '●', 0.5: '½', 0: ''};
+const PROF_HU = {2: 'expertise', 1: 'jártas', 0.5: 'fél jártasság (Jack of All Trades)', 0: ''};
+const partyMembers = () => S.library.filter(c => c.kind === 'pc').sort((a, b) => a.name.localeCompare(b.name, 'hu'));
+// skill-bónusz: D&D Beyondról pontosan; kézzel felvitt játékosnál a „Skills” mezőből, különben a képességmódosító
+function partySkill(c, k) {
+  if (c.skillMods?.[k]) return c.skillMods[k];
+  const base = mod(c.abilities[SKILLS[k]]);
+  const m = c.skills.match(new RegExp(skillLabel(k).replace(/ /g, '\\s*') + '\\s*([+\\-−]\\s*\\d+)', 'i'));
+  if (m) { const b = parseInt(m[1].replace(/\s/g, '').replace('−', '-')); return {b, p: b > base ? 1 : 0}; }
+  return {b: base, p: 0};
+}
+const passiveScore = (c, k) => 10 + partySkill(c, k).b + (c.passiveBonus?.[k] || 0);
+const coinsGp = cur => Math.round(COINS.reduce((s, k) => s + (cur?.[k] || 0) * COIN_GP[k], 0) * 100) / 100;
+function inventoryToText(list) { return list.map(i => (i.qty !== 1 ? i.qty + '× ' : '') + i.name + (i.container ? ` [${i.container}]` : '')).join('\n'); }
+function textToInventory(text, old = []) {
+  return String(text).split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+    const m = l.match(/^(?:(\d+)\s*[×x*]\s*)?(.+?)(?:\s*\[([^\]]+)\])?$/i);
+    const name = m[2].trim(), container = (m[3] || '').trim();
+    const prev = old.find(o => o.name === name && o.container === container) || old.find(o => o.name === name) || {};
+    return {...prev, name, container, qty: m[1] ? +m[1] : 1};
+  });
+}
+function openParty() { openModal(partyHtml(), true); }
+function partyHtml() {
+  const pcs = partyMembers();
+  if (!pcs.length) return `<h2>👥 Csapat</h2><p class="muted">Még nincs játékos a könyvtárban. Importáld őket a <b>＋ Hozzáadás / Könyvtár → D&D Beyond</b> fülön, vagy hozz létre egy „Játékos” típusú lényt.</p>`;
+  const head = pcs.map(c => `<th>${esc(c.name)}</th>`).join('');
+  // passzív értékek
+  const pv = pcs.map(c => PASSIVES.map(([k]) => passiveScore(c, k)));
+  const pBest = PASSIVES.map((_, i) => Math.max(...pv.map(r => r[i])));
+  const passives = `<table class="ptable"><tr><th>Játékos</th>${PASSIVES.map(([, l]) => `<th>Passive ${l}</th>`).join('')}<th>Látás</th><th>Nyelvek</th></tr>
+    ${pcs.map((c, r) => `<tr><td><b>${esc(c.name)}</b></td>${pv[r].map((v, i) => `<td class="${v === pBest[i] ? 'best' : ''}">${esc(v)}</td>`).join('')}
+      <td>${esc((c.senses.match(/darkvision\s*\d+\s*ft\.?/i) || ['–'])[0])}</td><td style="white-space:normal;text-align:left">${esc(c.languages || '–')}</td></tr>`).join('')}</table>`;
+  // skill-táblázat képességek szerint
+  const rows = ['str', 'dex', 'int', 'wis', 'cha'].flatMap(a => Object.keys(SKILLS).filter(k => SKILLS[k] === a)).map(k => {
+    const vals = pcs.map(c => partySkill(c, k)), top = Math.max(...vals.map(v => v.b));
+    return `<tr><td>${esc(skillLabel(k))} <span class="ab">${SKILLS[k].toUpperCase()}</span></td>
+      ${vals.map((v, i) => `<td class="sk ${v.b === top ? 'best' : ''}" data-pc="${esc(pcs[i].id)}" data-sk="${k}" title="${esc(pcs[i].name)} – ${esc(skillLabel(k))}${v.p ? ' (' + PROF_HU[v.p] + ')' : ''}. Kattints: titkos dobás · Shift: előny · Ctrl: hátrány">${esc(sgn(v.b))}<span class="pmark">${PROF_MARK[v.p]}</span></td>`).join('')}
+      <td><button class="small" data-act="partyGroup" data-sk="${k}" title="Mindenki dob erre a skillre">Mindenki</button></td></tr>`;
+  }).join('');
+  const skills = `<table class="ptable"><tr><th>Skill</th>${head}<th></th></tr>${rows}</table>
+    <p class="hint">● jártas · ◆ expertise · ½ fél jártasság (Jack of All Trades) · aranyszínű = a csapat legjobbja</p>`;
+  // karakterkártyák
+  const item = i => `<li data-item="${esc((i.name + ' ' + i.note + ' ' + i.container).toLowerCase())}"><span class="${i.magic ? 'mag' : ''}" title="${esc(i.rarity)}">${i.qty !== 1 ? esc(i.qty) + '× ' : ''}${esc(i.name)}</span>${i.attuned ? '<span class="flag">✦ hangolva</span>' : i.equipped ? '<span class="flag">viselve</span>' : ''}${i.note ? `<br><span class="note">${esc(i.note)}</span>` : ''}</li>`;
+  const card = c => {
+    const main = c.inventory.filter(i => !i.container).sort((a, b) => (b.attuned - a.attuned) || (b.equipped - a.equipped) || (b.magic - a.magic));
+    const groups = [...new Set(c.inventory.filter(i => i.container).map(i => i.container))];
+    return `<div class="pcard" data-pcard="${esc(c.id)}">
+      <h3>${c.portrait ? `<img class="av" src="${esc(c.portrait)}" alt="" onerror="this.style.display='none'">` : ''}${esc(c.name)}</h3>
+      <div class="muted" style="font-size:12px">${esc(c.type)} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)} · ${esc(c.speed)}</div>
+      <h4>Pénz</h4><div>${esc(coinStr(c.currency) || '–')}${coinsGp(c.currency) ? ` <span class="muted">(≈ ${esc(coinsGp(c.currency))} gp)</span>` : ''}</div>
+      <h4>Felszerelés</h4>${c.inventory.length ? `<ul class="inv">${main.map(item).join('')}</ul>
+        ${groups.map(g => `<h4>🎒 ${esc(g)}</h4><ul class="inv">${c.inventory.filter(i => i.container === g).map(item).join('')}</ul>`).join('')}` : '<div class="muted">–</div>'}
+      <h4>Eszközök, hangszerek</h4><div>${esc(c.tools || '–')}</div>
+      ${c.notes ? `<h4>Jegyzet</h4><div style="white-space:pre-wrap">${esc(c.notes)}</div>` : ''}
+      <div class="hint" style="margin-top:6px">${c.importedAt ? `D&D Beyond import: ${esc(c.importedAt)} – frissítéshez importáld újra a könyvjelzővel.` : ''}
+        <button class="small" data-act="partyEdit" data-pc="${esc(c.id)}">✎ Szerkesztés</button></div>
+    </div>`;
+  };
+  const total = {}; pcs.forEach(c => COINS.forEach(k => total[k] = (total[k] || 0) + (c.currency[k] || 0)));
+  return `<h2>👥 Csapat</h2>
+    <div id="partyRoll" class="le"></div>
+    <h3>Passzív értékek</h3>${passives}
+    <h3>Skillek</h3>${skills}
+    <h3>Felszerelés</h3>
+    <div class="toolbar"><input id="partySearch" placeholder="Keresés a tárgyak között (pl. kötél, potion, scroll)…" style="flex:1"><span id="partySearchInfo" class="hint"></span>
+      <span>Csapat pénze: <b>${esc(coinStr(total) || '0')}</b> <span class="muted">(≈ ${esc(coinsGp(total))} gp)</span></span></div>
+    <div class="pcards">${pcs.map(card).join('')}</div>`;
+}
+function filterPartyItems(q) {
+  q = q.trim().toLowerCase();
+  let hits = 0;
+  document.querySelectorAll('#modalBox [data-item]').forEach(li => { const show = !q || li.dataset.item.includes(q); li.hidden = !show; if (show && q) hits++; });
+  document.querySelectorAll('#modalBox .pcard').forEach(card => card.style.opacity = q && !card.querySelector('[data-item]:not([hidden])') ? 0.35 : 1);
+  $('#partySearchInfo').textContent = q ? `${hits} találat` : '';
+}
+function partyRoll(ids, k, mode) {
+  const res = ids.map(id => S.library.find(c => c.id === id)).filter(Boolean)
+    .map(c => rollHit(sgn(partySkill(c, k).b), c.name, skillLabel(k), mode));
+  $('#partyRoll').innerHTML = '🎲 ' + res.map(r => r.html).join(' &nbsp;·&nbsp; ');
+}
+
 // ---------- játékos képernyő ----------
 // csak azt küldjük át, amit a játékosok láthatnak
 const chan = 'BroadcastChannel' in window ? new BroadcastChannel('dmscreen-player') : null;
@@ -985,7 +1109,7 @@ function renderDetail() {
 }
 
 // ---------- modal ----------
-function openModal(html) { $('#modalBox').innerHTML = html; $('#modal').hidden = false; }
+function openModal(html, wide = false) { $('#modalBox').innerHTML = html; $('#modalBox').classList.toggle('wide', wide); $('#modal').hidden = false; }
 function closeModal() { $('#modal').hidden = true; $('#modalBox').innerHTML = ''; }
 $('#modal').addEventListener('mousedown', e => { if (e.target.id === 'modal') closeModal(); });
 
@@ -1358,10 +1482,31 @@ function convertDDB(raw) {
   const prof = sub => mods.some(m => m.type === 'proficiency' && m.subType === sub);
   const expert = sub => mods.some(m => m.type === 'expertise' && m.subType === sub);
   const saves = {}; ABIL.forEach(a => { if (prof(SUB[a] + '-saving-throws')) saves[a] = M(a) + pb; });
-  const SK = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
-  const skillBonus = k => M(SK[k]) + (expert(k) ? 2 * pb : prof(k) ? pb : 0);
-  const skills = Object.keys(SK).filter(k => prof(k) || expert(k)).map(k => k.split('-').map(cap).join(' ') + ' ' + sgn(skillBonus(k))).join(', ');
-  const passive = 10 + skillBonus('perception');
+  // skillek: jártasság / expertise / fél jártasság (Jack of All Trades) + tárgyakból, képességekből jövő bónuszok
+  const halfProf = mods.some(m => m.type === 'half-proficiency' && m.subType === 'ability-checks') ? Math.floor(pb / 2) : 0;
+  const skillMods = {};
+  for (const [k, a] of Object.entries(SKILLS)) {
+    const p = expert(k) ? 2 : prof(k) ? 1 : halfProf ? 0.5 : 0;
+    const profBonus = p === 2 ? 2 * pb : p === 1 ? pb : p === 0.5 ? halfProf : 0;
+    skillMods[k] = {b: M(a) + profBonus + sum('bonus', k) + sum('bonus', 'ability-checks'), p};
+  }
+  const skillBonus = k => skillMods[k].b;
+  const skills = Object.keys(SKILLS).filter(k => skillMods[k].p >= 1).map(k => skillLabel(k) + ' ' + sgn(skillBonus(k))).join(', ');
+  const passiveBonus = {perception: sum('bonus', 'passive-perception'), investigation: sum('bonus', 'passive-investigation'), insight: sum('bonus', 'passive-insight')};
+  const passive = 10 + skillBonus('perception') + passiveBonus.perception;
+  // eszköz- és hangszer-jártasságok (a fegyver- és páncéljártasságok nélkül)
+  const tools = [...new Set(mods.filter(m => m.type === 'proficiency' && !(m.subType in SKILLS) && !/saving-throws$/.test(m.subType) && !WEAPON_ARMOR_PROF.test(m.subType)).map(m => m.friendlySubtypeName || m.subType))].join(', ');
+  // felszerelés: tárolók szerint, a D&D Beyondon adott egyedi nevekkel és jegyzetekkel
+  const custom = (type, id) => (d.characterValues || []).find(v => v.typeId === type && String(v.valueId) === String(id))?.value;
+  const allItems = (d.inventory || []).filter(i => i.definition);
+  const containerName = id => { if (id == null || String(id) === String(d.id)) return ''; const it = allItems.find(i => i.id != null && String(i.id) === String(id)); return it ? (custom(8, it.id) || it.definition.name) : ''; };
+  const inventory = allItems.filter(i => (i.quantity ?? 1) > 0).map(i => ({
+    name: custom(8, i.id) ? `${custom(8, i.id)} (${i.definition.name})` : i.definition.name,
+    qty: i.quantity ?? 1, equipped: !!i.equipped, attuned: !!i.isAttuned, magic: !!i.definition.magic,
+    rarity: i.definition.rarity || '', container: containerName(i.containerEntityId),
+    note: str(custom(9, i.id))
+  }));
+  const currency = {}; for (const k of ['pp', 'gp', 'ep', 'sp', 'cp']) currency[k] = num(d.currencies?.[k], 0);
   const dv = Math.max(0, ...mods.filter(m => m.subType === 'darkvision').map(m => m.value || 0));
   const langs = [...new Set(mods.filter(m => m.type === 'language').map(m => m.friendlySubtypeName))].join(', ');
   // támadások
@@ -1406,9 +1551,11 @@ function convertDDB(raw) {
     speed: (d.race?.weightSpeeds?.normal?.walk || 30) + ' ft.',
     abilities, saves, skills,
     senses: [dv ? `darkvision ${dv} ft.` : '', `passive Perception ${passive}`].filter(Boolean).join(', '),
-    languages: langs, initBonus: dex + sum('bonus', 'initiative'),
+    languages: langs,
+    initBonus: dex + sum('bonus', 'initiative') + (mods.some(m => m.type === 'half-proficiency' && m.subType === 'initiative') ? Math.floor(pb / 2) : 0),
     portrait: d.decorations?.avatarUrl || d.avatarUrl || '',
-    traits, actions, bonusActions, reactions
+    traits, actions, bonusActions, reactions,
+    skillMods, passiveBonus, tools, inventory, currency, importedAt: new Date().toISOString().slice(0, 10)
   });
 }
 
@@ -1501,6 +1648,9 @@ function openEditor(creature, cb, title = 'Lény szerkesztése') {
       ${f('resist', 'Resistances', 'w2')}${f('immune', 'Immunities', 'w2')}${f('vuln', 'Vulnerabilities', 'w2')}${f('condImmune', 'Condition immunities', 'w2')}
       ${SECTIONS.map(k => `<label class="w4">${SECTION_HU[k]} <span class="hint">– elemenként: „Név. Szöveg”, az elemek között üres sor</span><textarea name="sec_${k}" rows="${k === 'actions' ? 7 : 3}">${esc(sectionToText(c[k]))}</textarea></label>`).join('')}
       <label class="w4">Jegyzet<textarea name="notes" rows="2">${esc(c.notes)}</textarea></label>
+      <label class="w4">Felszerelés <span class="hint">– soronként egy tárgy, pl. „3× Fáklya” vagy „Kötél [Backpack]”${c.importedAt ? '; D&D Beyond-os játékosnál az újraimportálás felülírja' : ''}</span><textarea name="inventory" rows="4">${esc(inventoryToText(c.inventory))}</textarea></label>
+      <div class="w4" style="display:grid;grid-template-columns:repeat(5,1fr) 3fr;gap:8px">${['pp', 'gp', 'ep', 'sp', 'cp'].map(k => `<label>${k}<input type="number" min="0" name="cur_${k}" value="${esc(c.currency[k])}"></label>`).join('')}
+        <label>Eszköz-, hangszer-jártasságok<input name="tools" value="${esc(c.tools)}"></label></div>
     </form>
     <div class="toolbar" style="margin-top:12px"><button class="primary" data-act="edSave">Mentés</button><button data-act="edCancel">Mégse</button></div>`);
   $('#edForm')._base = c;
@@ -1513,6 +1663,9 @@ function readEditor() {
   c.initBonus = v('initBonus').trim() === '' ? null : parseInt(v('initBonus'));
   c.legendaryCount = +v('legendaryCount') || 0;
   c.portrait = v('portrait');
+  c.inventory = textToInventory(v('inventory'), c.inventory);
+  c.currency = {}; ['pp', 'gp', 'ep', 'sp', 'cp'].forEach(k => c.currency[k] = Math.max(0, +v('cur_' + k) || 0));
+  c.tools = v('tools');
   ABIL.forEach(a => c.abilities[a] = +v('ab_' + a) || 10);
   c.saves = {};
   for (const m of v('saves').matchAll(/(str|dex|con|int|wis|cha)\w*\s*([+\-−]?\s*\d+)/gi)) c.saves[m[1].toLowerCase()] = parseInt(m[2].replace(/[−\s]/g, s => s === '−' ? '-' : ''));
@@ -1523,6 +1676,9 @@ function readEditor() {
 // ---------- események ----------
 document.addEventListener('click', async e => {
   const t = e.target;
+  // Csapat nézet: titkos skill-dobás egy játékosnak
+  const sk = t.closest('td.sk');
+  if (sk) { partyRoll([sk.dataset.pc], sk.dataset.sk, e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : ''); return; }
   // dobások
   const r = t.closest('.roll');
   if (r) {
@@ -1584,6 +1740,13 @@ document.addEventListener('click', async e => {
     case 'portraitClear': setPortrait(''); $('#portraitUrl').value = ''; break;
     case 'diffInfo': openDiffInfo(); break;
     case 'openLoot': openLoot(); break;
+    case 'openParty': openParty(); break;
+    case 'partyGroup': partyRoll(partyMembers().map(c => c.id), el.dataset.sk, e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : ''); break;
+    case 'partyEdit': {
+      const pcLib = S.library.find(c => c.id === el.dataset.pc);
+      if (pcLib) openEditor(pcLib, c => { c.id = pcLib.id; upsertLibrary(c); setTimeout(openParty); });
+      break;
+    }
     case 'lootRoll': rollLootUi(); break;
     case 'lootCopy':
       try { await navigator.clipboard.writeText(lootText(lootResult)); el.textContent = '✓ Kimásolva'; }
@@ -1735,6 +1898,7 @@ document.addEventListener('change', e => {
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'libSearch') filterLib();
+  if (t.id === 'partySearch') filterPartyItems(t.value);
   if (t.dataset.f === 'notes') { const x = byId(t.closest('[data-cid]')?.dataset.cid); if (x) { x.notes = t.value; save(); } }
 });
 document.addEventListener('keydown', e => {
