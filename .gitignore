@@ -4,6 +4,9 @@ adatok/
 *.json.bak
 dmscreen-mentes-*.json
 
+# Claude munkajegyzet (kampány- és személyes adat)
+CLAUDE.md
+
 # régi helyi indító (a webes verzió után törölhető)
 server.ps1
 DM Screen inditasa.bat
