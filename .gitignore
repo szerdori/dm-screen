@@ -4,8 +4,8 @@ adatok/
 *.json.bak
 dmscreen-mentes-*.json
 
-# Claude munkajegyzet (kampány- és személyes adat)
-CLAUDE.md
+# Claude privát munkajegyzet (kampány- és személyes adat); a CLAUDE.md nyilvános
+CLAUDE.local.md
 
 # régi helyi indító (a webes verzió után törölhető)
 server.ps1

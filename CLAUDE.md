@@ -1,0 +1,75 @@
+# DM Screen – munkajegyzet Claude-nak
+
+Harckezelő és csapatnyilvántartó webapp D&D 5e mesélőnek. A felhasználó a saját, homebrew kampányát meséli, **PHB 2014 / DMG 2014 szabályok szerint**, gyakran saját ellenfelekkel. Játék közben az egyik monitoron a DM képernyő fut, egy második (a játékosok felé fordított) monitoron a játékos képernyő. Minden felületi szöveg és válasz **magyarul**; a D&D szakkifejezések (AC, HP, Initiative, skillnevek) maradhatnak angolul.
+
+> Kampány- és személyes részletek a git-ignorált `CLAUDE.local.md`-ben vannak (csak a felhasználó gépén). Ebbe a fájlba (`CLAUDE.md`, nyilvános tároló) ilyet ne írj.
+
+## Szabályok (kötelező)
+- **Commit és push csak a felhasználó kifejezett jóváhagyása után**, minden alkalommal külön. Eszköz: `.\feltoltes.ps1 "üzenet"` – előtte magától lefuttatja a teszteket, és hibánál nem tölt fel. Ha a felhasználó azt kéri, hogy „a kibővített esetekkel” futtasd: előbb `.\teszt.ps1 -Online`, siker esetén `.\feltoltes.ps1`.
+- **Ne irányítsd át a kimenetét** (`*>&1`) a `feltoltes.ps1`-nek: a git ártalmatlan figyelmeztetése hibának számít, és megszakad a feltöltés. Helyette `| Select-String -NotMatch '^OK '`.
+- **A GitHub-tároló nyilvános**: kampányadat, személyes adat, e-mail nem kerülhet a kódba vagy a tesztekbe. Valódi D&D Beyond karakter JSON-ját se commitold (tesztekhez szintetikus minta van).
+- **Minden változtatás után**: `.\teszt.ps1` (≈30 mp, láthatatlan Chrome), és **az új funkcióhoz / javításhoz új teszt** a `tests\tests.js`-be. Hibát ideiglenes visszarontással érdemes ellenőrizni, hogy a teszt tényleg elkapja.
+- **Böngészős próbánál a valódi adatokat óvd**: a helyi próbaoldalt `?test=1`-gyel nyisd (ilyenkor nem kapcsolódik a Firebase-hez), és a konzolban előbb `save = () => {}`. Az ideiglenes fájlokat utána töröld.
+- A felhasználó nem fejlesztő: a teendőit lépésről lépésre, kattintásonként írd le (Firebase konzolban a menü neve „Product categories”, nem „Build”).
+
+## Felépítés
+- **Élő app:** https://szerdori.github.io/dm-screen/ (GitHub Pages, `main` ág gyökere). Tároló: https://github.com/szerdori/dm-screen. Asztali ikon: Chrome `--app=` módban nyitja a webes címet (ikon: `favicon.ico`).
+- **Fájlok:** `index.html` (az egész DM app, vanilla JS, nincs build), `player.html` (játékos képernyő), `firebase-config.js` (nyilvános webes konfig, a Házi Naplóéval azonos), `tests/index.html` + `tests/tests.js` (tesztek), `teszt.ps1` / `teszt.cmd` (futtató), `feltoltes.ps1` / `.cmd` (feltöltő), `README.md`.
+- **Adatok:** a **Házi Napló Firebase-projektjében** (`hazi-naplo`) – Google-belépés, a konzolban beállított e-mail-listás szabályok (`match /{document=**}`, tehát a listán szereplő minden fiók hozzáfér; a szűkítést a játékos app 0. fázisa hozza). Gyűjtemények:
+  - `dmscreen/state` – `{enc, settings}`; `settings`: `groupInit`, `rollHp`, `sources`, `lastExport`, `partyIds` (null = minden játékos)
+  - `dmscreen_library/{id}` – lények (szörny / NPC / játékos)
+  - `dmscreen_saved/{id}` – mentett encounterek
+  - `dmscreen_backup/{nap}` + `dmscreen/backups` (tartalomjegyzék) – napi felhős mentések, utolsó 14
+- **Mentés:** `doSave()` csak a megváltozott dokumentumokat írja (`lastSaved` összehasonlítás), plusz másolat `localStorage`-ban. Firestore persistent cache → internet nélkül is megy.
+- **Minden bejövő adat tisztítva van** (`normCreature`, `normCombatant`, `sanitizeState`, `normInventory`): számok számok, `kind` ∈ monster/npc/pc, `side` ∈ enemy/ally, azonosító csak `[A-Za-z0-9_-]`, portré csak `https://` vagy `data:image/`. Kiíráskor minden `esc()`-pel megy. Új mezőnél mindkettőt meg kell csinálni (XSS-tesztek ellenőrzik).
+
+## Funkciók (röviden)
+- **Harc:** csempék initiative-sorrendben, HP-mező (pozitív = sebzés, negatív = gyógyítás), temp HP, állapotok körszámmal, koncentráció-mentő DC, legendás akciók, kattintható dobások (Shift = előny/krit, Ctrl = hátrány; kriptográfiai `rnd()`), csoportos initiative, ellenfél/csapattárs oldal, **nehézség (DMG 2014)** a fejlécben, 🙈 rejtés és álnév a játékos képernyőhöz.
+- **Játékos képernyő** (`player.html`): `BroadcastChannel('dmscreen-player')`, csak `publicView()` adatai mennek át (nincs AC/stat/jegyzet); ellenfeleknél csak állapotcímke: Sértetlen / Sérült / Súlyosan sérült / Haldoklik / Halott.
+- **Import:** 5e.tools (név vagy link, 2014-es források alapból: MM, VGM, MTF, MPMM), D&D Beyond (könyvjelző a karakterlapon → vágólap → beillesztés), saját JSON-sablon, űrlap.
+- **🎁 Loot:** DMG 2014 kincstáblák (egyéni kincs, kincshalom A–I mágikus tárgyakkal), a legyőzöttek felszerelése, összérték és fejenkénti rész.
+- **👥 Csapat** (harcon kívül): tagok kezelése (könyvtárból is, NPC is), passzív értékek, skill-táblázat titkos és csoportos dobással, rendezés oszlop szerint, karakterkártyák (felszerelés tárolók szerint, pénz, eszközök), tárgykereső.
+- **Biztonsági mentés:** napi felhős pillanatkép + visszaállítás (Menü), fejléc-emlékeztető 7 nap után fájlba mentésre.
+
+## Külső adatforrások – buktatók
+- **5e.tools** maga Cloudflare mögött van (szkriptből nem érhető el) → minden a GitHub-tükörből: `https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/` (`bestiary/*.json`, `loot.json`), tokenképek: `.../5etools-img/main/bestiary/tokens/{forrás}/{név}.webp`. Csak a `source: 'DMG'` táblákat használjuk, az XDMG-t (2024) nem.
+- **D&D Beyond** `character-service.dndbeyond.com/character/v5/character/{id}` csak a `dndbeyond.com` originről engedi a CORS-t → ezért a könyvjelző. Privát karakter működése nincs kipróbálva. Hasznos mezők: `modifiers` (proficiency / expertise / half-proficiency / bonus), `inventory` (`containerEntityId`), `currencies`, `characterValues` (typeId 8 = egyedi tárgynév, 9 = tárgyjegyzet), `decorations.avatarUrl`. Élő próbához használható nyilvános karakter: lásd `CLAUDE.local.md`.
+- A Firestore nem enged tömbben tömböt és `undefined` értéket (mentés előtt JSON-körút van).
+
+## Fejlesztői környezet
+- Nincs Node és Python; PowerShell 5.1 + Git (`C:\Program Files\Git\cmd\git.exe`), Chrome és Edge van.
+- PowerShell 5.1 a BOM nélküli UTF-8 `.ps1`-ben az ékezeteket elrontja → ékezetes szkriptet UTF-8 **BOM-mal** ments (vagy maradj ASCII-nál).
+- `teszt.ps1`: saját kis webszerver a 8767-es porton + `chrome --headless --dump-dom`; az app `index.html?test=1`-gyel töltődik iframe-be. Tesztsegédek a `tests.js` elején (`A()`, `W`, `mk()`, `pc()`, `stubRnd()`, `makeFakeDb()`, `assertNoXss()`); a `const`-tal deklarált app-függvényeket a futtató `W.név` alá másolja – új ilyen segédnél add a listához.
+- Böngészős előnézethez a `.claude\launch.json`-ba (git-ignorált) egy statikus szerver kell; a régi PowerShell-szerver (`server.ps1`) már nincs meg.
+
+## Terv: játékos app telefonra (elfogadva 2026-10-19, még nincs elkezdve)
+A játékosok (Google-fiókkal) a telefonjukon kezelik a saját karakterüket (D&D Beyond-szerűen), szintlépés-varázslóval. **Az új app lesz az egyetlen karakterlap.** A D&D Beyond import megmarad (később is kellhet), de nem bővítjük.
+
+**Döntések**
+- **Saját Firebase-projekt** a DM Screennek (kiköltözés a Házi Naplóból) – előfeltétel, mert a mostani `match /{document=**}` szabállyal a játékosok mindent látnának. Új szabályok: DM mindent olvas/ír; játékos a saját karakterét írja; más lapját csak `party` láthatóságnál olvassa.
+- **Láthatóság karakterenként:** `dm` (csak DM) vagy `party` (mindenki). A Firestore csak dokumentumonként jogosít, ezért a részben titkos NPC két dokumentum: nyilvános rész + csak DM-nek látható rész (az appban egy lapnak látszik). Nyilvános rész ≈ a Player screen: név, portré, HP pontosan **vagy** csak állapotcímkével (NPC-nként állítható), AC (NPC-nként be/ki). Csapattárs NPC-nél tipikusan pontos HP + AC, titkosnál csak címke.
+- **Források fixen PHB 2014 / XGE / TCE**, választó nélkül (más forrás ne legyen választható); **tárgyaknál ezek mellett a DMG 2014 is** (mágikus tárgyak). Fajok: PHB + TCE Custom Lineage / Customizing Your Origin – a csapathoz ennyi elég. A 2024-es könyvek (XPHB, XDMG) kizárva.
+- **Homebrew:** saját faj, feat, tárgy, spell, alosztály űrlappal vagy JSON-sablonnal, ugyanabban a formátumban, mint a hivatalos adat.
+- **Szabályadat tárolása:** a DM Screen „Szabálykönyv frissítése” gombja letölti az 5e.tools-tükörből, szűri, **saját formátumra alakítja**, és a (privát) Firebase-be menti néhány <1 MB-os darabban, verziószámmal. A telefon egyszer letölti és helyben tárolja; megnyitáskor csak a verziót ellenőrzi. A nyilvános GitHub-tárolóba szabályszöveg (XGE/TCE stb.) **nem kerülhet**. Méret: szűrve kb. 2–4 MB nyers JSON (osztályok ~2 MB, PHB/XGE/TCE spellek ~0,8 MB, többi szűrve ~1–1,5 MB).
+- **Tárgy-import** az 5e.tools-ról (`items.json`, `items-base.json`, `magicvariants.json`), mint a szörnyeknél.
+- **Karakterlap:** HP / temp HP / halálmentők, AC, abilityk, mentők, skillek (proficiency/expertise), kattintható dobások, spell slotok és spellek, erőforrások short/long resttel, felszerelés és pénz, állapotok, jegyzetek. Élő szinkron a DM képernyővel (mezőnkénti írás, nem teljes dokumentum). Telefonra kitehető, internet nélkül is megy.
+- **Meglévő karakterek felvitele:** a felhasználó leírja őket (pl. „lvl 3 Thief Rogue, …”), Claude megírja a JSON-t az app formátumában, a felhasználó importálja (a JSON a Firebase-be megy, a tárolóba nem). Később a varázslóval 1. szinttől is felléptethető.
+- **Szintlépés:** milestone – a DM a DM Screenből engedélyezi, a játékos telefonján indul a varázsló: osztály (meglévő vagy új, multiclass-feltétel ellenőrzéssel mindkét osztályra) → HP (appbeli dobás / átlag / kézi; CON és bónuszok automatikusan; max HP mindig kézzel felülírható) → az adott szint választásai (alosztály, ASI/feat, Fighting Style, Expertise, Invocation, Metamagic, spellek/cantripek/csere, spellbook, TCE opcionális feature-ök…) → összegzés → mentés. **Szintlépés előtt a teljes lap mentése** előzménybe (visszavonás / visszaállítás korábbi szintre).
+- **Multiclass:** közös spell slot táblázat (full/half/third, Artificer felfelé kerekít), Pact Magic külön, nem halmozódó feature-ök (Extra Attack, Unarmored Defense), szűkebb multiclass-proficiency, új osztály 1. szintjén nincs max HP.
+- **Ami nem automatizálható** (csak szöveges hatás, vagy géppel nem olvasható választás, pl. Land druid tereptípus, Totem, Magical Secrets): ✋ ikon a feature-nél + „Teendők (n)” lista a lap tetején, egyenként kipipálható. Minden számolt érték kézzel felülírható.
+
+**Fázisok** (mindegyik után használható állapot)
+0. Saját Firebase-projekt, játékos-belépés, jogosultsági szabályok, láthatóság.
+1. Telefonos karakterlap + élő szinkron, szabálykönyv-letöltő (Firebase-be), tárgy-import, JSON-import.
+2. Szabálymotor: értékek számítása a rögzített választásokból, kézi felülírás, homebrew.
+3. Szintlépés-varázsló egy osztályra, majd az összesre; mentés szintlépés előtt.
+4. Multiclass, featek, TCE opcionális feature-ök.
+5. (opcionális) Új karakter nulláról.
+
+**Modellajánlás:** alap az Opus 5.5; a szabálymotor adatmodelljének tervezéséhez és a trükkös multiclass-esetekhez Fable 5.1; gépies részekhez (űrlapok, apró UI, tesztbővítés) Sonnet 5.5. Minden fázis új beszélgetésben induljon.
+
+## Nyitott / félretett ügyek (2026-10-19)
+- Firestore-szabály szűkítése – a játékos app 0. fázisa (saját Firebase-projekt) váltja ki.
+- Kilépéskor a helyi másolat törlése – nem kérte.
+- Kampánnyal kapcsolatos függő ügyek: `CLAUDE.local.md`.
+- Feltöltés után a felhasználónak újra kell importálnia a játékosokat a könyvjelzővel, ha az import új mezőt kap.
