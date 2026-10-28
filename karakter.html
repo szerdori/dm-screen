@@ -85,8 +85,10 @@ function card(c, own) {
 function render() {
   $('#who').innerHTML = me ? `${esc(me)}<br><a href="#" data-act="signOut" style="color:var(--muted)">kilépés</a>` : '';
   const byName = (a, b) => (a.kind === 'pc' ? 0 : 1) - (b.kind === 'pc' ? 0 : 1) || a.name.localeCompare(b.name, 'hu');
-  const own = chars.filter(c => c.owner && c.owner === me).sort(byName);
-  const party = chars.filter(c => !(c.owner && c.owner === me) && c.visibility === 'party').sort(byName);
+  // csak játékos karakterek látszanak, NPC nem (a felhasználó kérése)
+  const pcs = chars.filter(c => c.kind === 'pc');
+  const own = pcs.filter(c => c.owner && c.owner === me).sort(byName);
+  const party = pcs.filter(c => !(c.owner && c.owner === me) && c.visibility === 'party').sort(byName);
   $('#main').innerHTML = `
     <h2>Az én karakterem</h2>${own.length ? own.map(c => card(c, true)).join('') : '<p class="muted">Még nincs hozzád rendelt karakter. Szólj a DM-nek, hogy állítsa be a Google-fiókodat a karakterednél.</p>'}
     <h2>A csapat</h2>${party.length ? party.map(c => card(c, false)).join('') : '<p class="muted">Most nem látsz senkit a csapatból.</p>'}`;

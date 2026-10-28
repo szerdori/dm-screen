@@ -72,7 +72,7 @@ A játékosok (Google-fiókkal) a telefonjukon kezelik a saját karakterüket (D
 **Modellajánlás:** alap az Opus 5.5; a szabálymotor adatmodelljének tervezéséhez és a trükkös multiclass-esetekhez Fable 5.1; gépies részekhez (űrlapok, apró UI, tesztbővítés) Sonnet 5.5. Minden fázis új beszélgetésben induljon.
 
 ## Nyitott / félretett ügyek (2026-10-27)
-- **0. fázis élesítése:** a felhasználó létrehozza az új Firebase-projektet (Google-belépés + `szerdori.github.io` engedélyezett domain, Firestore, a `firestore.rules` bemásolása, `access/dms` dokumentum), elküldi a webes konfigot → `firebase-config.js` csere, teszt, feltöltés (jóváhagyással). Előtte Menü → Exportálás a régi appból. Utána: játékosok e-mailjei a szerkesztőben, majd a régi `dmscreen*` gyűjtemények törlése a `hazi-naplo` projektből (a felhasználó végzi a konzolban).
+- **Későbbre (a felhasználó kérésére elhalasztva, 2026-10-28):** a régi `dmscreen`, `dmscreen_library`, `dmscreen_saved`, `dmscreen_backup` gyűjtemények törlése a `hazi-naplo` projektből. A 0. fázis élesben van (új projekt `dm-screen-afc89`, az adatok átköltöztek, ellenőrizve). A törlést a felhasználó végzi a konzolban, kattintásonkénti leírással; előtte érdemes friss fájlmentést kérni.
 - Kilépéskor a helyi másolat törlése – nem kérte.
 - Kampánnyal kapcsolatos függő ügyek: `CLAUDE.local.md`.
 - Feltöltés után a felhasználónak újra kell importálnia a játékosokat a könyvjelzővel, ha az import új mezőt kap.

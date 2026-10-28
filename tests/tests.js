@@ -1450,7 +1450,7 @@ describe('Játékos app: láthatóság és közzététel', () => {
     A(`upsertLibrary(${JSON.stringify(pc('Rella', 4, {id: 'p1', owner: 'masik@x.hu', share: {vis: 'party'}}))}, false)`);
     eq([A('S.library[0].owner'), A('S.library[0].share.vis')], ['masik@x.hu', 'party'], 'a szerkesztő viszont átírja');
   });
-  test('karakter.html: saját karakter és a csapat; rejtett lap nem; adatok tisztítva', () => {
+  test('karakter.html: saját karakter és a csapat; rejtett lap és NPC nem; adatok tisztítva', () => {
     K.KApp.setAuth({status: 'signedIn', email: 'A@x.hu'});
     K.KApp.setChars([
       {id: 'p1', kind: 'pc', owner: 'a@x.hu', visibility: 'dm', name: 'Rella', level: 'Szint 3', ac: 16, hp: {cur: 12, max: 30}},
@@ -1459,7 +1459,7 @@ describe('Játékos app: láthatóság és közzététel', () => {
       {id: 'n2', kind: 'npc', owner: '', visibility: 'dm', name: 'Titkos', hp: null, status: 'hurt'}]);
     const t = K.document.querySelector('main').textContent;
     eq([...K.document.querySelectorAll('.card.own')].map(e => e.dataset.char), ['p1']);
-    has(t, '12 / 30 HP'); has(t, 'csak te és a DM'); has(t, 'Bori'); has(t, 'Súlyosan sérült'); hasNot(t, 'Titkos');
+    has(t, '12 / 30 HP'); has(t, 'csak te és a DM'); has(t, 'Bori'); hasNot(t, 'Kalauz', 'NPC nem látszhat'); hasNot(t, 'Titkos');
     ok(K.document.querySelector('#gate').hidden);
     K.__xss = 0;
     K.KApp.setChars([{id: XQ, kind: XQ, owner: 'a@x.hu', visibility: XQ, name: XSS, level: XSS, portrait: 'javascript:window.__xss=1', ac: XSS, hp: {cur: XQ, max: XSS}, status: XSS}]);
