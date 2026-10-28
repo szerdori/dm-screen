@@ -1441,10 +1441,24 @@ describe('Játékos app: láthatóság és közzététel', () => {
     setVal($('#edForm').elements.kind, 'npc');
     ok($('#edForm').elements.owner.closest('label').hidden); ok(!$('#edForm').elements.shareAc.closest('label').hidden);
   });
-  test('harcbeli szerkesztőben nincs játékos app rész; újraimport / visszamentés megtartja a beállítást', () => {
+  test('harcbeli szerkesztő: ugyanaz a játékos app rész, a könyvtárból töltve, és oda azonnal visszaírva', () => {
+    A(`S.library = [normCreature(${JSON.stringify(pc('Rella', 3, {id: 'p1', owner: 'a@x.hu', share: {vis: 'party'}}))})]`);
+    const [x] = W.addToEncounter(A('S.library[0]'), 1);
+    A('S.library[0].share.vis = "dm"');  // hozzáadás után a könyvtárban változott
+    A(`selected = ${JSON.stringify(x.cid)}`); W.render();
+    click('[data-act="editCombatant"]');
+    const fm = $('#edForm');
+    ok(fm && !$('#shareBox').hidden, 'nincs játékos app rész');
+    eq([fm.elements.owner.value, fm.elements.shareVis.value], ['a@x.hu', 'dm'], 'a könyvtár friss értéke');
+    has($('#shareBox').textContent, 'könyvtárban is azonnal');
+    fm.elements.owner.value = 'b@x.hu'; fm.elements.name.value = 'Rella (sebesült)';
+    click('[data-act="edSave"]');
+    eq([A('S.library[0].owner'), A('S.library[0].name'), A('S.enc.list[0].c.owner')], ['b@x.hu', 'Rella', 'b@x.hu'], 'gazda a könyvtárba, név csak a harcba');
+  });
+  test('újraimport / visszamentés megtartja a játékos app beállítást, a könyvtári szerkesztő átírja', () => {
     A(`S.library = [normCreature(${JSON.stringify(pc('Rella', 3, {id: 'p1', owner: 'a@x.hu', share: {vis: 'dm'}}))})]`);
     W.addToEncounter(A('S.library[0]'), 1);
-    A(`openEditor(S.enc.list[0].c, null, 'harc')`); ok(!$('#shareBox'), 'harcban nem kell'); W.closeModal();
+    A(`openEditor(S.enc.list[0].c, null, 'harc')`); ok(!$('#shareBox'), 'opció nélkül nincs'); W.closeModal();
     A(`upsertLibrary(${JSON.stringify(pc('Rella', 4, {id: 'p1', owner: 'masik@x.hu', share: {vis: 'party'}}))})`);
     eq([A('S.library[0].owner'), A('S.library[0].share.vis'), A('S.library[0].cr')], ['a@x.hu', 'dm', 'Szint 4']);
     A(`upsertLibrary(${JSON.stringify(pc('Rella', 4, {id: 'p1', owner: 'masik@x.hu', share: {vis: 'party'}}))}, false)`);
@@ -1465,6 +1479,11 @@ describe('Játékos app: láthatóság és közzététel', () => {
     K.KApp.setChars([{id: XQ, kind: XQ, owner: 'a@x.hu', visibility: XQ, name: XSS, level: XSS, portrait: 'javascript:window.__xss=1', ac: XSS, hp: {cur: XQ, max: XSS}, status: XSS}]);
     ok(!K.__xss && !K.document.querySelector('main img[onerror], main [onmouseover]'), 'kód futhatna');
     has(K.document.querySelector('main').textContent, '<img');
+  });
+  test('fejléc: 📱 Karakterlap gomb új lapon nyitja a karakter.html-t', () => {
+    const calls = []; const orig = W.open; W.open = (...a) => calls.push(a);
+    try { click('header [data-act="openCharApp"]'); } finally { W.open = orig; }
+    eq(calls, [['karakter.html', '_blank']]);
   });
   test('karakter.html: belépő és „nincs a játékosok között” képernyő', () => {
     K.KApp.setAuth({status: 'signedOut'});

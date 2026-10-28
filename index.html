@@ -167,6 +167,7 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
   <button data-act="openLib">＋ Hozzáadás / Könyvtár</button>
   <button data-act="newCreature">✎ Új lény</button>
   <button data-act="openPlayer" title="Külön ablakban megnyitja a játékosoknak szánt képernyőt – húzd át a másik monitorra, és nyomj F11-et">📺 Játékos képernyő</button>
+  <button data-act="openCharApp" title="Új lapon megnyitja a játékosok telefonos karakterlapját (karakter.html) – ezt a címet küldd el a játékosoknak">📱 Karakterlap</button>
   <span class="grow"></span>
   <button id="backupNag" data-act="exportAll" hidden title="Biztonsági másolat letöltése a gépedre (a felhőtől független)" style="border-color:var(--orange);color:var(--orange)"></button>
   <span id="saveState"></span>
@@ -1714,7 +1715,7 @@ let editCb = null;
 function sectionToText(arr) { return arr.map(e => (e.name ? e.name + '. ' : '') + e.text).join('\n\n'); }
 function textToSection(t) { return t.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean).map(splitEntry); }
 // a játékos app beállításai csak könyvtárbeli lénynél (share: true) látszanak; a típustól függ, mi jelenik meg
-function shareFieldsHtml(c) {
+function shareFieldsHtml(c, note = '') {
   const sh = c.share || {vis: 'dm', hp: 'label', ac: false};
   const opt = (v, l, cur) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`;
   return `<div class="w4 form" id="shareBox" style="border:1px solid var(--line);border-radius:6px;padding:8px">
@@ -1725,6 +1726,7 @@ function shareFieldsHtml(c) {
       <label data-for="npc">AC a játékosoknak<select name="shareAc">${opt('1', 'látszik', sh.ac ? '1' : '0')}${opt('0', 'rejtve', sh.ac ? '1' : '0')}</select></label>
       <p class="hint w4" data-for="pc">A játékos a saját karakterét mindig látja. „Csak a DM” esetén a többi játékos nem látja.</p>
       <p class="hint w4" data-for="npc">„Csak a DM” esetén a játékosok egyáltalán nem látják ezt az NPC-t. A statok, akciók és jegyzetek sosem látszanak.</p>
+      ${note ? `<p class="hint w4">${esc(note)}</p>` : ''}
     </div>`;
 }
 function syncShareBox() {
@@ -1768,7 +1770,7 @@ function openEditor(creature, cb, title = 'Lény szerkesztése', opts = {}) {
       <label class="w4">Felszerelés <span class="hint">– soronként egy tárgy, pl. „3× Fáklya” vagy „Kötél [Backpack]”${c.importedAt ? '; D&D Beyond-os játékosnál az újraimportálás felülírja' : ''}</span><textarea name="inventory" rows="4">${esc(inventoryToText(c.inventory))}</textarea></label>
       <div class="w4" style="display:grid;grid-template-columns:repeat(5,1fr) 3fr;gap:8px">${['pp', 'gp', 'ep', 'sp', 'cp'].map(k => `<label>${k}<input type="number" min="0" name="cur_${k}" value="${esc(c.currency[k])}"></label>`).join('')}
         <label>Eszköz-, hangszer-jártasságok<input name="tools" value="${esc(c.tools)}"></label></div>
-      ${opts.share ? shareFieldsHtml(c) : ''}
+      ${opts.share ? shareFieldsHtml(c, opts.shareNote) : ''}
     </form>
     <div class="toolbar" style="margin-top:12px"><button class="primary" data-act="edSave">Mentés</button><button data-act="edCancel">Mégse</button></div>`);
   $('#edForm')._base = c;
@@ -1861,6 +1863,7 @@ document.addEventListener('click', async e => {
     case 'toggleSide': x.side = sideOf(x) === 'enemy' ? 'ally' : 'enemy'; save(); render(); break;
     case 'toggleHidden': x.hiddenP = !x.hiddenP; save(); render(); break;
     case 'openPlayer': window.open('player.html','dmscreen-player', 'popup,width=1280,height=800'); break;
+    case 'openCharApp': window.open('karakter.html', '_blank'); break;
     case 'portraitUpload': $('#portraitFile').click(); break;
     case 'portraitClear': setPortrait(''); $('#portraitUrl').value = ''; break;
     case 'diffInfo': openDiffInfo(); break;
@@ -1899,12 +1902,17 @@ document.addEventListener('click', async e => {
       x.cond.push({name, rounds: rounds > 0 ? rounds : null});
       save(); render(); break;
     }
-    case 'editCombatant':
-      openEditor(x.c, c => {
+    case 'editCombatant': {
+      // a játékos app beállításai a karakterhez tartoznak, nem a harchoz: a könyvtári lényből jönnek, és oda azonnal vissza is íródnak
+      const lib = S.library.find(l => l.id === x.c.libId);
+      openEditor(lib ? {...x.c, owner: lib.owner, share: lib.share} : x.c, c => {
         const oldMax = x.c.hp.max;
         c.libId = x.c.libId; x.c = c;
         x.hp = x.hp === oldMax ? c.hp.max : Math.min(x.hp, c.hp.max);
-      }, 'Adatlap szerkesztése (csak ebben a harcban)');
+        const l = S.library.find(l => l.id === c.libId);
+        if (l && l.kind === c.kind) Object.assign(l, normCreature({...l, owner: c.owner, share: c.share}));
+      }, 'Adatlap szerkesztése (csak ebben a harcban)', {share: true, shareNote: 'A játékos app beállításai a karakterhez tartoznak: a könyvtárban is azonnal érvényesek.'});
+    }
       break;
     case 'saveToLib': {
       const c = structuredClone(x.c);

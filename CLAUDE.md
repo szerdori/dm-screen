@@ -62,7 +62,7 @@ A játékosok (Google-fiókkal) a telefonjukon kezelik a saját karakterüket (D
 - **Ami nem automatizálható** (csak szöveges hatás, vagy géppel nem olvasható választás, pl. Land druid tereptípus, Totem, Magical Secrets): ✋ ikon a feature-nél + „Teendők (n)” lista a lap tetején, egyenként kipipálható. Minden számolt érték kézzel felülírható.
 
 **Fázisok** (mindegyik után használható állapot)
-0. Saját Firebase-projekt, játékos-belépés, jogosultsági szabályok, láthatóság. *(Kód kész: szerkesztőben „📱 Játékos app” rész – gazda e-mail, láthatóság, NPC-nél HP-mód és AC; `karakter.html` = belépés + saját lap + csapat, élő `onSnapshot`. A karakterlap-adatokat még a DM írja; az 1. fázisban a játékos lesz a gazdája a `characters` dokumentumnak, ekkor a DM-oldali szinkront át kell gondolni, hogy ne írja felül a játékos módosításait.)*
+0. Saját Firebase-projekt, játékos-belépés, jogosultsági szabályok, láthatóság. *(Kész: szerkesztőben „📱 Játékos app” rész – gazda e-mail, láthatóság, NPC-nél HP-mód és AC; a harcbeli szerkesztőben is, ott a könyvtári lényből töltődik és oda azonnal visszaíródik; fejlécben „📱 Karakterlap” link; a karakter.html csak játékos karaktert mutat, NPC-t nem; `karakter.html` = belépés + saját lap + csapat, élő `onSnapshot`. A karakterlap-adatokat még a DM írja; az 1. fázisban a játékos lesz a gazdája a `characters` dokumentumnak, ekkor a DM-oldali szinkront át kell gondolni, hogy ne írja felül a játékos módosításait.)*
 1. Telefonos karakterlap + élő szinkron, szabálykönyv-letöltő (Firebase-be), tárgy-import, JSON-import.
 2. Szabálymotor: értékek számítása a rögzített választásokból, kézi felülírás, homebrew.
 3. Szintlépés-varázsló egy osztályra, majd az összesre; mentés szintlépés előtt.
