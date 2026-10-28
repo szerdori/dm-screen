@@ -195,6 +195,7 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 <div id="gate"><div>Betöltés…</div></div>
 <input type="file" id="fileIn" accept=".json,application/json" hidden>
 
+<script src="sheet.js"></script>
 <script>
 'use strict';
 // ---------- alapok ----------
@@ -264,7 +265,7 @@ const WEAPON_ARMOR_PROF = /^(simple|martial)-weapons$|-armor$|^shields$|^(club|d
 function normInventory(list) {
   return (Array.isArray(list) ? list : []).slice(0, 1000).filter(isObj).map(i => ({
     name: str(i.name), qty: Math.max(0, Math.floor(num(i.qty, 1))), equipped: !!i.equipped, attuned: !!i.attuned,
-    magic: !!i.magic, rarity: str(i.rarity), container: str(i.container), note: str(i.note)
+    magic: !!i.magic, rarity: str(i.rarity), container: str(i.container), note: str(i.note), ref: str(i.ref)
   })).filter(i => i.name);
 }
 function normCreature(c) {
@@ -392,12 +393,159 @@ function syncSharing(ops) {
 }
 const sharingDirty = () => { const now = publicChars(), prev = lastSaved.pub || {};
   return JSON.stringify(playerEmails()) !== lastSaved.players || now.length !== Object.keys(prev).length || now.some(p => prev[p.id] !== stableJson(p)); };
+
+// ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
+// A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
+// Fordítva: amit a DM itt átír (HP a harcban; név, AC, HP, képességek, felszerelés, pénz, gazda a szerkesztőben), az mezőnként
+// visszaíródik a lapra. Hogy melyik oldal változott, azt a „shadow” dönti el: a legutóbb egyeztetett értékek másolata.
+let SHEETS = {}, shadow = {}, cshadow = {}, sheetOps = {set: new Set(), del: new Set()}, sheetUnsub = null, sheetsWarn = '';
+const LINK = {name: 'name', portrait: 'portrait', owner: 'owner', ac: 'ac', hpMax: 'hp.max', hpCur: 'hp.cur', speed: 'speed', abilities: 'abilities', inventory: 'inventory', currency: 'currency'};
+const linkFields = c => ({name: c.name, portrait: c.portrait || '', owner: c.owner || '', ac: c.ac, hpMax: c.hp.max, hpCur: c.hp.cur ?? c.hp.max,
+  speed: c.speed, abilities: c.abilities, inventory: Sheet.normInventory(c.inventory), currency: c.currency});
+const hpShadow = x => JSON.stringify([x.hp, x.temp]);
+function sheetToCreature(s, base) {
+  const H = Sheet;
+  const saves = {}; ABIL.forEach(a => { if (s.saveProf.includes(a)) saves[a] = H.saveBonus(s, a); });
+  const skillMods = {}; for (const k of Object.keys(SKILLS)) skillMods[k] = {b: H.skillBonus(s, k), p: H.skillProfOf(s, k)};
+  const actions = s.attacks.map(a => {
+    const hit = a.hit.trim() ? sgn(parseInt(a.hit.replace('−', '-')) || 0) : '';
+    return {name: a.name, text: [hit ? `Attack: ${hit} to hit.` : '', a.dmg ? `Hit: ${a.dmg}.` : '', a.note].filter(Boolean).join(' ')};
+  });
+  const traits = s.features.map(f => ({name: f.name, text: f.text.slice(0, 600)}));
+  if (s.resources.length) traits.unshift({name: 'Erőforrások', text: s.resources.map(r => `${r.name}: ${r.max - r.used}/${r.max}`).join(', ')});
+  if (s.spells.length) {
+    const dc = H.spellDc(s), by = {};
+    s.spells.forEach(sp => (by[sp.level] = by[sp.level] || []).push(sp.name + (sp.level && !sp.prepared && !sp.always ? ' (nincs felkészítve)' : '')));
+    traits.unshift({name: 'Varázslatok', text: [dc ? `spell save DC ${dc}, ${sgn(H.spellAtk(s))} to hit` : '',
+      ...Object.keys(by).sort((a, b) => a - b).map(l => `${l == 0 ? 'Cantrips' : ordinal(+l) + ' level'}: ${by[l].join(', ')}`)].filter(Boolean).join('\n')});
+  }
+  return normCreature({...base, kind: 'pc', name: s.name, portrait: s.portrait, cr: 'Szint ' + H.level(s),
+    type: [s.race, H.classLabel(s)].filter(Boolean).join(' — '), alignment: s.alignment, ac: s.ac, acNote: s.acNote,
+    hp: {max: s.hp.max, cur: s.hp.cur, formula: ''}, speed: s.speed, abilities: s.abilities, saves, skillMods,
+    skills: Object.keys(SKILLS).filter(k => s.skillProf[k]).map(k => skillLabel(k) + ' ' + sgn(H.skillBonus(s, k))).join(', '),
+    senses: [s.senses, `passive Perception ${H.passive(s, 'perception')}`].filter(Boolean).join(', '),
+    languages: s.profs.languages, tools: s.profs.tools, resist: s.resist, initBonus: H.initiative(s),
+    traits, actions, bonusActions: [], reactions: [], inventory: s.inventory, currency: s.currency,
+    passiveBonus: {perception: 0, investigation: 0, insight: 0}, source: 'Karakterlap'});
+}
+// a lapról a könyvtárba és a harcban lévő példány(ok)ba; a gazdát mindig a DM állítja, az nem jön a lapról
+function applySheet(id) {
+  const s = SHEETS[id], i = S.library.findIndex(c => c.id === id);
+  if (!s || i < 0) return;
+  const lib = sheetToCreature(s, S.library[i]);
+  S.library[i] = lib; shadow[id] = stableJson(linkFields(lib));
+  for (const x of S.enc.list) if (x.c.libId === id) {
+    const c = sheetToCreature(s, x.c); delete c.hp.cur; x.c = c;
+    x.hp = s.hp.cur; x.temp = s.hp.temp; cshadow[x.cid] = hpShadow(x);
+  }
+}
+const setPath = (o, path, v) => { const ks = path.split('.'); ks.slice(0, -1).reduce((a, k) => a[k] = a[k] || {}, o)[ks.at(-1)] = v; };
+// a DM oldali változások visszaírása a lapokra (doSave hívja; internet nélkül is lefut, ilyenkor csak helyben)
+function syncSheets(ops) {
+  const now = new Date().toISOString(), by = authInfo.email || 'DM';
+  for (const id of sheetOps.del) { delete SHEETS[id]; delete shadow[id]; if (DB) ops.push(DB.del('sheets/' + id)); }
+  sheetOps.del.clear();
+  for (const c of S.library) {
+    const s = SHEETS[c.id]; if (!s || c.kind !== 'pc') continue;
+    const patch = {};
+    for (const x of S.enc.list) if (x.c.libId === c.id) {
+      // most került harcba: a lap értékeihez mérjük (a hozzáadáskor onnan kapta a HP-t)
+      const j = hpShadow(x), prev = cshadow[x.cid] ?? JSON.stringify([s.hp.cur, s.hp.temp]);
+      if (prev !== j) { patch['hp.cur'] = Math.min(x.hp, s.hp.max); patch['hp.temp'] = x.temp; c.hp.cur = patch['hp.cur']; }
+      cshadow[x.cid] = j;
+    }
+    const cur = linkFields(c), prev = shadow[c.id] ? JSON.parse(shadow[c.id]) : null;
+    if (prev) for (const k of Object.keys(LINK)) if (stableJson(cur[k]) !== stableJson(prev[k])) patch[LINK[k]] = cur[k];
+    shadow[c.id] = stableJson(cur);
+    if (!Object.keys(patch).length) continue;
+    Object.entries(patch).forEach(([p, v]) => setPath(s, p, structuredClone(v)));
+    SHEETS[c.id] = Sheet.norm({...s, updatedAt: now, updatedBy: by});
+    if (DB && !sheetOps.set.has(c.id)) ops.push(DB.update('sheets/' + c.id, {...JSON.parse(JSON.stringify(patch)), updatedAt: now, updatedBy: by}));
+  }
+  for (const id of sheetOps.set) if (SHEETS[id] && DB) ops.push(DB.set('sheets/' + id, JSON.parse(JSON.stringify({...SHEETS[id], updatedAt: now, updatedBy: by}))));
+  if (DB) sheetOps.set.clear();
+  try { localStorage.setItem('dmscreen-sheets', JSON.stringify(SHEETS)); } catch {}
+}
+// élő figyelés: a teljes sheets gyűjtemény minden változáskor
+function onSheets(docs) {
+  if (saveTimer) { clearTimeout(saveTimer); doSave(); }  // a függő helyi változás előbb kimegy
+  let changed = false;
+  const ids = new Set();
+  for (const d of docs) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(d.id)) continue;
+    ids.add(d.id);
+    const s = Sheet.norm(d);
+    if (SHEETS[d.id] && stableJson(SHEETS[d.id]) === stableJson(s)) continue;
+    SHEETS[d.id] = s; applySheet(d.id); changed = true;
+  }
+  for (const id of Object.keys(SHEETS)) if (!ids.has(id) && !sheetOps.set.has(id)) { delete SHEETS[id]; delete shadow[id]; changed = true; }
+  if (changed) { save(); render(); if ($('#libRows')) filterLib(); }
+}
+function createSheet(id, s) {
+  const lib = S.library.find(c => c.id === id);
+  SHEETS[id] = Sheet.norm({...s, owner: lib?.owner || s.owner});
+  sheetOps.set.add(id); sheetOps.del.delete(id);
+  applySheet(id); save();
+}
+// mentésfájlból / felhős mentésből: a lapok is visszaállnak (ami a mentésben nincs, az törlődik)
+function restoreSheets(list) {
+  if (!Array.isArray(list)) return;
+  const next = {};
+  for (const d of list) if (isObj(d) && /^[A-Za-z0-9_-]{1,64}$/.test(d.id) && S.library.some(c => c.id === d.id)) next[d.id] = Sheet.norm(d);
+  Object.keys(SHEETS).forEach(id => { if (!next[id]) sheetOps.del.add(id); });
+  SHEETS = next; shadow = {}; cshadow = {};
+  Object.keys(next).forEach(id => { sheetOps.set.add(id); applySheet(id); });
+}
+const sheetList = () => Object.entries(SHEETS).map(([id, s]) => ({...s, id}));
+// meglévő (pl. D&D Beyondból importált) játékosból karakterlap: amit a könyvtári adatokból ki lehet olvasni
+function creatureToSheet(c) {
+  const [race, cls] = c.type.includes(' — ') ? c.type.split(' — ') : ['', c.type];
+  const classes = [...String(cls).matchAll(/([A-Za-z][A-Za-z' ]*?)\s+(\d{1,2})(?:\s*\(([^)]*)\))?/g)]
+    .map(m => ({name: m[1].trim(), level: +m[2], subclass: m[3] || ''})).filter(x => Sheet.findClass(x.name));
+  if (!classes.length) classes.push({name: '', level: pcLevel(c) || 1});
+  const skillProf = {}; let jack = false;
+  for (const [k, v] of Object.entries(c.skillMods || {})) { if (v.p >= 1) skillProf[k] = v.p; if (v.p === 0.5) jack = true; }
+  const attacks = [], features = [], spells = [];
+  let ability = '';
+  for (const k of SECTIONS) for (const e of c[k]) {
+    const hit = e.text.match(/([+\-]\d+) to hit/)?.[1];
+    if (k === 'actions' && hit) {
+      const dm = e.text.match(/Hit:\s*(?:\d+\s*\()?\s*(\d+d\d+(?:\s*[+\-]\s*\d+)?)\s*\)?\s*([a-z]+)?/i);
+      attacks.push({name: e.name, hit, dmg: dm ? dm[1].replace(/\s/g, '') + (dm[2] ? ' ' + dm[2] : '') : ''});
+    } else if (e.name === 'Varázslatok') {
+      for (const line of e.text.split('\n')) {
+        const cl = line.match(/^(\w+):\s*spell save DC/); if (cl && !ability) ability = Sheet.CLASSES[Sheet.findClass(cl[1])]?.ab || '';
+        const lv = line.match(/^(Cantrips|(\d)\w*\s+level):\s*(.+)$/);
+        if (lv) lv[3].split(/,\s*/).forEach(n => spells.push({name: n.trim(), level: lv[2] ? +lv[2] : 0, prepared: true}));
+      }
+    } else features.push({name: e.name || SECTION_HU[k], text: e.text});
+  }
+  const sl = Sheet.slotsFor(classes);
+  return Sheet.norm({name: c.name, portrait: c.portrait, owner: c.owner, race: race.trim(), alignment: c.alignment, classes,
+    abilities: c.abilities, saveProf: ABIL.filter(a => c.saves[a] != null && c.saves[a] > mod(c.abilities[a])), skillProf, jack,
+    ac: c.ac, acNote: c.acNote, speed: c.speed, hp: {max: c.hp.max, cur: c.hp.cur ?? c.hp.max, temp: 0},
+    spellcasting: {ability, slots: sl.slots, pact: sl.pact}, spells, attacks, features,
+    inventory: c.inventory, currency: c.currency, profs: {tools: c.tools, languages: c.languages},
+    senses: c.senses.replace(/,?\s*passive Perception \d+/i, '').trim(), resist: c.resist});
+}
+// JSON-import: Claude által megírt vagy letöltött karakterlap; azonos nevű játékosnál rákérdez, hogy annak a lapját cserélje-e
+function importSheet(o) {
+  const s = Sheet.norm(o);
+  let lib = S.library.find(c => c.kind === 'pc' && c.name.trim().toLowerCase() === s.name.toLowerCase());
+  if (lib && !confirm(`Már van „${lib.name}” nevű játékos a könyvtárban. Az ő karakterlapját cseréled le az importáltra?\n(Mégse = új karakterként veszi fel)`)) lib = null;
+  if (!lib) { lib = normCreature({id: uid(), kind: 'pc', name: s.name, owner: s.owner}); S.library.push(lib); }
+  else if (!lib.owner && s.owner) Object.assign(lib, normCreature({...lib, owner: s.owner}));
+  createSheet(lib.id, s);
+  return S.library.find(c => c.id === lib.id);
+}
+
 async function doSave() {
   saveTimer = null;
   ensureIds();
+  const ops = [];
+  syncSheets(ops);
   try { localStorage.setItem('dmscreen', JSON.stringify(S)); } catch {}
   if (!DB) { setSaveState(authInfo.status === 'unconfigured' ? '✓ böngészőben mentve' : ''); return; }
-  const ops = [];
   try {
     const state = JSON.stringify({enc: S.enc, settings: S.settings});
     if (state !== lastSaved.state) { ops.push(DB.set('dmscreen/state', JSON.parse(state))); lastSaved.state = state; }
@@ -421,24 +569,33 @@ function applyLoaded(d) { S = sanitizeState({...S, ...d}); }
 // teljes mentésfájl visszatöltése (Menü → Importálás)
 function importBackup(obj) {
   if (!isObj(obj) || !Array.isArray(obj.library) || !isObj(obj.enc)) throw new Error('Ez nem teljes DM Screen mentés');
-  applyLoaded(obj); selected = null;
+  applyLoaded(obj); restoreSheets(obj.sheets); selected = null;
   save(); render();
 }
 function loadLocal() {
   try { const t = localStorage.getItem('dmscreen'); if (t) applyLoaded(JSON.parse(t)); } catch {}
+  try {
+    const t = localStorage.getItem('dmscreen-sheets'), o = t ? JSON.parse(t) : null;
+    if (isObj(o)) restoreSheets(Object.entries(o).map(([id, s]) => ({...s, id})));
+  } catch {}
 }
 async function loadFromDb() {
-  const [st, lib, saved, pub, players] = await Promise.all([DB.get('dmscreen/state'), DB.list('dmscreen_library'), DB.list('dmscreen_saved'),
-    DB.list('characters'), DB.get('access/players')]);
+  const [st, lib, saved, pub, players, sheets] = await Promise.all([DB.get('dmscreen/state'), DB.list('dmscreen_library'), DB.list('dmscreen_saved'),
+    DB.list('characters'), DB.get('access/players'),
+    // ha a konzolban még a régi szabályok vannak, a lapok nélkül is betölt (a Menü szól)
+    DB.list('sheets').then(l => { sheetsWarn = ''; return l; }, e => { sheetsWarn = e.code || e.message; return []; })]);
   lastSaved = emptySaved();
   pub.forEach(p => lastSaved.pub[p.id] = stableJson(p));
   if (Array.isArray(players?.emails)) lastSaved.players = JSON.stringify(players.emails);
+  SHEETS = {}; shadow = {}; cshadow = {}; sheetOps = {set: new Set(), del: new Set()};
   if (st || lib.length || saved.length) {
     applyLoaded({...(st || {}), library: lib, saved});
     lastSaved.state = JSON.stringify({enc: S.enc, settings: S.settings});
     S.library.forEach(c => lastSaved.lib[c.id] = JSON.stringify(c));
     S.saved.forEach(e => lastSaved.saved[e.id] = JSON.stringify(e));
-    if (sharingDirty()) save();  // pl. az első indításkor még nincs közzétéve semmi a játékosoknak
+    // a telefonon azóta történt változások (HP, felszerelés…) a könyvtárba és a harcba
+    for (const d of sheets) if (/^[A-Za-z0-9_-]{1,64}$/.test(d.id)) { SHEETS[d.id] = Sheet.norm(d); applySheet(d.id); }
+    if (sharingDirty() || S.library.some(c => lastSaved.lib[c.id] !== JSON.stringify(c))) save();  // pl. az első indításkor még nincs közzétéve semmi
   } else {
     // üres a felhő: ha ebben a böngészőben van korábbi adat, azt töltjük fel
     // (így költözik át az adat az új Firebase-projektbe is)
@@ -457,7 +614,7 @@ const hasData = () => S.library.length || S.enc.list.length || S.saved.length;
 async function backupIndex() { const d = await DB.get('dmscreen/backups'); return Array.isArray(d?.items) ? d.items : []; }
 async function addBackup(id, note, idx) {
   idx = idx || await backupIndex();
-  const data = JSON.stringify({library: S.library, saved: S.saved, enc: S.enc, settings: S.settings});
+  const data = JSON.stringify({library: S.library, saved: S.saved, enc: S.enc, settings: S.settings, sheets: sheetList()});
   if (data.length > BACKUP_MAX) { backupWarn = 'A felhős biztonsági mentés kimaradt, mert túl nagy az adat (valószínűleg sok feltöltött portré). Mentsd fájlba rendszeresen!'; return false; }
   await DB.set('dmscreen_backup/' + id, {data});
   idx = [{id, note, createdAt: new Date().toISOString(), library: S.library.length, saved: S.saved.length}, ...idx.filter(b => b.id !== id)]
@@ -480,7 +637,7 @@ async function restoreBackup(id) {
   if (typeof doc?.data !== 'string') throw new Error('a mentés nem található');
   const parsed = JSON.parse(doc.data);
   await addBackup(timeStamp() + '-elotte', 'visszaállítás előtt');  // a mostani állapotot is megőrizzük
-  applyLoaded(parsed); selected = null;
+  applyLoaded(parsed); restoreSheets(parsed.sheets); selected = null;
   save(); render();
 }
 async function openBackups() {
@@ -511,7 +668,10 @@ window.DMApp = {
     if (a.status === 'signedIn') {
       DB = a.db;
       renderGate('Adatok betöltése…');
-      try { await loadFromDb(); renderGate(null); dailyBackup(); }
+      try {
+        await loadFromDb(); renderGate(null); dailyBackup();
+        sheetUnsub?.(); sheetUnsub = sheetsWarn ? null : DB.watch?.('sheets', onSheets, () => {}) || null;
+      }
       catch (e) {
         DB = null;
         renderGate(e.code === 'permission-denied'
@@ -521,7 +681,7 @@ window.DMApp = {
       }
     } else if (a.status === 'unconfigured') { DB = null; loadLocal(); renderGate(null); }
     else if (a.status === 'signedOut') {
-      DB = null;
+      DB = null; sheetUnsub?.(); sheetUnsub = null;
       renderGate(`<b style="font-size:40px;color:var(--accent)">⚔</b><br>Lépj be a Google-fiókoddal, hogy elérd a DM Screen adataidat.<br>
         <button class="primary" data-act="signIn">Belépés Google-fiókkal</button>${a.error ? `<p style="color:var(--red)">${esc(a.error)}</p>` : ''}`);
     }
@@ -627,7 +787,9 @@ function addToEncounter(creature, count = 1) {
     if (S.settings.rollHp && c.hp.formula && c.kind !== 'pc') hp = Math.max(1, roll(c.hp.formula).total);
     if (c.kind !== 'pc') c.hp.max = Math.max(c.hp.max, hp);
     delete c.hp.cur;
-    const x = {cid: uid(), num, c, hp, temp: 0, init: null, cond: [], conc: false, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group};
+    const sheet = c.kind === 'pc' && SHEETS[c.libId];  // telefonos lapnál a lap szerinti HP és temp HP
+    if (sheet) hp = sheet.hp.cur;
+    const x = {cid: uid(), num, c, hp, temp: sheet ? sheet.hp.temp : 0, init: null, cond: [], conc: false, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group};
     S.enc.list.push(x); added.push(x);
   }
   // harc közben hozzáadott ellenfelek azonnal dobnak
@@ -1210,6 +1372,7 @@ function openMenu() {
     <div class="lrow"><span class="nm">Teljes mentés visszatöltése fájlból (felülírja a mostanit)</span><button data-act="importAll">Importálás</button></div>
     ${DB ? `<div class="lrow"><span class="nm">Felhős biztonsági mentések (naponta automatikusan, az utolsó ${BACKUP_KEEP} megmarad) – visszaállítás${backupWarn ? ` <span style="color:var(--orange)">⚠ ${esc(backupWarn)}</span>` : ''}</span><button data-act="openBackups">Megnyitás</button></div>` : ''}
     <div class="lrow"><span class="nm">Kitölthető sablon letöltése saját lényhez</span><button data-act="downloadTemplate">Sablon letöltése</button></div>
+    <div class="lrow"><span class="nm">📖 Szabálykönyv a játékos appnak (varázslatok, tárgyak, featek) – frissítés az 5e.tools-ról${sheetsWarn ? ` <span style="color:var(--orange)">⚠ A telefonos karakterlapok nem olvashatók (${esc(sheetsWarn)}) – a Firebase konzolba be kell másolni a firestore.rules új változatát.</span>` : ''}</span><button data-act="rulebook">Megnyitás</button></div>
   ${DB ? `<div class="lrow"><span class="nm">Belépve: <b>${esc(authInfo.email || '')}</b></span><button data-act="signOut">Kilépés</button></div>` : ''}
   </div>
   <p class="hint">${DB ? 'Az adatok automatikusan mentődnek a felhőbe (Firebase), így bármelyik gépről elérheted őket belépés után. Ha játék közben elmegy az internet, a program tovább működik, és később feltölti a változásokat.' : 'Az adatok csak ebben a böngészőben vannak elmentve.'}</p>`);
@@ -1227,9 +1390,10 @@ function openInitMenu() {
 function openLib(tab) { if (tab) libTab = tab; openModal('<div id="libRoot"></div>'); renderLib(); }
 function renderLib() {
   const root = $('#libRoot'); if (!root) return;
-  const tabs = [['lib', '📚 Könyvtár'], ['five', '🐉 5e.tools'], ['ddb', '🧝 D&D Beyond'], ['json', '{ } JSON / Sablon'], ['enc', '⚔ Mentett encounterek']];
+  const tabs = [['lib', '📚 Könyvtár'], ['five', '🐉 5e.tools'], ['ddb', '🧝 D&D Beyond'], ['json', '{ } JSON / Sablon'], ['items', '🗡 Tárgyak'], ['enc', '⚔ Mentett encounterek']];
   let body = '';
   if (libTab === 'lib') body = libTabHtml();
+  if (libTab === 'items') body = itemsTabHtml();
   if (libTab === 'five') body = fiveTabHtml();
   if (libTab === 'ddb') body = ddbTabHtml();
   if (libTab === 'json') body = jsonTabHtml();
@@ -1259,6 +1423,7 @@ function filterLib() {
       <span class="nm"><b>${esc(c.name)}</b><small>${KIND_HU[c.kind]} · ${esc(crLabel(c))} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)} · ${esc(c.source || '')}${c.share ? ` · <span title="Játékos app">📱 ${c.share.vis === 'party' ? 'csapat látja' : 'csak DM'}${c.owner ? ' · ' + esc(c.owner) : ''}</span>` : ''}</small></span>
       <input type="number" min="1" value="1" class="cnt" title="Darabszám">
       <button class="primary" data-act="libAdd">＋ Encounterbe</button>
+      ${c.kind === 'pc' ? `<button class="small ${SHEETS[c.id] ? 'on' : ''}" data-act="libSheet" title="${SHEETS[c.id] ? 'Van telefonos karakterlapja – kattints a megnyitáshoz' : 'Telefonos karakterlap létrehozása a könyvtári adatokból'}">📱</button>` : ''}
       <button class="small ${party.has(c.id) ? 'on' : ''}" data-act="libParty" title="${party.has(c.id) ? 'A csapatban van – kattints a kivételhez' : 'Betétel a csapatba (👥 Csapat nézet)'}">👥</button>
       <button class="small" data-act="libEdit" title="Szerkesztés">✎</button>
       <button class="small" data-act="libExport" title="Letöltés JSON-ként">⬇</button>
@@ -1656,10 +1821,163 @@ function convertDDB(raw) {
   });
 }
 
+// ---------- szabálykönyv a játékos appnak (rules/*) ----------
+// Az 5e.tools-tükörből letölti a PHB / XGE / TCE varázslatait és featjeit, a PHB / DMG / XGE / TCE tárgyait (2024-es könyvek nélkül),
+// saját, tömör formátumra alakítja (sheet.js), és darabolva a privát Firebase-be menti. A nyilvános tárolóba ebből semmi nem kerül.
+const RB_URL = 'https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/';
+const RB_SPELL = ['PHB', 'XGE', 'TCE'], RB_ITEM = ['PHB', 'DMG', 'XGE', 'TCE'], RB_FEAT = ['PHB', 'XGE', 'TCE'];
+let rulebook = null;  // {version, counts, rb}
+const rbFetch = async p => { const r = await fetch(RB_URL + p); if (!r.ok) throw new Error(p + ': HTTP ' + r.status); return r.json(); };
+const rbText = e => { try { return entriesToText(e).replace(/\n{3,}/g, '\n\n').trim(); } catch { return ''; } };
+const compact = o => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== '' && v !== 0 && v !== false && v != null && !(Array.isArray(v) && !v.length)));
+const SCHOOL = {A: 'abjuration', C: 'conjuration', D: 'divination', E: 'enchantment', V: 'evocation', I: 'illusion', N: 'necromancy', T: 'transmutation'};
+const DMG_TYPE = {A: 'acid', B: 'bludgeoning', C: 'cold', F: 'fire', O: 'force', L: 'lightning', N: 'necrotic', P: 'piercing', I: 'poison', Y: 'psychic', R: 'radiant', S: 'slashing', T: 'thunder'};
+const spellTime = t => (t || []).map(x => `${x.number} ${x.unit}${x.number > 1 ? 's' : ''}${x.condition ? ', ' + tagStrip(x.condition) : ''}`).join(' or ');
+function spellRange(r) {
+  if (!r) return '';
+  const d = r.distance || {};
+  const dist = {touch: 'Touch', self: 'Self', sight: 'Sight', unlimited: 'Unlimited'}[d.type] || (d.amount != null ? `${d.amount} ${d.amount === 1 ? String(d.type).replace(/s$/, '').replace('feet', 'foot') : d.type}` : '');
+  if (r.type === 'point') return dist;
+  if (r.type === 'special') return 'Special';
+  return `Self (${d.amount}-${d.type === 'feet' ? 'foot' : String(d.type).replace(/s$/, '')} ${r.type})`;
+}
+const spellComp = c => !c ? '' : [c.v && 'V', c.s && 'S', c.m && 'M' + (c.m === true ? '' : ` (${typeof c.m === 'string' ? c.m : c.m.text || ''})`)].filter(Boolean).join(', ');
+const spellDur = d => (d || []).map(x => x.type === 'instant' ? 'Instantaneous' : x.type === 'permanent' ? 'Until dispelled' : x.type === 'special' ? 'Special'
+  : x.type === 'timed' ? `${x.concentration ? 'Concentration, up to ' : ''}${x.duration.amount} ${x.duration.type}${x.duration.amount > 1 ? 's' : ''}` : '').filter(Boolean).join(' or ');
+function convSpell(sp, lookup) {
+  const cl = lookup?.[sp.source.toLowerCase()]?.[sp.name.toLowerCase()]?.class || {};
+  const classes = [...new Set(Object.entries(cl).filter(([src]) => RB_SPELL.includes(src)).flatMap(([, o]) => Object.keys(o)))].sort();
+  return compact({n: sp.name, s: sp.source, l: sp.level, sc: SCHOOL[sp.school] || '', t: spellTime(sp.time), r: spellRange(sp.range), c: spellComp(sp.components),
+    d: spellDur(sp.duration), k: (sp.duration || []).some(x => x.concentration), ri: !!sp.meta?.ritual, cl: classes,
+    tx: rbText([...(sp.entries || []), ...(sp.entriesHigherLevel || [])])});
+}
+const propOf = p => typeof p === 'string' ? p.split('|')[0] : String(p?.uid || '').split('|')[0];
+function convItem(it, types, props) {
+  const code = String(it.type || '').split('|')[0], magic = !!it.rarity && !['none', 'unknown'].includes(it.rarity);
+  const v = it.value ? (it.value >= 100 ? it.value / 100 + ' gp' : it.value >= 10 ? it.value / 10 + ' sp' : it.value + ' cp') : '';
+  const pack = (it.packContents || []).map(p => typeof p === 'string' ? p.split('|')[0] : (p.quantity > 1 ? p.quantity + '× ' : '') + String(p.item || p.special || '').split('|')[0]).filter(Boolean);
+  return compact({n: it.name, s: it.source, ty: it.wondrous ? 'Wondrous item' : types[code] || (it.weapon ? 'Weapon' : it.armor ? 'Armor' : ''),
+    rar: magic ? it.rarity : '', att: it.reqAttune === true ? 'requires attunement' : typeof it.reqAttune === 'string' ? 'requires attunement ' + tagStrip(it.reqAttune) : '',
+    mag: magic || !!it.wondrous, w: it.weight || 0, v, dmg: it.dmg1 ? `${it.dmg1} ${DMG_TYPE[it.dmgType] || ''}`.trim() : '', d2: it.dmg2 || '',
+    pr: (it.property || []).map(p => props[propOf(p)] || propOf(p)).join(', '), rg: it.range || '', ac: it.ac || 0, str: it.strength || '', st: !!it.stealth,
+    tx: [rbText(it.entries), pack.length ? 'Tartalom: ' + pack.join(', ') : '', it.items ? 'Változatok: ' + it.items.map(x => String(x).split('|')[0]).join(', ') : ''].filter(Boolean).join('\n')});
+}
+function featPre(pre) {
+  return (pre || []).map(o => Object.entries(o).map(([k, v]) =>
+    k === 'ability' ? v.map(a => Object.entries(a).map(([ab, n]) => ab.toUpperCase() + ' ' + n).join(' or ')).join('; ')
+      : k === 'race' ? v.map(r => r.name + (r.subrace ? ` (${r.subrace})` : '')).join(' or ')
+      : /^spellcasting/.test(k) ? 'spellcasting' : k === 'proficiency' ? v.map(p => Object.entries(p).map(([a, b]) => b + ' ' + a).join(', ')).join(' or ')
+      : k === 'level' ? 'level ' + (v.level ?? v) : k === 'other' ? String(v) : k).join(', ')).join(' / ');
+}
+// a featek képességérték-növelése külön mezőben van, nem a leírásban
+const featAbility = ab => (ab || []).map(a => 'Ability Score Increase: ' + (a.choose
+  ? `${(a.choose.from || []).map(x => x.toUpperCase()).join(', ')} +${a.choose.amount || 1} (${a.choose.count || 1} választható)`
+  : Object.entries(a).filter(([k]) => ABIL.includes(k)).map(([k, v]) => `${k.toUpperCase()} +${v}`).join(', ')) + '.').join('\n');
+async function buildRulebook(get = rbFetch) {
+  const [phb, xge, tce, lookup, items, base, variants, feats, conds] = await Promise.all(['spells/spells-phb.json', 'spells/spells-xge.json', 'spells/spells-tce.json',
+    'generated/gendata-spell-source-lookup.json', 'items.json', 'items-base.json', 'magicvariants.json', 'feats.json', 'conditionsdiseases.json'].map(get));
+  const types = Object.fromEntries((base.itemType || []).filter(t => t.source === 'PHB' || t.source === 'DMG').map(t => [t.abbreviation, t.name]));
+  const props = Object.fromEntries((base.itemProperty || []).filter(p => p.source === 'PHB' || p.source === 'DMG').map(p => [p.abbreviation, (p.name || p.entries?.[0]?.name || p.abbreviation).toLowerCase()]));
+  const vars = (variants.magicvariant || []).filter(v => RB_ITEM.includes(v.inherits?.source) && v.edition !== 'one');
+  // az alaptárgyaknál csak azok a jellemzők kellenek, amikre a variánsok feltételei (requires / excludes) hivatkoznak
+  const keys = new Set(vars.flatMap(v => [...(v.requires || []).flatMap(r => Object.keys(r)), ...Object.keys(v.excludes || {})]));
+  const all = items.item || [];
+  const resolve = it => {
+    if (!it._copy) return it;
+    const src = all.find(x => x.name === it._copy.name && x.source === it._copy.source) || (base.baseitem || []).find(x => x.name === it._copy.name && x.source === it._copy.source);
+    const o = {...(src || {}), ...it}; delete o._copy; delete o._mod; return o;
+  };
+  const rb = {
+    spells: [...(phb.spell || []), ...(xge.spell || []), ...(tce.spell || [])].filter(s => RB_SPELL.includes(s.source)).map(s => convSpell(s, lookup)),
+    baseItems: (base.baseitem || []).filter(b => b.source === 'PHB' || b.source === 'DMG').map(b => ({...convItem(b, types, props),
+      m: Object.fromEntries([...keys].filter(k => b[k] != null).map(k => [k, b[k]]).concat([['name', b.name]]))})),
+    items: [...all.filter(i => RB_ITEM.includes(i.source)).map(resolve), ...(items.itemGroup || []).filter(i => RB_ITEM.includes(i.source))].map(i => convItem(i, types, props)),
+    variants: vars.map(v => { const h = v.inherits; return compact({n: v.name.replace(/\s*\(\*\)$/, ''), s: h.source, rar: h.rarity && h.rarity !== 'none' ? h.rarity : '',
+      att: h.reqAttune === true ? 'requires attunement' : typeof h.reqAttune === 'string' ? 'requires attunement ' + tagStrip(h.reqAttune) : '',
+      pre: h.namePrefix || '', suf: h.nameSuffix || '', req: v.requires || [], exc: v.excludes || null,
+      tx: rbText(h.entries).replace(/\{=(\w+)[^}]*\}/g, (m, k) => h[k] ?? '')}); }),
+    feats: (feats.feat || []).filter(f => RB_FEAT.includes(f.source)).map(f => compact({n: f.name, s: f.source, pre: featPre(f.prerequisite),
+      tx: [featAbility(f.ability), rbText(f.entries)].filter(Boolean).join('\n')})),
+    conditions: (conds.condition || []).filter(c => c.source === 'PHB').map(c => ({n: c.name, s: c.source, tx: rbText(c.entries)}))
+  };
+  return rb;
+}
+async function uploadRulebook(rb, step = () => {}) {
+  const chunks = Sheet.splitChunks(rb), old = await DB.get('rules/meta');
+  for (const [i, c] of chunks.entries()) { step(`Feltöltés: ${i + 1} / ${chunks.length}`); await DB.set('rules/' + c.id, {data: c.data}); }
+  for (const id of old?.chunks || []) if (!chunks.some(c => c.id === id)) await DB.del('rules/' + id);
+  // a meta utoljára: a telefonok csak akkor töltik le az újat, ha minden darab fent van
+  const meta = {version: new Date().toISOString(), format: Sheet.RB_FORMAT, chunks: chunks.map(c => c.id), counts: Object.fromEntries(Sheet.RB_KINDS.map(k => [k, rb[k].length]))};
+  await DB.set('rules/meta', meta);
+  return meta;
+}
+// a Tárgyak fülnek: a felhőben lévő példány, ha nincs (vagy nincs belépés), közvetlenül a tükörből
+async function getRulebook() {
+  if (rulebook) return rulebook;
+  let r = null;
+  if (DB) try { r = await Sheet.loadRulebook(DB); } catch {}
+  return (rulebook = r || {version: '', counts: {}, rb: await buildRulebook()});
+}
+const rbCounts = c => `${c.spells || 0} varázslat, ${(c.items || 0) + (c.baseItems || 0)} tárgy + ${c.variants || 0} variáns, ${c.feats || 0} feat`;
+async function openRulebook() {
+  openModal('<h2>📖 Szabálykönyv a játékos appnak</h2><p class="muted">Betöltés…</p>');
+  let meta = null;
+  try { meta = DB ? await DB.get('rules/meta') : null; } catch (e) { meta = {error: e.code || e.message}; }
+  $('#modalBox').innerHTML = `<h2>📖 Szabálykönyv a játékos appnak</h2>
+    <p>A telefonos karakterlap ebből keresi a varázslatokat, tárgyakat és featek leírását. Források: <b>PHB, XGE, TCE</b> (tárgyaknál a <b>DMG 2014</b> is), a 2024-es könyvek nélkül.
+    A frissítés letölti az 5e.tools-tükörből, és a privát felhődbe menti; a játékosok telefonja a következő megnyitáskor egyszer letölti, utána internet nélkül is megvan.</p>
+    ${!DB ? '<p style="color:var(--orange)">Feltöltéshez be kell lépni (felhő nélkül csak a Tárgyak fül tudja közvetlenül használni).</p>'
+      : meta?.error ? `<p style="color:var(--red)">⚠ Nem olvasható a felhőből (${esc(meta.error)}). Ha ez „permission-denied”, a konzolban még a régi szabályok vannak – másold be a firestore.rules új változatát.</p>`
+      : meta ? `<p>Jelenlegi változat: <b>${esc(new Date(meta.version).toLocaleString('hu-HU'))}</b> – ${esc(rbCounts(meta.counts || {}))}.</p>` : '<p class="muted">Még nincs feltöltve.</p>'}
+    <div class="toolbar"><button class="primary" data-act="rbUpdate" ${DB ? '' : 'disabled'}>⟳ Letöltés és feltöltés most</button><span id="rbMsg" class="hint"></span></div>`;
+}
+async function rulebookUpdate() {
+  const msg = t => { const el = $('#rbMsg'); if (el) el.textContent = t; };
+  try {
+    msg('Letöltés az 5e.tools-tükörből…');
+    const rb = await buildRulebook();
+    const meta = await uploadRulebook(rb, msg);
+    rulebook = {version: meta.version, counts: meta.counts, rb};
+    msg('✓ Kész: ' + rbCounts(meta.counts));
+    log('📖 Szabálykönyv frissítve: ' + esc(rbCounts(meta.counts)));
+  } catch (e) { msg('⚠ Nem sikerült: ' + (e.code || e.message)); }
+}
+
+// ---------- tárgyak a szabálykönyvből a játékosok felszereléséhez ----------
+let itemResults = [];
+function itemsTabHtml() {
+  if (!rulebook) {
+    getRulebook().then(() => { if (libTab === 'items') renderLib(); }).catch(e => { const el = $('#itemMsg'); if (el) el.textContent = '⚠ Nem sikerült betölteni a tárgylistát (van internet?): ' + e.message; });
+    return '<p id="itemMsg" class="muted">Tárgylista betöltése…</p>';
+  }
+  const pcs = S.library.filter(c => c.kind === 'pc').sort(byName);
+  return `<p class="hint">Tárgyak a szabálykönyvből (PHB, DMG, XGE, TCE – a +1 fegyverek, Flame Tongue és hasonló variánsok is, minden alaptárgyra). A kiválasztott játékos felszerelésébe kerül; ha van telefonos karakterlapja, oda is azonnal.</p>
+    <div class="toolbar"><input id="itemQ" placeholder="Tárgy neve, pl. bag of holding, +1 longsword…" style="flex:1">
+      <label class="hint">Kinek: <select id="itemTo">${pcs.length ? pcs.map(c => `<option value="${esc(c.id)}">${esc(c.name)}${SHEETS[c.id] ? ' 📱' : ''}</option>`).join('') : '<option value="">(nincs játékos a könyvtárban)</option>'}</select></label></div>
+    <div class="rows" id="itemRows"><p class="muted">Írd be a tárgy nevét (angolul).</p></div>`;
+}
+function filterItems() {
+  const q = $('#itemQ')?.value || '';
+  itemResults = Sheet.search(Sheet.allItems(rulebook.rb), q, 40);
+  $('#itemRows').innerHTML = itemResults.map((it, i) => `<div class="lrow" data-item="${i}"><span class="nm"><b>${esc(it.n)}</b><small>${esc(Sheet.itemLine(it))} · ${esc(it.s)}</small>
+      ${it.tx ? `<details><summary class="hint">leírás</summary><div class="hint" style="white-space:pre-wrap">${esc(it.tx)}</div></details>` : ''}</span>
+      <input type="number" min="1" value="1" class="cnt" title="Darabszám"><button class="primary" data-act="itemAdd">＋ Hozzáadás</button></div>`).join('')
+    || `<p class="muted">${q.trim() ? 'Nincs találat.' : 'Írd be a tárgy nevét (angolul).'}</p>`;
+}
+function addItemTo(pcId, it, qty) {
+  const c = S.library.find(x => x.id === pcId); if (!c) return null;
+  const ref = Sheet.refOf(it), have = c.inventory.find(i => i.ref === ref || i.name === it.n);
+  if (have) have.qty += qty;
+  else c.inventory.push({name: it.n, qty, equipped: false, attuned: false, magic: !!it.mag, rarity: it.rar || '', container: '', note: '', ref});
+  save();
+  return c;
+}
+
 // ---------- JSON / sablon ----------
 function jsonTabHtml() {
-  return `<p>Illessz be JSON-t: a saját sablon szerinti lényt (egyet vagy tömböt), 5e.tools szörny JSON-t vagy D&D Beyond karakter JSON-t – a program felismeri.</p>
+  return `<p>Illessz be JSON-t: a saját sablon szerinti lényt (egyet vagy tömböt), 5e.tools szörny JSON-t, D&D Beyond karakter JSON-t vagy <b>telefonos karakterlapot</b> (karakterlap-sablon) – a program felismeri.</p>
     <div class="toolbar"><button data-act="downloadTemplate">⬇ Sablon letöltése</button><button data-act="showTemplate">Sablon betöltése ide</button><button data-act="importFile">Fájl megnyitása…</button><button data-act="newCreature">✎ Új lény űrlappal</button></div>
+    <div class="toolbar"><button data-act="downloadSheetTemplate">⬇ Karakterlap-sablon letöltése</button><button data-act="showSheetTemplate">Karakterlap-sablon betöltése ide</button></div>
     <textarea id="jsonIn" rows="16" placeholder='{ "name": "...", "ac": 13, "hp": {"max": 22}, ... }'></textarea>
     <div class="toolbar"><button class="primary" data-act="jsonImport">Importálás a könyvtárba</button><span id="jsonMsg" class="hint"></span></div>`;
 }
@@ -1667,13 +1985,14 @@ const is5e = o => o.hp?.average != null || Array.isArray(o.ac) || Array.isArray(
 const isDDB = o => (o.data && Array.isArray(o.data.stats)) || (Array.isArray(o.stats) && o.stats[0]?.id != null);
 async function importAny(obj) {
   const arr = Array.isArray(obj) ? obj : obj.monster || obj.creatures || (obj.library && !obj.enc ? obj.library : null) || [obj];
-  const out = [];
+  const out = [], sheets = [];
   for (const o of arr) {
-    if (isDDB(o)) out.push(convertDDB(o));
+    if (o?.format === Sheet.FORMAT) sheets.push(importSheet(o));
+    else if (isDDB(o)) out.push(convertDDB(o));
     else if (is5e(o)) out.push(convert5e(await resolveCopy(o)));
     else out.push(normCreature({...o, id: uid()}));
   }
-  return out.map(upsertLibrary);
+  return [...sheets, ...out.map(c => upsertLibrary(c))];
 }
 function download(name, obj) {
   const a = document.createElement('a');
@@ -1742,6 +2061,9 @@ function openEditor(creature, cb, title = 'Lény szerkesztése', opts = {}) {
   const f = (k, l, cls = '', type = 'text') => `<label class="${cls}">${l}<input type="${type}" name="${k}" value="${esc(c[k] ?? '')}"></label>`;
   openModal(`<h2>${esc(title)}</h2>
     <form id="edForm" class="form" onsubmit="return false">
+      ${c.kind === 'pc' && SHEETS[c.libId || c.id] ? `<p class="hint w4" style="border:1px solid var(--accent);border-radius:6px;padding:6px 8px">📱 Ennek a karakternek telefonos karakterlapja van, az adatai onnan jönnek.
+        ${c.libId ? 'Az itteni (csak erre a harcra szóló) módosítás a lap következő változásakor felülíródik; a HP-t a harc csempéjén állítsd, az visszaíródik a lapra.'
+          : 'A név, AC, HP, képességértékek, felszerelés, pénz és a gazda módosítása visszaíródik a lapra; a többi (skillek, mentők, akciók, jellemzők) a lapról számolódik, azt a karakterlapon írd át.'}</p>` : ''}
       ${f('name', 'Név', 'w2')}
       <label>Típus<select name="kind">${Object.entries(KIND_HU).map(([k, l]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       ${f('cr', 'CR / szint')}
@@ -1933,8 +2255,29 @@ document.addEventListener('click', async e => {
     // könyvtár
     case 'libAdd': addToEncounter(lib, cnt()); log(`＋ ${cnt()}× ${esc(lib.name)}`); break;
     case 'libEdit': openEditor(lib, c => { c.id = lib.id; upsertLibrary(c, false); setTimeout(() => openLib('lib')); }, undefined, {share: true}); break;
-    case 'libExport': download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', lib); break;
-    case 'libDel': if (confirm(`Törlöd a könyvtárból: ${lib.name}?`)) { S.library = S.library.filter(c => c !== lib); save(); filterLib(); } break;
+    case 'libExport': download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', SHEETS[lib.id] || lib); break;
+    case 'libDel':
+      if (confirm(`Törlöd a könyvtárból: ${lib.name}?${SHEETS[lib.id] ? '\nA telefonos karakterlapja is törlődik (a felhős biztonsági mentésekből visszahozható).' : ''}`)) {
+        if (SHEETS[lib.id]) sheetOps.del.add(lib.id);
+        S.library = S.library.filter(c => c !== lib); save(); filterLib();
+      }
+      break;
+    case 'libSheet':
+      if (SHEETS[lib.id]) window.open('karakter.html#lap/' + lib.id, '_blank');
+      else if (confirm(`Telefonos karakterlapot hozol létre ${lib.name} számára a könyvtári adatokból?\nEzután a lap a játékosé: amit a telefonján átír, az ide is átjön. Az osztályt, spell slotokat érdemes a lapon ellenőrizni.`)) {
+        createSheet(lib.id, creatureToSheet(lib)); filterLib(); log(`📱 ${esc(lib.name)}: karakterlap létrehozva`);
+      }
+      break;
+    case 'rulebook': openRulebook(); break;
+    case 'rbUpdate': el.disabled = true; await rulebookUpdate(); el.disabled = false; break;
+    case 'itemAdd': {
+      const it = itemResults[+el.closest('[data-item]').dataset.item], to = $('#itemTo')?.value;
+      const c = it && to && addItemTo(to, it, cnt());
+      if (c) { el.textContent = '✓ ' + c.name; log(`🗡 ${cnt()}× ${esc(it.n)} → ${esc(c.name)}`); }
+      break;
+    }
+    case 'downloadSheetTemplate': download('karakterlap-sablon.json', Sheet.TEMPLATE); break;
+    case 'showSheetTemplate': $('#jsonIn').value = JSON.stringify(Sheet.TEMPLATE, null, 2); break;
     case 'addAllPcs': {
       const pcs = S.library.filter(c => c.kind === 'pc' && !S.enc.list.some(x => x.c.libId === c.id));
       pcs.forEach(c => addToEncounter(c, 1));
@@ -1991,7 +2334,7 @@ document.addEventListener('click', async e => {
       break;
     case 'exportAll':
       S.settings.lastExport = localDate();
-      download(`dmscreen-mentes-${localDate()}.json`, S);
+      download(`dmscreen-mentes-${localDate()}.json`, {...S, sheets: sheetList()});
       save(); render(); break;
     case 'openBackups': openBackups(); break;
     case 'backupNow':
@@ -2038,6 +2381,7 @@ document.addEventListener('change', e => {
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.id === 'libSearch') filterLib();
+  if (t.id === 'itemQ') filterItems();
   if (t.id === 'partySearch') filterPartyItems(t.value);
   if (t.dataset.f === 'notes') { const x = byId(t.closest('[data-cid]')?.dataset.cid); if (x) { x.notes = t.value; save(); } }
 });
@@ -2088,7 +2432,9 @@ if (!cfg || !cfg.apiKey || location.protocol === 'file:' || new URLSearchParams(
       get: async p => { const s = await F.getDoc(F.doc(fs, p)); return s.exists() ? s.data() : null; },
       list: async p => (await F.getDocs(F.collection(fs, p))).docs.map(d => ({...d.data(), id: d.id})),
       set: (p, d) => F.setDoc(F.doc(fs, p), d),
+      update: (p, d) => F.updateDoc(F.doc(fs, p), d),  // mezőnként (pl. 'hp.cur'), a többi mezőhöz nem nyúl
       del: p => F.deleteDoc(F.doc(fs, p)),
+      watch: (col, cb, err) => F.onSnapshot(F.collection(fs, col), s => cb(s.docs.map(d => ({...d.data(), id: d.id}))), err),
     };
     const provider = new A.GoogleAuthProvider();
     provider.setCustomParameters({prompt: 'select_account'});

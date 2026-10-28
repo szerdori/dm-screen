@@ -36,6 +36,20 @@ service cloud.firestore {
             && request.resource.data.visibility == resource.data.visibility
             && request.resource.data.kind == resource.data.kind);
     }
+    // a teljes telefonos karakterlap: csak a gazdája és a DM látja; a gazdája írhatja, de a gazdát nem változtathatja meg
+    match /sheets/{id} {
+      allow read: if isDM() || (isPlayer() && resource.data.owner == email());
+      allow create, delete: if isDM();
+      allow update: if isDM()
+        || (isPlayer() && resource.data.owner == email() && request.resource.data.owner == resource.data.owner);
+    }
+
+    // szabálykönyv (varázslatok, tárgyak, featek): minden játékos olvassa, csak a DM tölti fel
+    match /rules/{id} {
+      allow read: if isDM() || isPlayer();
+      allow write: if isDM();
+    }
+
     // minden más: tilos (nincs szabály = nincs hozzáférés)
   }
 }

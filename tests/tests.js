@@ -28,7 +28,7 @@ async function until(fn, ms = 4000, what = 'feltétel') {
 let W, P, K, A, appErrors = [];
 const frame = (id, src, w, h) => { const f = document.createElement('iframe'); f.id = id; f.src = src; f.width = w; f.height = h; $frames.appendChild(f); return f; };
 const $frames = document.getElementById('frames');
-try { localStorage.removeItem('dmscreen'); } catch {}
+try { localStorage.removeItem('dmscreen'); localStorage.removeItem('dmscreen-sheets'); } catch {}
 
 const $ = s => W.document.querySelector(s);
 const $$ = s => [...W.document.querySelectorAll(s)];
@@ -51,6 +51,7 @@ function fresh() {
      selected = null; logLines = []; libTab = 'lib'; lastSaved = emptySaved();
      fiveIndex = null; fiveData = {}; fiveResults = []; backupWarn = ''; lootData = null; lootResult = null;
      partySort = {p: {col: null, dir: 1}, s: {col: null, dir: 1}};
+     SHEETS = {}; shadow = {}; cshadow = {}; sheetOps = {set: new Set(), del: new Set()}; sheetUnsub = null; sheetsWarn = ''; rulebook = null; itemResults = [];
      closeModal(); renderGate(null); render();`);
   W.document.getElementById('log').innerHTML = '';
 }
@@ -879,12 +880,20 @@ describe('Online (csak  .\\teszt.ps1 -Online  esetén)', () => {
 // ======================================================================
 // ál-adatbázis a felhős funkciókhoz (a Firestore-adapter felületét utánozza)
 function makeFakeDb(initial = {}) {
-  const store = structuredClone(initial), log = [];
-  return {store, log, db: {
+  const store = structuredClone(initial), log = [], watchers = [];
+  const list = col => Object.entries(store).filter(([k]) => k.startsWith(col + '/')).map(([k, v]) => ({...structuredClone(v), id: k.split('/')[1]}));
+  return {store, log, emit: col => watchers.filter(w => w.col === col).forEach(w => w.cb(list(col))), db: {
     get: async p => store[p] ? structuredClone(store[p]) : null,
-    list: async col => Object.entries(store).filter(([k]) => k.startsWith(col + '/')).map(([k, v]) => ({...structuredClone(v), id: k.split('/')[1]})),
+    list: async col => list(col),
     set: async (p, d) => { JSON.stringify(d); store[p] = structuredClone(d); log.push('set ' + p); },
-    del: async p => { delete store[p]; log.push('del ' + p); }
+    // mezőnkénti írás, mint a Firestore updateDoc: 'hp.cur' = beágyazott mező; a naplóba a mezőnevek kerülnek (updatedAt/By nélkül)
+    update: async (p, d) => {
+      if (!store[p]) throw Object.assign(new Error('nincs ilyen dokumentum'), {code: 'not-found'});
+      for (const [k, v] of Object.entries(d)) { const ks = k.split('.'); ks.slice(0, -1).reduce((a, x) => a[x] = a[x] || {}, store[p])[ks.at(-1)] = structuredClone(v); }
+      log.push('update ' + p + ' ' + Object.keys(d).filter(k => !k.startsWith('updated')).sort().join(','));
+    },
+    del: async p => { delete store[p]; log.push('del ' + p); },
+    watch: (col, cb) => { const w = {col, cb}; watchers.push(w); return () => watchers.splice(watchers.indexOf(w), 1); }
   }};
 }
 
@@ -1275,7 +1284,7 @@ describe('Csapat nézet (harcon kívül)', () => {
   test('tisztítás: hibás felszerelés-, pénz- és skilladatok', () => {
     const c = W.normCreature({inventory: ['szöveg', {name: {x: 1}}, {name: 'Kötél', qty: 'sok', equipped: 'igen'}], currency: {gp: -5, pp: 'x'},
       skillMods: {stealth: {b: '4', p: 7}, hacking: {b: 9, p: 1}}, passiveBonus: {perception: 'x'}, importedAt: '<b>'});
-    eq(c.inventory, [{name: 'Kötél', qty: 1, equipped: true, attuned: false, magic: false, rarity: '', container: '', note: ''}]);
+    eq(c.inventory, [{name: 'Kötél', qty: 1, equipped: true, attuned: false, magic: false, rarity: '', container: '', note: '', ref: ''}]);
     eq([c.currency.gp, c.currency.pp, c.skillMods, c.passiveBonus.perception, c.importedAt], [0, 0, {stealth: {b: 4, p: 0}}, 0, '']);
   });
   test('a felszerelés és a nyelvek nem tudnak kódot befecskendezni', async () => {
@@ -1495,6 +1504,461 @@ describe('Játékos app: láthatóság és közzététel', () => {
 });
 
 // ======================================================================
+// 1. fázis: telefonos karakterlap, szabálykönyv, tárgy-import
+// kitalált, az 5e.tools szerkezetét követő minta (a tesztek internet nélkül futnak)
+const FAKE5E = {
+  'spells/spells-phb.json': {spell: [
+    {name: 'Fireball', source: 'PHB', level: 3, school: 'V', time: [{number: 1, unit: 'action'}], range: {type: 'point', distance: {type: 'feet', amount: 150}},
+      components: {v: true, s: true, m: 'a tiny ball of bat guano'}, duration: [{type: 'instant'}], entries: ['Each creature takes {@damage 8d6} fire damage.'],
+      entriesHigherLevel: [{type: 'entries', name: 'At Higher Levels', entries: ['+1d6 per slot level.']}]},
+    {name: 'Bless', source: 'PHB', level: 1, school: 'E', time: [{number: 1, unit: 'action'}], range: {type: 'point', distance: {type: 'feet', amount: 30}},
+      components: {v: true, s: true, m: {text: 'a sprinkling of holy water'}}, duration: [{type: 'timed', duration: {type: 'minute', amount: 1}, concentration: true}], entries: ['Add a d4.']},
+    {name: 'Burning Hands', source: 'PHB', level: 1, school: 'V', time: [{number: 1, unit: 'action'}], range: {type: 'cone', distance: {type: 'feet', amount: 15}},
+      components: {v: true, s: true}, duration: [{type: 'instant'}], entries: ['{@damage 3d6} fire.']}]},
+  'spells/spells-xge.json': {spell: [{name: 'Toll the Dead', source: 'XGE', level: 0, school: 'N', time: [{number: 1, unit: 'action'}], range: {type: 'point', distance: {type: 'feet', amount: 60}},
+    components: {v: true, s: true}, duration: [{type: 'instant'}], entries: ['{@damage 1d8} necrotic.']}]},
+  'spells/spells-tce.json': {spell: []},
+  'generated/gendata-spell-source-lookup.json': {phb: {fireball: {class: {PHB: {Sorcerer: true, Wizard: true}, XPHB: {Bard: true}}}, 'burning hands': {class: {PHB: {Wizard: true}}}},
+    xge: {'toll the dead': {class: {XGE: {Cleric: true, Warlock: true, Wizard: true}}}}},
+  'items.json': {item: [
+    {name: 'Bag of Holding', source: 'DMG', rarity: 'uncommon', wondrous: true, weight: 15, entries: ['Bigger inside.']},
+    {name: 'Cloak of Protection', source: 'DMG', rarity: 'uncommon', reqAttune: true, wondrous: true, entries: ['+1 AC.']},
+    {name: 'Fancy Bag', source: 'XDMG', rarity: 'rare', entries: ['2024']},
+    {name: 'Copy Sword', source: 'TCE', _copy: {name: 'Longsword', source: 'PHB'}, rarity: 'rare', entries: ['Copied.']},
+    {name: "Explorer's Pack", source: 'PHB', type: 'G', value: 1000, packContents: ['backpack|phb', {item: 'torch|phb', quantity: 10}]}],
+    itemGroup: [{name: 'Absorbing Tattoo', source: 'TCE', rarity: 'very rare', reqAttune: true, entries: ['Tattoo.'], items: ['Acid Absorbing Tattoo|TCE']}]},
+  'items-base.json': {baseitem: [
+    {name: 'Longsword', source: 'PHB', type: 'M', weaponCategory: 'martial', property: ['V'], dmg1: '1d8', dmgType: 'S', dmg2: '1d10', weight: 3, value: 1500, weapon: true, sword: true},
+    {name: 'Net', source: 'PHB', type: 'R', weapon: true, net: true, weight: 3},
+    {name: 'Chain Mail', source: 'PHB', type: 'HA', ac: 16, strength: '13', stealth: true, armor: true, weight: 55, value: 7500},
+    {name: 'Longsword', source: 'XPHB', type: 'M|XPHB', weapon: true}],
+    itemType: [{abbreviation: 'M', source: 'PHB', name: 'Melee Weapon'}, {abbreviation: 'R', source: 'PHB', name: 'Ranged Weapon'}, {abbreviation: 'HA', source: 'PHB', name: 'Heavy Armor'}, {abbreviation: 'G', source: 'PHB', name: 'Adventuring Gear'}],
+    itemProperty: [{abbreviation: 'V', source: 'PHB', entries: [{type: 'entries', name: 'Versatile', entries: ['x']}]}]},
+  'magicvariants.json': {magicvariant: [
+    {name: '+1 Weapon', type: 'GV|DMG', requires: [{weapon: true}], excludes: {net: true}, inherits: {namePrefix: '+1 ', source: 'DMG', rarity: 'uncommon', bonusWeapon: '+1', entries: ['You have a {=bonusWeapon} bonus to attack and damage rolls.']}},
+    {name: '+1 Weapon', type: 'GV|XDMG', requires: [{weapon: true}], inherits: {namePrefix: '+1 ', source: 'XDMG', rarity: 'uncommon', entries: ['2024']}},
+    {name: 'Flame Tongue', type: 'GV|DMG', requires: [{sword: true}], inherits: {nameSuffix: ' of Flame', source: 'DMG', rarity: 'rare', reqAttune: true, entries: ['Fire!']}},
+    {name: 'Armor of Resistance (*)', type: 'GV|DMG', requires: [{armor: true}], inherits: {source: 'DMG', rarity: 'rare', reqAttune: true, entries: ['Resist.']}}]},
+  'feats.json': {feat: [{name: 'Alert', source: 'PHB', entries: ['+5 initiative.']}, {name: 'Elven Accuracy', source: 'XGE', prerequisite: [{race: [{name: 'Elf'}, {name: 'Half-Elf'}]}],
+      ability: [{choose: {from: ['dex', 'int', 'wis', 'cha'], amount: 1}}], entries: ['Accuracy.']},
+    {name: 'Grappler', source: 'PHB', prerequisite: [{ability: [{str: 13}]}], ability: [{str: 1}], entries: ['Grapple.']}, {name: 'Alert', source: 'XPHB', entries: ['2024']}]},
+  'conditionsdiseases.json': {condition: [{name: 'Prone', source: 'PHB', entries: ['On the ground.']}, {name: 'Prone', source: 'XPHB', entries: ['2024']}]}
+};
+const fake5eGet = async p => { if (!FAKE5E[p]) throw new Error('nincs: ' + p); return structuredClone(FAKE5E[p]); };
+const fakeRb = () => W.buildRulebook(fake5eGet);
+const sheetDoc = (extra = {}) => ({...structuredClone(W.Sheet.TEMPLATE), owner: 'a@x.hu', ...extra});
+const emptyState = () => ({'dmscreen/state': {enc: {list: [], round: 1, active: null}, settings: {}}});
+
+describe('Karakterlap: formátum és számolás (sheet.js)', () => {
+  test('tisztítás: alapértékek, határok, gazda, osztálynév és hit die', () => {
+    const H = W.Sheet, s = H.norm({});
+    eq([s.format, s.name, s.classes, s.hp, s.abilities.str, s.speed, s.initBonus], ['dmscreen-karakter', 'Névtelen', [{name: '', subclass: '', level: 1, hitDie: 8}], {max: 1, cur: 1, temp: 0}, 10, '30 ft.', null]);
+    const e = H.norm({name: XSS, owner: 'Rossz', portrait: 'javascript:x', classes: [{name: 'wizard', level: 99}, {name: 'Barbarian', level: '3', hitDie: 7}],
+      abilities: {str: 99, dex: 'x'}, hp: {max: 20, cur: 50, temp: -3}, skillProf: {stealth: 2, arcana: 3, hack: 1}, saveProf: ['dex', 'xxx'],
+      spellcasting: {ability: 'foo', slots: [4, 99], used: [9, 1]}, resources: [{name: 'Ki', max: 3, used: 9, reset: 'x'}], spells: [{name: ''}, {name: 'Shield', level: 12}],
+      conditions: ['Prone', 'Prone', {}], exhaustion: 9, _leiras: 'x'});
+    eq([e.owner, e.portrait, e.name, '_leiras' in e], ['', '', XSS, false]);
+    eq(e.classes, [{name: 'Wizard', subclass: '', level: 20, hitDie: 6}, {name: 'Barbarian', subclass: '', level: 3, hitDie: 12}]);
+    eq([e.abilities.str, e.abilities.dex, e.hp], [30, 10, {max: 20, cur: 20, temp: 0}]);
+    eq([e.skillProf, e.saveProf], [{stealth: 2}, ['dex']]);
+    eq([e.spellcasting.ability, e.spellcasting.slots.slice(0, 2), e.spellcasting.used.slice(0, 2)], ['', [4, 9], [4, 1]]);
+    eq(e.resources, [{name: 'Ki', max: 3, used: 3, reset: 'long'}]);
+    eq(e.spells.map(x => [x.name, x.level]), [['Shield', 9]]);
+    eq([e.conditions, e.exhaustion], [['Prone'], 6]);
+    eq(H.norm({owner: ' A@X.hu '}).owner, 'a@x.hu');
+  });
+  test('számolt értékek: Rogue 3 (sablon) és Bard 5 Jack of All Trades-szel', () => {
+    const H = W.Sheet, s = H.norm(H.TEMPLATE);
+    eq([H.level(s), H.pb(s), H.initiative(s), H.saveBonus(s, 'dex'), H.saveBonus(s, 'str'), H.skillBonus(s, 'stealth'), H.skillBonus(s, 'acrobatics'), H.skillBonus(s, 'athletics'), H.passive(s, 'perception')],
+      [3, 2, 3, 5, -1, 7, 5, -1, 13]);
+    eq([H.classLabel(s), H.hitDice(s), H.spellDc(s)], ['Rogue 3 (Thief)', [{die: 8, max: 3, used: 0}], null]);
+    const b = H.norm({classes: [{name: 'Bard', level: 5}], abilities: {cha: 18, dex: 14}, jack: true});
+    eq([H.pb(b), H.skillBonus(b, 'athletics'), H.initiative(b), H.spellAbility(b), H.spellDc(b), H.spellAtk(b)], [3, 1, 3, 'cha', 15, 7]);
+    eq(H.hitDice(H.norm({classes: [{name: 'Fighter', level: 3}, {name: 'Wizard', level: 2}], hitDiceUsed: {10: 1}})), [{die: 10, max: 3, used: 1}, {die: 6, max: 2, used: 0}]);
+  });
+  test('spell slotok (PHB 2014): egy osztály, multiclass, third caster, Pact Magic', () => {
+    const sl = cls => { const r = W.Sheet.slotsFor(cls); return [r.slots.filter(Boolean), r.pact]; };
+    eq(sl([{name: 'Wizard', level: 5}])[0], [4, 3, 2]);
+    eq([sl([{name: 'Paladin', level: 1}])[0], sl([{name: 'Paladin', level: 2}])[0], sl([{name: 'Paladin', level: 5}])[0], sl([{name: 'Ranger', level: 3}])[0]], [[], [2], [4, 2], [3]]);
+    eq([sl([{name: 'Fighter', subclass: 'Eldritch Knight', level: 3}])[0], sl([{name: 'Fighter', subclass: 'Eldritch Knight', level: 7}])[0], sl([{name: 'Artificer', level: 1}])[0]], [[2], [4, 2], [2]]);
+    eq(sl([{name: 'Wizard', level: 3}, {name: 'Cleric', level: 2}])[0], [4, 3, 2], 'multiclass: összeadva');
+    eq(sl([{name: 'Paladin', level: 3}, {name: 'Sorcerer', level: 3}])[0], [4, 3], 'multiclass: half caster lefelé kerekítve');
+    eq(sl([{name: 'Warlock', level: 5}]), [[], {max: 2, level: 3}]);
+    eq(sl([{name: 'Warlock', level: 11}, {name: 'Sorcerer', level: 1}]), [[2], {max: 3, level: 5}], 'Pact Magic külön');
+    eq(sl([{name: 'Rogue', level: 5}])[0], []);
+  });
+  test('short rest, long rest, sebzés (temp HP először), gyógyítás 0 HP-ról', () => {
+    const H = W.Sheet;
+    const s = H.norm({classes: [{name: 'Fighter', level: 5}], hp: {max: 44, cur: 10, temp: 4}, hitDiceUsed: {10: 4}, exhaustion: 2, deathSaves: {ok: 1, fail: 2},
+      resources: [{name: 'Second Wind', max: 1, used: 1, reset: 'short'}, {name: 'Action Surge', max: 1, used: 1, reset: 'short'}, {name: 'Áldás', max: 2, used: 2, reset: 'long'}, {name: 'Ital', max: 1, used: 1, reset: 'none'}],
+      spellcasting: {slots: [2], used: [2], pact: {level: 1, max: 1, used: 1}}});
+    const sr = H.shortRest(s);
+    eq([sr.resources.map(r => r.used), sr.spellcasting.pact.used, sr.spellcasting.used[0]], [[0, 0, 2, 1], 0, 2]);
+    const lr = H.longRest(s);
+    eq([lr.hp, lr.hitDiceUsed, lr.exhaustion, lr.deathSaves, lr.resources.map(r => r.used), lr.spellcasting.used[0]], [{max: 44, cur: 44, temp: 0}, {10: 2}, 1, {ok: 0, fail: 0}, [0, 0, 0, 1], 0]);
+    eq([H.damage(s, 6).hp, H.damage(s, 3).hp, H.damage(s, 99).hp.cur], [{max: 44, cur: 8, temp: 0}, {max: 44, cur: 10, temp: 1}, 0]);
+    eq(H.heal(H.norm({...s, hp: {max: 44, cur: 0}}), 5), {hp: {max: 44, cur: 5, temp: 0}, deathSaves: {ok: 0, fail: 0}});
+    eq(H.heal(s, 99).hp.cur, 44);
+  });
+});
+
+describe('Szabálykönyv és tárgy-import', () => {
+  test('5e.tools → saját formátum: csak PHB / XGE / TCE (tárgyaknál DMG) 2014, a 2024-es könyvek nélkül', async () => {
+    const rb = await fakeRb();
+    const sp = Object.fromEntries(rb.spells.map(s => [s.n, s]));
+    eq(Object.keys(sp), ['Fireball', 'Bless', 'Burning Hands', 'Toll the Dead']);
+    eq([sp.Fireball.l, sp.Fireball.sc, sp.Fireball.t, sp.Fireball.r, sp.Fireball.c, sp.Fireball.d, sp.Fireball.cl], [3, 'evocation', '1 action', '150 feet', 'V, S, M (a tiny ball of bat guano)', 'Instantaneous', ['Sorcerer', 'Wizard']]);
+    has(sp.Fireball.tx, '8d6 fire'); has(sp.Fireball.tx, '+1d6 per slot');
+    eq([sp.Bless.k, sp.Bless.d, sp.Bless.c, sp['Burning Hands'].r, sp['Toll the Dead'].cl, sp['Toll the Dead'].l], [true, 'Concentration, up to 1 minute', 'V, S, M (a sprinkling of holy water)', 'Self (15-foot cone)', ['Cleric', 'Warlock', 'Wizard'], undefined]);
+    const it = Object.fromEntries(rb.items.map(i => [i.n, i]));
+    eq(Object.keys(it).sort(), ['Absorbing Tattoo', 'Bag of Holding', 'Cloak of Protection', 'Copy Sword', "Explorer's Pack"]);
+    eq([it['Cloak of Protection'].att, it['Bag of Holding'].ty, it['Copy Sword'].dmg, it['Copy Sword'].rar], ['requires attunement', 'Wondrous item', '1d8 slashing', 'rare']);
+    has(it["Explorer's Pack"].tx, 'Tartalom: backpack, 10× torch'); has(it['Absorbing Tattoo'].tx, 'Acid Absorbing Tattoo');
+    eq(rb.baseItems.map(b => b.n), ['Longsword', 'Net', 'Chain Mail']);
+    const ls = rb.baseItems[0];
+    eq([ls.ty, ls.dmg, ls.d2, ls.pr, ls.v, ls.w, ls.m], ['Melee Weapon', '1d8 slashing', '1d10', 'versatile', '15 gp', 3, {weapon: true, sword: true, name: 'Longsword'}]);
+    eq([rb.baseItems[2].ac, rb.baseItems[2].str, rb.baseItems[2].st], [16, '13', true]);
+    eq(rb.variants.map(v => v.n), ['+1 Weapon', 'Flame Tongue', 'Armor of Resistance']);
+    eq(rb.variants[0].tx, 'You have a +1 bonus to attack and damage rolls.');
+    eq(rb.feats.map(f => [f.n, f.pre || '']), [['Alert', ''], ['Elven Accuracy', 'Elf or Half-Elf'], ['Grappler', 'STR 13']]);
+    eq(rb.feats.map(f => f.tx), ['+5 initiative.', 'Ability Score Increase: DEX, INT, WIS, CHA +1 (1 választható).\nAccuracy.', 'Ability Score Increase: STR +1.\nGrapple.'], 'a képességnövelés is a leírásba kerül');
+    eq(rb.conditions, [{n: 'Prone', s: 'PHB', tx: 'On the ground.'}]);
+  });
+  test('variánsok kibontása az alaptárgyakra (feltétel, kizárás, név) és keresés', async () => {
+    const H = W.Sheet, all = H.allItems(await fakeRb()), names = all.map(i => i.n);
+    for (const n of ['+1 Longsword', 'Longsword of Flame', 'Armor of Resistance (Chain Mail)', 'Longsword', 'Bag of Holding']) ok(names.includes(n), 'hiányzik: ' + n);
+    for (const n of ['+1 Net', '+1 Chain Mail', 'Net of Flame', 'Armor of Resistance (Longsword)']) ok(!names.includes(n), 'nem kellene: ' + n);
+    const p1 = all.find(i => i.n === '+1 Longsword');
+    eq([p1.s, p1.rar, p1.dmg, p1.mag], ['DMG', 'uncommon', '1d8 slashing', true]);
+    eq(H.search(all, 'longsw').map(i => i.n), ['Longsword', 'Longsword of Flame', '+1 Longsword']);
+    eq(H.search(all, 'flame long').map(i => i.n), ['Longsword of Flame'], 'több szó, bármilyen sorrendben');
+    eq(H.search(all, ''), []);
+    has(H.itemLine(p1), '1d8 slashing (versatile 1d10)');
+  });
+  test('darabolás 1 MB alá, feltöltés (a meta utoljára, régi darab törölve), telefonos letöltés gyorsítótárral', async () => {
+    const H = W.Sheet, rb = await fakeRb();
+    const chunks = H.splitChunks(rb, 300);
+    ok(chunks.length > H.RB_KINDS.length, 'nem darabolt: ' + chunks.length);
+    ok(chunks.every(c => new TextEncoder().encode(c.data).length < 1500), 'túl nagy darab');
+    const back = H.joinChunks(chunks);
+    for (const k of H.RB_KINDS) eq(back[k], rb[k], k);
+    const f = makeFakeDb({'rules/meta': {chunks: ['old-0']}, 'rules/old-0': {data: '{}'}});
+    W.__fdb = f.db; A('DB = window.__fdb');
+    const meta = await W.uploadRulebook(rb);
+    eq(f.log.at(-1), 'set rules/meta'); ok(f.log.includes('del rules/old-0'));
+    eq([meta.counts.spells, meta.counts.items, meta.counts.variants], [4, 5, 3]);
+    const cache = {}, c = {get: async k => cache[k], set: async (k, v) => { cache[k] = v; }};
+    let gets = 0; const db2 = {get: p => { gets++; return f.db.get(p); }};
+    const r1 = await H.loadRulebook(db2, c);
+    eq([r1.rb.spells.length, gets], [4, 1 + meta.chunks.length]);
+    gets = 0; await H.loadRulebook(db2, c); eq(gets, 1, 'változatlan verziónál csak a metát nézi');
+    const r3 = await H.loadRulebook({get: async () => { throw new Error('offline'); }}, c);
+    ok(r3.offline && r3.rb.items.length === 5, 'internet nélkül a tárolt példány');
+    eq(await H.loadRulebook({get: async () => null}, null), null, 'még nincs feltöltve');
+  });
+  test('Menü → Szabálykönyv: frissítés gomb letölt és feltölt', async () => {
+    const rb = await fakeRb(), f = makeFakeDb(emptyState());
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(300);
+    W.buildRulebook = async () => rb;
+    W.openMenu(); click('[data-act="rulebook"]'); await until(() => $('[data-act="rbUpdate"]'), 2000, 'a szabálykönyv ablak');
+    has($('#modalBox').textContent, 'Még nincs feltöltve');
+    click('[data-act="rbUpdate"]'); await until(() => /Kész/.test($('#rbMsg').textContent), 3000, 'feltöltés');
+    ok(f.store['rules/meta']?.chunks.length >= 6, 'nincs meta');
+    has($('#rbMsg').textContent, '4 varázslat');
+    W.openMenu(); click('[data-act="rulebook"]'); await until(() => /Jelenlegi változat/.test($('#modalBox').textContent), 2000, 'a változat kiírása');
+  });
+  test('Könyvtár → Tárgyak fül: keresés, hozzáadás a kiválasztott játékoshoz (ismételve darabszám)', async () => {
+    W.__rb = {version: '', counts: {}, rb: await fakeRb()}; A('rulebook = window.__rb');
+    A(`S.library = [normCreature(${JSON.stringify(pc('Rella', 3, {id: 'p1'}))}), normCreature(${JSON.stringify(pc('Bori', 2, {id: 'p2'}))})]`);
+    W.openLib('items'); setVal('#itemTo', 'p2'); setVal('#itemQ', 'longsw', 'input');
+    const rows = $$('#itemRows .lrow'), names = rows.map(r => r.querySelector('b').textContent);
+    eq(names, ['Longsword', 'Longsword of Flame', '+1 Longsword']);
+    has(rows[2].textContent, 'uncommon');
+    const btn = rows[2].querySelector('[data-act="itemAdd"]');
+    click(btn); click(btn);
+    eq(A('S.library[1].inventory').map(i => [i.name, i.qty, i.ref, i.magic, i.rarity]), [['+1 Longsword', 2, '+1 Longsword|DMG', true, 'uncommon']]);
+    eq(A('S.library[0].inventory'), []);
+    has(allLog(), '+1 Longsword');
+  });
+  test('szabálykönyv nélkül (nincs felhő) a Tárgyak fül közvetlenül a tükörből tölt', async () => {
+    let called = 0; const rb = await fakeRb(); W.buildRulebook = async () => { called++; return rb; };
+    W.openLib('items');
+    await until(() => $('#itemQ'), 2000, 'a tárgylista');
+    eq(called, 1);
+  });
+});
+
+describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
+  const loadWith = async (extra = {}) => {
+    const f = makeFakeDb({...emptyState(), 'dmscreen_library/p1': pc('Régi név', 1, {id: 'p1', owner: 'a@x.hu', ac: 10, hp: {max: 5}}), 'sheets/p1': sheetDoc(), ...extra});
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(500);
+    return f;
+  };
+  const lib = () => A('S.library[0]');
+  test('betöltéskor a lapról frissül a könyvtár (név, AC, HP, skillek, támadások), a gazda marad', async () => {
+    const f = await loadWith();
+    eq([lib().name, lib().ac, lib().hp.max, lib().cr, lib().owner, lib().source], ['Minta Tolvaj', 14, 24, 'Szint 3', 'a@x.hu', 'Karakterlap']);
+    has(lib().type, 'Lightfoot Halfling — Rogue 3 (Thief)');
+    eq([lib().skillMods.stealth, lib().saves, lib().initBonus], [{b: 7, p: 2}, {dex: 5, int: 3}, 3]);
+    ok(lib().actions.some(a => a.text === 'Attack: +5 to hit. Hit: 1d6+3 piercing. finesse, light'), JSON.stringify(lib().actions));
+    has(lib().senses, 'passive Perception 13');
+    ok(!f.log.some(l => /sheets\//.test(l)), 'betöltéskor nem írhat a lapra: ' + f.log);
+    eq(f.store['characters/p1'].name, 'Minta Tolvaj', 'a csapat a lap szerinti nevet látja');
+  });
+  test('harc: a DM sebzése mezőnként visszaíródik; a telefonos változás átjön, és nem ír vissza', async () => {
+    const f = await loadWith();
+    f.log.splice(0);
+    const [x] = W.addToEncounter(lib(), 1);
+    eq([x.hp, x.temp], [24, 0]);
+    W.damage(x, 5); W.save(); await wait(500);
+    ok(f.log.includes('update sheets/p1 hp.cur,hp.temp'), f.log.join('; '));
+    eq([f.store['sheets/p1'].hp, f.store['sheets/p1'].updatedBy], [{max: 24, cur: 19, temp: 0}, 'dm@x.hu']);
+    eq([lib().hp.cur, f.store['characters/p1'].hp], [19, {cur: 19, max: 24}], 'a könyvtárba és a csapat felé is');
+    f.log.splice(0);
+    f.store['sheets/p1'].hp = {max: 24, cur: 22, temp: 3}; f.store['sheets/p1'].inventory.push({name: 'Rope', qty: 1}); f.store['sheets/p1'].ac = 15;
+    f.emit('sheets'); await wait(500);
+    eq([A('S.enc.list[0].hp'), A('S.enc.list[0].temp'), A('S.enc.list[0].c.ac')], [22, 3, 15]);
+    ok(lib().inventory.some(i => i.name === 'Rope'));
+    ok(!f.log.some(l => /sheets\//.test(l)), 'nem írhat vissza: ' + f.log);
+    ok(f.log.includes('set characters/p1'));
+  });
+  test('harcba vett játékos a lap temp HP-jával indul; a hozzáadás utáni azonnali sebzés is átmegy', async () => {
+    const f = await loadWith({'sheets/p1': sheetDoc({hp: {max: 24, cur: 20, temp: 5}})});
+    f.log.splice(0);
+    const [x] = W.addToEncounter(lib(), 1);
+    eq([x.hp, x.temp], [20, 5]);
+    W.damage(x, 7); W.save(); await wait(500);
+    eq(f.store['sheets/p1'].hp, {max: 24, cur: 18, temp: 0});
+  });
+  test('DM oldali módosítás (tárgy a Tárgyak fülről, gazda, AC a szerkesztőben) mezőnként a lapra kerül', async () => {
+    const f = await loadWith();
+    f.log.splice(0);
+    W.addItemTo('p1', {n: 'Bag of Holding', s: 'DMG', mag: true, rar: 'uncommon'}, 1); await wait(500);
+    ok(f.log.includes('update sheets/p1 inventory'), f.log.join('; '));
+    ok(f.store['sheets/p1'].inventory.some(i => i.name === 'Bag of Holding' && i.ref === 'Bag of Holding|DMG'));
+    f.log.splice(0);
+    A('S.library[0].owner = "b@x.hu"; save()'); await wait(500);
+    ok(f.log.includes('update sheets/p1 owner'), f.log.join('; ')); eq(f.store['sheets/p1'].owner, 'b@x.hu');
+    f.log.splice(0);
+    W.openLib('lib'); click('[data-act="libEdit"]');
+    has($('#edForm').textContent, 'telefonos karakterlapja van');
+    $('#edForm').elements.ac.value = '17'; click('[data-act="edSave"]'); await wait(500);
+    ok(f.log.includes('update sheets/p1 ac'), f.log.join('; ')); eq(f.store['sheets/p1'].ac, 17);
+  });
+  test('karakterlap létrehozása meglévő (D&D Beyond-os) játékosból: osztály, mentők, skillek, támadás, spellek', () => {
+    const c = W.normCreature(pc('Rella', 5, {id: 'p9', owner: 'a@x.hu', type: 'Half-Elf — Bard 5 (College of Lore)', abilities: {dex: 14, cha: 18, con: 12}, saves: {dex: 4, cha: 7},
+      skillMods: {performance: {b: 10, p: 2}, perception: {b: 1, p: 0.5}, stealth: {b: 5, p: 1}}, hp: {max: 38, cur: 30},
+      actions: [{name: 'Rapier', text: 'Melee Weapon Attack: +5 to hit, reach 5 ft. Hit: 1d8+2 piercing damage.'}, {name: 'Dagger', text: 'Melee Weapon Attack: +5 to hit. Hit: 4 (1d4 + 2) piercing damage.'}],
+      traits: [{name: 'Varázslatok', text: 'Bard: spell save DC 15, +7 to hit\nCantrips: Vicious Mockery, Minor Illusion\n1st level: Healing Word'}, {name: 'Song of Rest', text: 'd6'}],
+      senses: 'darkvision 60 ft., passive Perception 11', notes: 'DM titka'}));
+    const s = W.creatureToSheet(c);
+    eq([s.classes, s.race], [[{name: 'Bard', subclass: 'College of Lore', level: 5, hitDie: 8}], 'Half-Elf']);
+    eq([s.saveProf, s.skillProf, s.jack], [['dex', 'cha'], {performance: 2, stealth: 1}, true]);
+    eq(s.attacks.map(a => [a.name, a.hit, a.dmg]), [['Rapier', '+5', '1d8+2 piercing'], ['Dagger', '+5', '1d4+2 piercing']]);
+    eq(s.spells.map(x => [x.name, x.level]), [['Vicious Mockery', 0], ['Minor Illusion', 0], ['Healing Word', 1]]);
+    eq([s.spellcasting.ability, s.spellcasting.slots.slice(0, 4)], ['cha', [4, 3, 2, 0]]);
+    eq([s.hp, s.senses, s.notes], [{max: 38, cur: 30, temp: 0}, 'darkvision 60 ft.', ''], 'a DM jegyzete nem kerül a játékos lapjára');
+    ok(s.features.some(f => f.name === 'Song of Rest'));
+    A(`S.library = [normCreature(${JSON.stringify(c)})]`); W.openLib('lib');
+    click('[data-act="libSheet"]');
+    ok(A('SHEETS.p9'), 'létrejött'); eq([A('S.library[0].owner'), A('SHEETS.p9.owner')], ['a@x.hu', 'a@x.hu']);
+    ok($('[data-act="libSheet"]').classList.contains('on'));
+    const calls = []; const o = W.open; W.open = (...a) => calls.push(a);
+    try { click('[data-act="libSheet"]'); } finally { W.open = o; }
+    eq(calls, [['karakter.html#lap/p9', '_blank']], 'meglévő lapnál megnyitja');
+  });
+  test('JSON-import: karakterlap-sablon → játékos + lap a felhőben; azonos névnél rákérdez', async () => {
+    const f = makeFakeDb(emptyState());
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(300);
+    const [c] = await W.importAny(W.Sheet.TEMPLATE);
+    eq([c.kind, c.name, c.cr], ['pc', 'Minta Tolvaj', 'Szint 3']);
+    await wait(500);
+    const doc = f.store['sheets/' + c.id];
+    ok(doc, 'a lap felkerült'); eq(doc.format, 'dmscreen-karakter'); hasNot(JSON.stringify(doc), '_leiras');
+    let asked = ''; W.confirm = m => { asked = m; return true; };
+    const [c2] = await W.importAny({...W.Sheet.TEMPLATE, hp: {max: 30}});
+    has(asked, 'Minta Tolvaj'); eq([c2.id, A('S.library').length, A(`SHEETS[${JSON.stringify(c.id)}].hp.max`)], [c.id, 1, 30]);
+    W.confirm = () => false;
+    await W.importAny(W.Sheet.TEMPLATE); eq(A('S.library').length, 2, 'Mégse = új karakter');
+    W.openLib('json'); click('[data-act="showSheetTemplate"]'); has($('#jsonIn').value, 'dmscreen-karakter');
+  });
+  test('törlés a lappal együtt; a mentésfájlban és visszatöltéskor a lapok is benne vannak', async () => {
+    const f = await loadWith();
+    let file; W.download = (n, o) => { file = o; };
+    W.openMenu(); click('[data-act="exportAll"]');
+    eq([file.sheets.length, file.sheets[0].id, file.sheets[0].name], [1, 'p1', 'Minta Tolvaj']);
+    f.log.splice(0);
+    W.openLib('lib'); click('[data-act="libDel"]'); await wait(500);
+    ok(f.log.includes('del sheets/p1'), f.log.join('; ')); eq(A('Object.keys(SHEETS)'), []);
+    W.importBackup(JSON.parse(JSON.stringify(file))); await wait(500);
+    ok(A('SHEETS.p1') && f.store['sheets/p1'], 'visszaállt');
+    const bk = Object.entries(f.store).find(([k]) => k.startsWith('dmscreen_backup/'));
+    ok(bk && JSON.parse(bk[1].data).sheets.length === 1, 'a napi felhős mentésben is benne van');
+  });
+  test('régi szabályok (a lapok nem olvashatók): a DM Screen így is betölt, a Menü szól', async () => {
+    const f = makeFakeDb({...emptyState(), 'dmscreen_library/a': mk()});
+    const orig = f.db.list; f.db.list = async c => { if (c === 'sheets') throw Object.assign(new Error('x'), {code: 'permission-denied'}); return orig(c); };
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(300);
+    ok($('#gate').hidden); eq(A('S.library').length, 1);
+    W.openMenu(); has($('#modalBox').textContent, 'firestore.rules');
+  });
+});
+
+describe('Telefonos karakterlap (karakter.html)', () => {
+  const kq = s => K.document.querySelector(s), kqa = s => [...K.document.querySelectorAll(s)];
+  const kclick = el => { if (typeof el === 'string') el = kq(el); ok(el, 'nincs ilyen elem'); el.dispatchEvent(new K.MouseEvent('click', {bubbles: true, cancelable: true})); };
+  const kset = (el, v, evt = 'change') => { if (typeof el === 'string') el = kq(el); ok(el, 'nincs ilyen mező'); if (el.type === 'checkbox') el.checked = v; else el.value = v; el.dispatchEvent(new K.Event(evt, {bubbles: true})); };
+  const ktext = () => kq('main').textContent;
+  let klog;
+  const ORIGK = {};
+  const ktest = (name, fn) => test(name, async () => {
+    for (const k of ['rnd', 'confirm']) ORIGK[k] ??= K[k];
+    klog = []; K.KDB = {update: (id, p) => klog.push(['update', id, p]), pub: (id, p) => klog.push(['pub', id, p])};
+    K.confirm = () => true;
+    try { await fn(); }
+    finally { Object.assign(K, ORIGK); K.KDB = undefined; K.location.hash = ''; K.KApp.setSheets([]); K.KApp.setChars([]); K.KApp.setRulebook(null); K.route(); }
+  });
+  const openSheet = (extra = {}, email = 'a@x.hu', dm = false) => {
+    K.KApp.setAuth({status: 'signedIn', email, dm});
+    K.KApp.setChars([{id: 'p1', kind: 'pc', owner: 'a@x.hu', visibility: 'party', name: 'Minta Tolvaj', ac: 14, hp: {cur: 24, max: 24}}]);
+    K.KApp.setSheets([{...sheetDoc(), id: 'p1', ...extra}]);
+    K.location.hash = '#lap/p1'; K.route();
+  };
+  const lastUpdate = () => klog.filter(l => l[0] === 'update').at(-1)?.[2] || {};
+  ktest('lista → lap: a saját kártya a lapra visz; fejléc, HP, AC, initiative, fülek', () => {
+    K.KApp.setAuth({status: 'signedIn', email: 'a@x.hu'});
+    K.KApp.setChars([{id: 'p1', kind: 'pc', owner: 'a@x.hu', visibility: 'party', name: 'Minta Tolvaj', ac: 14, hp: {cur: 24, max: 24}}]);
+    K.KApp.setSheets([{...sheetDoc(), id: 'p1'}]);
+    eq(kq('.card.own').getAttribute('href'), '#lap/p1');
+    K.location.hash = '#lap/p1'; K.route();
+    const t = ktext();
+    has(t, 'Minta Tolvaj'); has(t, 'Rogue 3 (Thief)'); has(t, '24 / 24 HP'); has(t, 'Initiative'); has(t, 'Shortsword');
+    eq(kqa('nav.tabs button').map(b => b.dataset.tab), ['harc', 'kep', 'var', 'fel', 'jell', 'jegyz', 'adat']);
+    ok(!kq('#rollbar').hidden, 'a dobássáv látszik');
+  });
+  ktest('HP: sebzés, gyógyítás, temp; mezőnként menti, a csapat felé is; 0 HP-n halálmentők', () => {
+    openSheet({hp: {max: 24, cur: 24, temp: 0}});
+    kset('#hpIn', '5', 'input'); kclick('[data-act="hpDmg"]');
+    eq(lastUpdate().hp, {max: 24, cur: 19, temp: 0}); eq(lastUpdate().updatedBy, 'a@x.hu');
+    eq(Object.keys(lastUpdate()).sort(), ['hp', 'updatedAt', 'updatedBy'], 'csak a változott mező');
+    eq(klog.find(l => l[0] === 'pub')[2], {hp: {cur: 19, max: 24}, ac: 14, name: 'Minta Tolvaj', level: 'Szint 3'});
+    kset('#hpIn', '3', 'input'); kclick('[data-act="hpTemp"]'); eq(lastUpdate().hp.temp, 3);
+    kset('#hpIn', '5', 'input'); kclick('[data-act="hpDmg"]'); eq(lastUpdate().hp, {max: 24, cur: 17, temp: 0}, 'a temp HP nyel először');
+    kset('#hpIn', '50', 'input'); kclick('[data-act="hpHeal"]'); eq(lastUpdate().hp.cur, 24);
+    kset('#hpIn', '99', 'input'); kclick('[data-act="hpDmg"]');
+    has(ktext(), 'Halálmentők');
+    K.rnd = () => 12; kclick('[data-act="dsRoll"]'); eq(lastUpdate().deathSaves, {ok: 1, fail: 0});
+    K.rnd = () => 1; kclick('[data-act="dsRoll"]'); eq(lastUpdate().deathSaves, {ok: 1, fail: 2}, 'természetes 1 = két kudarc');
+    K.rnd = () => 20; kclick('[data-act="dsRoll"]'); eq([lastUpdate().hp.cur, lastUpdate().deathSaves], [1, {ok: 0, fail: 0}], 'természetes 20 = 1 HP');
+  });
+  ktest('dobások: skill előnnyel (utána visszaáll normálra), sebzés kritikussal', () => {
+    openSheet();
+    kclick('[data-tab="kep"]');
+    let n = 0; K.rnd = () => [15, 4][n++ % 2];
+    kclick('#rollbar [data-mode="adv"]');
+    const stealth = kqa('.li').find(r => r.textContent.includes('Stealth'));
+    has(stealth.textContent, '◆'); has(stealth.textContent, '+7');
+    kclick(stealth.querySelector('[data-act="d20"]'));
+    eq(kq('#lastRoll b').textContent, '22'); has(kq('#lastRoll').textContent, 'előny');
+    ok(kq('#rollbar [data-mode=""]').classList.contains('on'), 'visszaállt normálra');
+    kclick('[data-tab="harc"]');
+    K.rnd = () => 4; kclick('#rollbar [data-mode="crit"]');
+    kclick(kqa('[data-act="dmg"]').find(b => b.dataset.expr === '1d6+3'));
+    eq(kq('#lastRoll b').textContent, '11', '2×d6 + 3');
+  });
+  ktest('erőforrások és spell slotok pöttyei; short és long rest', () => {
+    openSheet({resources: [{name: 'Ki', max: 3, used: 0, reset: 'short'}], spellcasting: {ability: 'int', slots: [2], used: [0]}});
+    kclick(kq('[data-act="res"][data-j="1"]')); eq(lastUpdate().resources[0].used, 2);
+    kclick(kq('[data-act="res"][data-j="1"]')); eq(lastUpdate().resources[0].used, 1, 'ugyanarra még egyszer: egyel vissza');
+    kclick('[data-act="shortRest"]'); eq(lastUpdate().resources[0].used, 0);
+    kclick('[data-tab="var"]');
+    has(ktext(), 'spell save DC 11');
+    kclick(kq('[data-act="slot"][data-j="0"]')); eq(lastUpdate().spellcasting.used[0], 1);
+    kclick('[data-tab="harc"]'); kclick('[data-act="longRest"]');
+    eq([lastUpdate().spellcasting.used[0], lastUpdate().hp.cur], [0, 24]);
+  });
+  ktest('varázslat a szabálykönyvből (osztálylista szűrő), leírás, felkészítés, saját varázslat', async () => {
+    K.KApp.setRulebook({version: 'v1', rb: await fakeRb()});
+    openSheet({classes: [{name: 'Wizard', level: 5}]});
+    kclick('[data-tab="var"]');
+    kset('#spellQ', 'to', 'input');
+    has(kq('#spellRes').textContent, 'Toll the Dead');
+    kset('#spellQ', 'bless', 'input'); has(kq('#spellRes').textContent, 'Nincs találat az osztályaid listáján', 'Bless nem Wizard-spell');
+    kset('#spellMine', false); has(kq('#spellRes').textContent, 'Bless');
+    kset('#spellQ', 'fireb', 'input'); kclick(kq('#spellRes [data-act="spellAdd"]'));
+    eq(lastUpdate().spells, [{name: 'Fireball', level: 3, prepared: false, always: false, note: '', ref: 'Fireball|PHB'}]);
+    has(ktext(), '3rd level · evocation'); has(ktext(), '8d6 fire');
+    kset(kq('[data-act="prep"]'), true); eq(lastUpdate().spells[0].prepared, true);
+    kset('#spellNew', 'Ködös homály', 'input'); kset('#spellNewL', '2'); kclick('[data-act="spellCustom"]');
+    eq(lastUpdate().spells.map(s => [s.name, s.level]), [['Fireball', 3], ['Ködös homály', 2]]);
+  });
+  ktest('felszerelés: tárgy a szabálykönyvből (variáns is), felszerelve, darabszám, pénz, saját tárgy', async () => {
+    K.KApp.setRulebook({version: 'v1', rb: await fakeRb()});
+    openSheet({inventory: []});
+    kclick('[data-tab="fel"]');
+    kset('#itemQ', '+1 long', 'input'); kclick(kq('#itemRes [data-act="itemAdd"]'));
+    eq(lastUpdate().inventory.map(i => [i.name, i.qty, i.ref, i.magic]), [['+1 Longsword', 1, '+1 Longsword|DMG', true]]);
+    has(ktext(), 'You have a +1 bonus');
+    kset(kq('[data-act="equip"]'), true); eq(lastUpdate().inventory[0].equipped, true);
+    kclick(kq('[data-act="qty"][data-d="1"]')); eq(lastUpdate().inventory[0].qty, 2);
+    kset(kq('[data-coin="gp"]'), '42'); eq(lastUpdate().currency.gp, 42);
+    kset('#itemNew', 'Nagymama medálja', 'input'); kclick('[data-act="itemCustom"]');
+    eq(lastUpdate().inventory.at(-1).name, 'Nagymama medálja');
+  });
+  ktest('alapadatok: osztály átírása, slotok az osztály alapján, mentés; a szint a csapat felé is', () => {
+    openSheet();
+    kclick('[data-tab="adat"]');
+    const fm = kq('#edForm');
+    fm.elements.cl_name_0.value = 'Wizard'; fm.elements.cl_sub_0.value = ''; fm.elements.cl_lvl_0.value = '5'; fm.elements.ab_int.value = '16';
+    kclick('[data-act="slotsAuto"]');
+    eq([kq('#edForm').elements.slot_0.value, kq('#edForm').elements.slot_2.value, kq('#edForm').elements.cl_lvl_0.value], ['4', '2', '5'], 'a beírt értékek megmaradtak');
+    kclick('[data-act="rowAdd"][data-list="attacks"]'); ok(kq('#edForm').elements.at_name_2, 'új támadás sor');
+    kq('#edForm').elements.at_name_2.value = 'Fire Bolt'; kq('#edForm').elements.at_dmg_2.value = '2d10 fire';
+    kclick('[data-act="edSave"]');
+    const u = lastUpdate();
+    eq([u.classes[0].name, u.classes[0].level, u.spellcasting.slots.slice(0, 3), u.abilities.int, u.attacks.at(-1).name], ['Wizard', 5, [4, 3, 2], 16, 'Fire Bolt']);
+    eq(u.hp, {max: 24, cur: 24, temp: 0}, 'a jelenlegi HP nem változik');
+    eq(klog.filter(l => l[0] === 'pub').at(-1)[2].level, 'Szint 5');
+    has(ktext(), 'Wizard 5');
+  });
+  ktest('más lapja csak olvasható; DM-ként minden lap látszik és írható', () => {
+    openSheet({owner: 'b@x.hu'});
+    ok(!kq('#hpIn') && !kq('[data-tab="adat"]'), 'nem szerkeszthető'); has(ktext(), 'csak olvasható');
+  });
+  ktest('DM nézet: minden karakterlap a listában, és írható', () => {
+    K.KApp.setAuth({status: 'signedIn', email: 'dm@x.hu', dm: true});
+    K.KApp.setSheets([{...sheetDoc(), id: 'p1'}, {...sheetDoc({name: 'Bori', owner: 'b@x.hu'}), id: 'p2'}]);
+    has(ktext(), 'Minden karakterlap (DM)'); eq(kqa('a.card').map(a => a.getAttribute('href')).sort(), ['#lap/p1', '#lap/p2']);
+    K.location.hash = '#lap/p2'; K.route();
+    ok(kq('#hpIn'), 'a DM írhatja');
+  });
+  ktest('befecskendezett kód a lapon: egyik fülön sem fut le', async () => {
+    K.KApp.setRulebook({version: 'v1', rb: await fakeRb()});
+    K.__xss = 0;
+    openSheet({name: XSS, race: XSS, portrait: 'javascript:window.__xss=1', classes: [{name: XSS, subclass: XQ, level: XQ}], acNote: XQ, speed: XSS,
+      attacks: [{name: XSS, hit: XQ, dmg: XSS, note: XSS}], resources: [{name: XSS, max: 2}], features: [{name: XSS, text: XSS, src: XQ}],
+      spells: [{name: XSS, level: 1, note: XSS, ref: XQ}], inventory: [{name: XSS, note: XQ, container: XSS, ref: XQ}], conditions: [XSS], notes: XSS,
+      profs: {armor: XSS, tools: XQ}, senses: XSS});
+    for (const t of ['harc', 'kep', 'var', 'fel', 'jell', 'jegyz', 'adat']) {
+      kclick(`[data-tab="${t}"]`);
+      eq(K.document.querySelectorAll('main [onmouseover], main img[src="x"]').length, 0, t + ' fül');
+    }
+    K.location.hash = ''; K.route();
+    eq(K.document.querySelectorAll('main [onmouseover], main img[src="x"]').length, 0, 'lista');
+    ok(!K.__xss, 'lefutott a kód');
+  });
+  ktest('gépelés közben a beérkező változás nem rajzolja újra a lapot (a fókusz elvesztésekor igen)', async () => {
+    openSheet();
+    const inp = kq('#hpIn'); inp.focus(); inp.value = '7';
+    if (K.document.activeElement !== inp) return;  // láthatatlan böngészőben a fókusz nem mindig működik
+    K.KApp.setSheets([{...sheetDoc({hp: {max: 24, cur: 10, temp: 0}}), id: 'p1'}]);
+    eq(kq('#hpIn').value, '7'); hasNot(kq('.hpnum').textContent, '10');
+    inp.blur(); await wait(50);
+    has(kq('.hpnum').textContent, '10');
+  });
+});
+
+// ======================================================================
 describe('Általános', () => {
   test('nem volt JavaScript-hiba az app futása közben', () => eq(appErrors, []));
 });
@@ -1516,7 +1980,8 @@ async function run() {
   await new Promise(r => kF.onload = r);
   K = kF.contentWindow;
   K.addEventListener('error', e => appErrors.push('karakter.html: ' + e.message));
-  for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'loadLoot', 'confirm', 'alert', 'download']) ORIG[k] = W[k];
+  for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'loadLoot', 'confirm', 'alert', 'download', 'buildRulebook']) ORIG[k] = W[k];
+  K.addEventListener('unhandledrejection', e => appErrors.push('karakter.html promise: ' + (e.reason?.message || e.reason)));
   // a „const f = ...” segédfüggvények nem window-tulajdonságok, ezért elérhetővé tesszük őket W.f néven
   for (const k of ['sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp', 'hpStatus', 'playerEmails', 'stableJson', 'sharingDirty']) W[k] = A(k);
   for (const t of TESTS) {
