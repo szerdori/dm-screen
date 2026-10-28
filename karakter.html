@@ -59,6 +59,11 @@ h3.sub2{color:var(--muted);font-weight:600}
 .top button.on{background:var(--accent);color:#1a1405;border-color:var(--accent)}
 .hdbox{margin:0 0 10px;padding:8px 10px}
 .hdbox .row+.row{margin-top:6px}
+.concbar{display:flex;align-items:center;gap:8px;margin:6px 0;padding:6px 10px;border:2px solid var(--blue);border-radius:10px;background:rgba(80,140,255,.12);font-size:14px}
+.fxbar{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px}
+.fxchip{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--green);color:var(--green)}
+.fxchip.neg{border-color:var(--red);color:var(--red)} .fxchip.off{opacity:.5;text-decoration:line-through}
+.chip.fx{border-color:var(--green)}
 button.cast.on{background:var(--accent);color:#1a1405;border-color:var(--accent)}
 .castpick{gap:6px;padding:6px 0 10px}
 .top a{color:var(--muted);text-decoration:none}
@@ -159,7 +164,7 @@ const TABS = [['harc', '⚔ Harc'], ['kep', '🎲 Képességek'], ['var', '✨ V
 
 let me = '', isDM = false, chars = [], sheets = new Map(), sheetErr = '';
 let view = {id: null, tab: 'harc'}, rbInfo = null, rbErr = '', rollMode = '', rolls = [];
-let hdOpen = false, castOpen = null, pendingRender = false, draft = null, openKeys = new Set(), searchQ = {spell: '', item: '', feat: ''}, notesTimer = null;
+let hdOpen = false, castOpen = null, featPick = null, pendingRender = false, draft = null, openKeys = new Set(), searchQ = {spell: '', item: '', feat: ''}, notesTimer = null;
 
 function normChar(d) {
   d = isObj(d) ? d : {};
@@ -230,21 +235,35 @@ function showRoll(r) {
 }
 function setMode(m) { rollMode = m; document.querySelectorAll('#rollbar [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m)); }
 // előny / hátrány / krit: egy dobásra szól, utána visszaáll normálra
-function rollD20(bonus, label) {
-  const a = rnd(20), b = rnd(20), mode = rollMode === 'adv' || rollMode === 'dis' ? rollMode : '';
-  const nat = mode === 'adv' ? Math.max(a, b) : mode === 'dis' ? Math.min(a, b) : a;
-  const r = {label, total: nat + bonus, nat, detail: mode ? `[${a}, ${b}] ${mode === 'adv' ? 'előny' : 'hátrány'} ${sgn(bonus)}` : `[${a}] ${sgn(bonus)}`};
-  if (mode) setMode('');
+// kind: a dobás fajtája ('atk', 'check:dex:stealth', 'save:wis', 'init'); az aktív hatások (állapotok, spellek) ez alapján adnak
+// előnyt / hátrányt / automatikus kudarcot / plusz kockát (pl. Poisoned, Rage, Bless). Az előny és a hátrány kioltja egymást.
+const curFx = kind => { const s = cur(); return s && kind ? H.rollFx(H.effects(s, RB()), kind) : {adv: [], dis: [], fail: [], bonus: []}; };
+function rollD20(bonus, label, kind = '') {
+  const f = curFx(kind), manual = rollMode === 'adv' || rollMode === 'dis' ? rollMode : '';
+  if (manual) setMode('');
+  if (f.fail.length) { const r = {label, total: '✗', detail: 'automatikus kudarc (' + f.fail.join(', ') + ')'}; showRoll(r); return r; }
+  const adv = manual === 'adv' || f.adv.length > 0, dis = manual === 'dis' || f.dis.length > 0, mode = adv && !dis ? 'adv' : dis && !adv ? 'dis' : '';
+  const a = rnd(20), b = rnd(20), nat = mode === 'adv' ? Math.max(a, b) : mode === 'dis' ? Math.min(a, b) : a;
+  const why = [f.adv.length ? 'előny: ' + f.adv.join(', ') : '', f.dis.length ? 'hátrány: ' + f.dis.join(', ') : ''].filter(Boolean).join('; ');
+  let total = nat + bonus, extra = '';
+  for (const x of f.bonus) { const e = rollExpr(x.v); total += e.total; extra += ` ${x.v.startsWith('-') ? '' : '+'}${x.v} ${x.src} ${e.detail}`; }
+  const r = {label, total, nat, detail: (mode || adv || dis ? `[${a}, ${b}] ${mode === 'adv' ? 'előny' : mode === 'dis' ? 'hátrány' : 'normál'}` : `[${a}]`) + ` ${sgn(bonus)}${extra}${why ? ' · ' + why : ''}`};
   showRoll(r); return r;
 }
-function rollDamage(expr, label) {
-  const crit = rollMode === 'crit', r = rollExpr(expr, crit);
+// kind: 'wdmg' (fegyver) vagy 'wdmg:melee' (közelharci) – a fegyversebzést növelő hatások (Rage, Hunter's Mark…) hozzáadódnak
+function rollDamage(expr, label, kind = '') {
+  const crit = rollMode === 'crit', r = rollExpr(expr, crit), s = cur();
   if (crit) setMode('');
-  const out = {label: label + (crit ? ' (krit)' : ''), total: r.total, detail: `${expr}: ${r.detail}`};
+  let total = r.total, detail = `${expr}: ${r.detail}`;
+  if (s && kind.startsWith('wdmg')) for (const x of H.effects(s, RB()).dmg) {
+    if (x.melee && kind !== 'wdmg:melee') continue;
+    const e = rollExpr(x.v, crit && /d/.test(x.v)); total += e.total; detail += ` ${x.v.startsWith('-') ? '' : '+'}${x.v} ${x.src} ${e.detail}`;
+  }
+  const out = {label: label + (crit ? ' (krit)' : ''), total, detail};
   showRoll(out); return out;
 }
-const rollBtn = (bonus, label, text = sgn(bonus)) => `<button class="rb" data-act="d20" data-bonus="${esc(bonus)}" data-label="${esc(label)}">${esc(text)}</button>`;
-const dmgBtn = (expr, label) => `<button class="rb" data-act="dmg" data-expr="${esc(expr)}" data-label="${esc(label)}">${esc(expr)}</button>`;
+const rollBtn = (bonus, label, text = sgn(bonus), kind = '') => `<button class="rb" data-act="d20" data-bonus="${esc(bonus)}" data-label="${esc(label)}" data-kind="${esc(kind)}">${esc(text)}</button>`;
+const dmgBtn = (expr, label, kind = '') => `<button class="rb" data-act="dmg" data-expr="${esc(expr)}" data-label="${esc(label)}" data-kind="${esc(kind)}">${esc(expr)}</button>`;
 // sebzés-szövegből a kocka (pl. „1d8+3 slashing” → 1d8+3)
 const diceOf = t => (String(t).replace(/−/g, '-').match(/\d*d\d+(?:\s*[+-]\s*\d+(?!\s*d))*/i) || [''])[0].replace(/\s/g, '');
 
@@ -272,14 +291,22 @@ function renderSheet(s) {
     <div class="hero">${avatar(s.portrait, s.name)}<div class="main"><div class="name">${esc(s.name)}</div>
       <div class="sub">${esc([s.race, H.classLabel(s) || 'Szint ' + L].filter(Boolean).join(' · '))}</div></div></div>
     <div class="hpline">${hpBar(s.hp, 'slim')}${s.hp.temp ? `<span class="tmp">+${esc(s.hp.temp)} temp</span>` : ''}${s.hp.cur === 0 ? '<span class="tmp" style="color:var(--red)">halálmentők a Harc fül alján</span>' : ''}</div>
+    ${s.concentration ? `<div class="concbar">🧠 Koncentráció: <b>${esc(s.concentration)}</b><span class="grow"></span>${ed ? '<button class="small" data-act="concEnd">Megszakítás</button>' : ''}</div>` : ''}
+    ${fxBar(s)}
     <nav class="tabs">${TABS.map(([k, l]) => `<button class="${view.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</nav>
     ${body}`;
 }
+// az aktív hatások és állapotok egy sorban a lap tetején (a káros pirossal; a DM által kikapcsolt áthúzva)
+function fxBar(s) {
+  const list = [...s.conditions.map(c => ({c, neg: !!H.effectOf(c)?.neg, off: s.effOff.includes(c)})), ...(s.exhaustion ? [{c: 'Exhaustion ' + s.exhaustion, neg: true, off: s.effOff.includes('Exhaustion')}] : [])];
+  return list.length ? `<div class="fxbar">${list.map(x => `<span class="fxchip ${x.neg ? 'neg' : ''} ${x.off ? 'off' : ''}" title="${esc(H.effectOf(x.c)?.text || '')}">${esc(x.c)}</span>`).join('')}</div>` : '';
+}
 function statChips(s) {
+  const e = H.effects(s, RB());
   return `<div class="chips">
-      <div class="chip" title="${esc(s.acNote)}"><b>${esc(s.ac)}</b><small>AC</small></div>
-      <button class="chip" data-act="d20" data-bonus="${H.initiative(s)}" data-label="Initiative"><b>${esc(sgn(H.initiative(s)))}</b><small>Initiative</small></button>
-      <div class="chip"><b>${esc(s.speed.replace(/\s*ft\.?$/, ''))}</b><small>Speed</small></div>
+      <div class="chip ${e.ac !== s.ac ? 'fx' : ''}" title="${esc([s.acNote, e.acParts.length ? `alap ${s.ac} + ${e.acParts.join(', ')}` : ''].filter(Boolean).join(' · '))}"><b>${esc(e.ac)}</b><small>AC${e.ac !== s.ac ? ' ✨' : ''}</small></div>
+      <button class="chip" data-act="d20" data-bonus="${H.initiative(s)}" data-label="Initiative" data-kind="init"><b>${esc(sgn(H.initiative(s)))}</b><small>Initiative</small></button>
+      <div class="chip ${e.speed !== s.speed ? 'fx' : ''}" title="${esc(e.speed !== s.speed ? 'alap: ' + s.speed : '')}"><b>${esc(e.speed.replace(/\s*ft\.?$/, ''))}</b><small>Speed${e.speed !== s.speed ? ' ✨' : ''}</small></div>
       <div class="chip"><b>${esc(sgn(H.pb(s)))}</b><small>Prof. bónusz</small></div>
       <div class="chip"><b>${esc(H.passive(s, 'perception'))}</b><small>Passzív Perc.</small></div>
       ${s.exhaustion ? `<div class="chip" style="border-color:var(--orange)"><b>${esc(s.exhaustion)}</b><small>Exhaustion</small></div>` : ''}
@@ -300,29 +327,36 @@ const pipRow = (n, used, attrs, dis, label) => Array.from({length: n}, (_, j) =>
 function tabHarc(s, ed) {
   const dis = ed ? '' : 'disabled';
   const atk = s.attacks.map(a => `<div class="li"><span class="nm"><b>${esc(a.name)}</b><small>${esc([a.dmg.replace(diceOf(a.dmg), '').trim(), a.note].filter(Boolean).join(' · '))}</small></span>
-    ${a.hit.trim() ? rollBtn(parseInt(a.hit.replace('−', '-')) || 0, a.name + ' – támadás') : ''}${diceOf(a.dmg) ? dmgBtn(diceOf(a.dmg), a.name + ' – sebzés') : ''}</div>`).join('');
+    ${a.hit.trim() ? rollBtn(parseInt(a.hit.replace('−', '-')) || 0, a.name + ' – támadás', undefined, 'atk') : ''}${diceOf(a.dmg) ? dmgBtn(diceOf(a.dmg), a.name + ' – sebzés', /range|ranged|bow\b|crossbow|sling|dart/i.test(a.name + ' ' + a.note) ? 'wdmg' : 'wdmg:melee') : ''}</div>`).join('');
   const sDc = H.spellDc(s);
   const res = s.resources.map((r, i) => `<div class="li"><span class="nm"><b>${esc(r.name)}</b><small>${esc(r.max - r.used)} / ${esc(r.max)} · ${esc(RESET_HU[r.reset])}</small></span>
     <span class="pips">${pipRow(r.max, r.used, `data-act="res" data-i="${i}"`, dis, r.name)}</span></div>`).join('');
+  // állapot / aktív hatás: a gépi hatás leírása; a DM kikapcsolhatja (⚙), ilyenkor csak emlékeztető
+  const offBtn = key => isDM ? `<button class="small" data-act="effToggle" data-key="${esc(key)}" title="Automatikus hatás be / ki (DM)">⚙ ${s.effOff.includes(key) ? 'ki' : 'be'}</button>` : '';
   const conds = s.conditions.map((c, i) => {
-    const t = RB()?.conditions.find(x => x.n.toLowerCase() === c.toLowerCase());
-    return det('cond:' + c, `<b class="grow">${esc(c)}</b>${ed ? `<button class="small" data-act="condRm" data-i="${i}">✕</button>` : ''}`, t ? `<div class="tx">${esc(t.tx)}</div>` : '');
+    const t = RB()?.conditions.find(x => x.n.toLowerCase() === c.toLowerCase()), fx = H.effectOf(c);
+    return det('cond:' + c, `<span class="nm"><b>${esc(c)}</b>${fx ? `<small>${s.effOff.includes(c) ? 'automatikus hatás kikapcsolva (DM)' : '✨ ' + esc(fx.text)}</small>` : ''}</span>${fx ? offBtn(c) : ''}${ed ? `<button class="small" data-act="condRm" data-i="${i}">✕</button>` : ''}`,
+      t ? `<div class="tx">${esc(t.tx)}</div>` : '');
   }).join('');
+  const effNames = Object.keys(H.EFFECTS).filter(n => !H.CONDITIONS.includes(n) && !s.conditions.includes(n));
   return `
     <h3>Támadások</h3><div class="list">${atk || `<p class="hint">Nincs felvett támadás${ed ? ' (Alapadatok fül)' : ''}.</p>`}
-      ${sDc ? `<div class="li"><span class="nm"><b>Varázslat</b><small>spell save DC ${esc(sDc)}</small></span>${rollBtn(H.spellAtk(s), 'Spell attack')}</div>` : ''}</div>
+      ${sDc ? `<div class="li"><span class="nm"><b>Varázslat</b><small>spell save DC ${esc(sDc)}</small></span>${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</div>` : ''}</div>
     ${res ? `<h3>Erőforrások</h3><div class="list">${res}</div>` : ''}
     <h3>Állapotok</h3><div class="list">${conds || '<p class="hint">Nincs.</p>'}</div>
-    ${ed ? `<div class="row" style="margin-top:8px"><select id="condAdd"><option value="">＋ Állapot hozzáadása…</option>${H.CONDITIONS.filter(c => !s.conditions.includes(c)).map(c => `<option>${c}</option>`).join('')}</select>
-      <label class="hint">Exhaustion <select id="exh">${[0, 1, 2, 3, 4, 5, 6].map(n => `<option ${n === s.exhaustion ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>` : ''}
+    ${ed ? `<div class="row" style="margin-top:8px"><select id="condAdd"><option value="">＋ Állapot / hatás hozzáadása…</option>
+      <optgroup label="Aktív hatás (spell, feature)">${effNames.map(c => `<option>${esc(c)}</option>`).join('')}</optgroup>
+      <optgroup label="Állapot">${H.CONDITIONS.filter(c => !s.conditions.includes(c)).map(c => `<option>${c}</option>`).join('')}</optgroup></select>
+      <label class="hint">Exhaustion <select id="exh">${[0, 1, 2, 3, 4, 5, 6].map(n => `<option ${n === s.exhaustion ? 'selected' : ''}>${n}</option>`).join('')}</select></label>${s.exhaustion ? offBtn('Exhaustion') : ''}</div>` : ''}
+    ${s.exhaustion ? `<p class="hint">Exhaustion ${esc(s.exhaustion)}: ${esc(['', 'hátrány a próbákra', '+ fél speed', '+ hátrány a támadásra és a mentőre', '+ fél max HP', '+ a speed 0', 'halál'][s.exhaustion])}${s.effOff.includes('Exhaustion') ? ' (automatikus hatás kikapcsolva)' : ''}</p>` : ''}
     ${profsHtml(s)}
     <h3>HP</h3>${hpBox(s, ed)}`;
 }
 function tabKep(s, ed) {
-  const ab = H.ABIL.map(a => `<div class="abil" data-act="d20" data-bonus="${mod(s.abilities[a])}" data-label="${H.ABIL_FULL[a]} próba"><small>${a.toUpperCase()}</small><b>${esc(sgn(mod(s.abilities[a])))}</b><span class="sc">${esc(s.abilities[a])}</span>
-    <span class="sv ${s.saveProf.includes(a) ? 'p' : ''}" data-act="d20" data-bonus="${H.saveBonus(s, a)}" data-label="${H.ABIL_FULL[a]} mentő">mentő ${esc(sgn(H.saveBonus(s, a)))}${s.saveProf.includes(a) ? ' ●' : ''}</span></div>`).join('');
+  const ab = H.ABIL.map(a => `<div class="abil" data-act="d20" data-bonus="${mod(s.abilities[a])}" data-label="${H.ABIL_FULL[a]} próba" data-kind="check:${a}"><small>${a.toUpperCase()}</small><b>${esc(sgn(mod(s.abilities[a])))}</b><span class="sc">${esc(s.abilities[a])}</span>
+    <span class="sv ${s.saveProf.includes(a) ? 'p' : ''}" data-act="d20" data-bonus="${H.saveBonus(s, a)}" data-label="${H.ABIL_FULL[a]} mentő" data-kind="save:${a}">mentő ${esc(sgn(H.saveBonus(s, a)))}${s.saveProf.includes(a) ? ' ●' : ''}</span></div>`).join('');
   const sk = Object.keys(H.SKILLS).map(k => { const p = H.skillProfOf(s, k);
-    return `<div class="li"><span class="mark" title="${p === 2 ? 'expertise' : p === 1 ? 'jártas' : p ? 'Jack of All Trades' : ''}">${PROF_MARK[p]}</span><span class="nm">${esc(H.skillLabel(k))} <span class="hint">${H.SKILLS[k].toUpperCase()}</span></span>${rollBtn(H.skillBonus(s, k), H.skillLabel(k))}</div>`; }).join('');
+    return `<div class="li"><span class="mark" title="${p === 2 ? 'expertise' : p === 1 ? 'jártas' : p ? 'Jack of All Trades' : ''}">${PROF_MARK[p]}</span><span class="nm">${esc(H.skillLabel(k))} <span class="hint">${H.SKILLS[k].toUpperCase()}</span></span>${rollBtn(H.skillBonus(s, k), H.skillLabel(k), undefined, `check:${H.SKILLS[k]}:${k}`)}</div>`; }).join('');
   return `<p class="hint">Koppints egy értékre a dobáshoz (nagy szám: próba, alatta: mentődobás). Előnyhöz / hátrányhoz előbb válaszd ki lent.</p>
     <div class="abils">${ab}</div>
     <h3>Skillek</h3><div class="list">${sk}</div>
@@ -332,9 +366,9 @@ function tabKep(s, ed) {
 }
 // a Harc fülön, a HP-kezelés fölött
 function profsHtml(s) {
-  const pr = s.profs;
+  const pr = s.profs, er = H.effects(s, RB()).resist;
   return `<h3>Jártasságok, nyelvek</h3>
-    <p>${[['Páncél', pr.armor], ['Fegyver', pr.weapons], ['Eszköz', pr.tools], ['Nyelvek', pr.languages], ['Érzékek', s.senses], ['Ellenállás', s.resist]].filter(x => x[1]).map(([l, v]) => `<b>${l}:</b> ${esc(v)}`).join('<br>') || '<span class="hint">Nincs megadva.</span>'}</p>`;
+    <p>${[['Páncél', pr.armor], ['Fegyver', pr.weapons], ['Eszköz', pr.tools], ['Nyelvek', pr.languages], ['Érzékek', s.senses], ['Ellenállás', [s.resist, er && '✨ ' + er].filter(Boolean).join(', ')]].filter(x => x[1]).map(([l, v]) => `<b>${l}:</b> ${esc(v)}`).join('<br>') || '<span class="hint">Nincs megadva.</span>'}</p>`;
 }
 // cast: a spell szintjén vagy magasabb (upcast) szabad slotból, Pact slotból, vagy rituáléként slot nélkül
 function castChoices(s, sp, r) {
@@ -351,7 +385,8 @@ function spellRow(sp, i, ed, s) {
   const r = rbSpell(sp);
   const sum = `${sp.level ? `<input type="checkbox" data-act="prep" data-i="${i}" ${sp.prepared || sp.always ? 'checked' : ''} ${sp.always || !ed ? 'disabled' : ''} title="Felkészítve">` : ''}
     <span class="nm"><b>${esc(sp.name)}</b><small>${esc([r ? H.spellLine(r) : '', sp.always ? 'mindig felkészítve' : '', sp.note].filter(Boolean).join(' · '))}</small></span>
-    ${r && diceOf(r.tx) ? dmgBtn(diceOf(r.tx), sp.name) : ''}${ed && sp.level ? `<button class="small cast ${castOpen === i ? 'on' : ''}" data-act="castOpen" data-i="${i}">✨ Cast</button>` : ''}`;
+    ${r && diceOf(r.tx) ? dmgBtn(diceOf(r.tx), sp.name) : ''}${ed && sp.level ? `<button class="small cast ${castOpen === i ? 'on' : ''}" data-act="castOpen" data-i="${i}">✨ Cast</button>`
+      : ed && (r?.k || H.effectOf(sp.name)) ? `<button class="small cast" data-act="cast" data-i="${i}" data-how="0">✨ Cast</button>` : ''}${r?.k ? '<span class="hint" title="koncentráció">🧠</span>' : ''}`;
   const ch = ed && sp.level && castOpen === i ? castChoices(s, sp, r) : null;
   const pick = ch ? `<div class="row castpick">${ch.map(c => `<button class="small" data-act="cast" data-i="${i}" data-how="${esc(c.how)}">${esc(c.text)}</button>`).join('')
     || '<span class="hint">Nincs szabad slot ehhez a szinthez.</span>'}<button class="small" data-act="castOpen" data-i="${i}">Mégse</button></div>` : '';
@@ -366,7 +401,7 @@ function tabVar(s, ed) {
   const by = {};
   s.spells.forEach((sp, i) => (by[sp.level] = by[sp.level] || []).push(spellRow(sp, i, ed, s)));
   const prepared = s.spells.filter(sp => sp.level && (sp.prepared || sp.always)).length;
-  return `${ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>'}
+  return `${ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>'}
     ${slots || pact ? `<h3>Spell slotok</h3><div class="list">${slots}${pact}</div>` : ''}
     <h3>Varázslatok <span class="hint">(${prepared} felkészítve)</span></h3>
     ${Object.keys(by).sort((a, b) => a - b).map(l => `<h3 class="sub2">${l == 0 ? 'Cantripek' : H.ORD[l] + ' level'}</h3><div class="list">${by[l].join('')}</div>`).join('') || '<p class="hint">Még nincs varázslat a lapon.</p>'}
@@ -418,7 +453,10 @@ function tabJell(s, ed) {
     return det('f:' + i + ':' + f.name, `<span class="nm"><b>${esc(f.name)}</b>${f.src ? `<small>${esc(f.src)}</small>` : ''}</span>`,
       `<div class="tx">${esc(f.text || r?.tx || '')}</div>${ed ? `<div class="row" style="margin-top:8px"><button class="small" data-act="featRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`);
   }).join('');
-  return `<h3>Jellemzők (class / race / feat)</h3><div class="list">${feats || '<p class="hint">Nincs felvéve.</p>'}</div>
+  const pick = ed && featPick ? `<div class="box" id="featPickBox"><b>${esc(featPick.name)}</b>: válassz képességet (+${esc(featPick.amt)}${featPick.left > 1 ? `, még ${esc(featPick.left)}` : ''})
+    <div class="row" style="margin-top:6px">${featPick.from.map(a => `<button class="small" data-act="featPick" data-a="${a}">${a.toUpperCase()} ${esc(s.abilities[a])}</button>`).join('')}
+    <button class="small" data-act="featPickSkip">Kihagyom</button></div></div>` : '';
+  return `<h3>Jellemzők (class / race / feat)</h3>${pick}<div class="list">${feats || '<p class="hint">Nincs felvéve.</p>'}</div>
     ${ed ? `<h3>＋ Hozzáadás</h3>
       ${RB() ? '<input id="featQ" style="width:100%" placeholder="Feat keresése (PHB / XGE / TCE)…" autocomplete="off"><div class="list" id="featRes" style="margin-top:6px"></div>' : ''}
       <div class="form" style="margin-top:8px"><label class="w2">Saját jellemző neve<input id="featNew"></label><label class="w2">Leírás<textarea id="featNewT" rows="3"></textarea></label>
@@ -446,8 +484,16 @@ function raceField(cur) {
 }
 // osztály / alosztály / szint / faj választásakor: a kézi lapon az osztályból és a fajból kitölthető mezők, a motorosnál csak a hit die
 function formPicked(field) {
-  const d = readForm(), s = cur();
+  const prevRace = draft?.s.race, d = readForm(), s = cur();
   if (!d || !s) return;
+  // kézi lap, fajváltás: a régi faj rögzített képességbónusza le, az újé fel; a választható bónuszra (pl. Half-Elf) figyelmeztet
+  if (field === 'race' && !s.auto && RB()?.races?.length) {
+    const known = !prevRace || H.findRace(prevRace, RB());
+    if (known) d.abilities = H.swapRaceAb(d.abilities, prevRace, d.race, RB());
+    const ch = H.raceAb(d.race, RB()).choose;
+    draft.note = [known ? '' : `A régi fajnevet (${prevRace}) nem ismertem fel, ezért a képességértékeken nem változtattam.`,
+      ...ch.map(c => `A fajból még jár ${c.n}× +${c.amt} (${c.from.length === 6 ? 'bármelyik képességre' : c.from.map(a => a.toUpperCase()).join(' / ')}${c.n > 1 ? ', különbözőkre' : ''}) – írd be a képességértékeknél.`)].filter(Boolean).join(' ');
+  }
   // új osztálynál a régi osztály alosztálya kiesik
   const m = String(field).match(/^cl_name_(\d+)$/), c = m && d.classes[+m[1]];
   if (c && !H.subclassRef(H.findClass(c.name) || c.name, c.subclass, RB())) c.subclass = '';
@@ -476,7 +522,8 @@ function tabAdat(s, ed) {
       ${d.classes.length > 1 ? `<button class="small" data-act="rowRm" data-list="classes" data-i="${i}">✕</button>` : ''}</div>`;
     }).join('')}
     <div class="w2"><button class="small" data-act="rowAdd" data-list="classes">＋ Osztály (multiclass)</button></div>
-    <h3>Képességértékek</h3>
+    <h3>Képességértékek</h3>${draft.note ? `<p class="hint w2" id="raceNote">⚠ ${esc(draft.note)}</p>` : ''}
+    ${!s.auto ? '<p class="hint w2">A végleges értékeket írd be (a faji bónusszal együtt). Fajváltáskor a faj rögzített bónusza magától átíródik.</p>' : ''}
     <div class="g6">${H.ABIL.map(a => `<label>${a.toUpperCase()}<input name="ab_${a}" type="number" min="1" max="30" value="${esc(d.abilities[a])}"></label>`).join('')}</div>
     <div class="w2 hint">Mentő-jártasság: ${H.ABIL.map(a => `<label class="inl" style="display:inline-flex;margin-right:8px"><input type="checkbox" name="sv_${a}" ${d.saveProf.includes(a) ? 'checked' : ''}>${a.toUpperCase()}</label>`).join('')}</div>
     ${f('ac', 'AC', d.ac, '', 'number')}${f('acNote', 'AC megjegyzés (pl. chain mail, shield)', d.acNote)}
@@ -543,6 +590,10 @@ function write(id, p) {
   if (!s || !canEdit(s)) return false;
   let next = H.norm({...s, ...p, owner: s.owner});
   const keys = new Set(Object.keys(p));
+  if (concBroken(next)) {
+    next = H.norm({...next, concentration: '', conditions: H.dropConc(next.conditions, next.concentration)});
+    keys.add('concentration'); keys.add('conditions');
+  }
   if (next.auto) {
     const ov = H.ovEdits(s, next);
     if (Object.keys(ov).length) { next = H.norm({...next, ov: {...next.ov, ...ov}}); keys.add('ov'); }
@@ -560,14 +611,30 @@ function write(id, p) {
   sheets.set(id, next);
   try { window.KDB?.update(id, JSON.parse(JSON.stringify(out))); } catch {}
   // a csapat felé látszó rész (characters/{id}) is frissül: HP, AC, név, szint
-  if (['hp', 'ac', 'name', 'classes'].some(k => keys.has(k)) && chars.some(c => c.id === id)) {
-    const pub = {hp: {cur: next.hp.cur, max: next.hp.max}, ac: next.ac, name: next.name, level: 'Szint ' + H.level(next)};
+  // az AC az aktív hatásokkal együtt (pl. Mage Armor, Shield of Faith)
+  if (['hp', 'ac', 'name', 'classes', 'conditions', 'effOff', 'exhaustion', 'inventory', 'abilities'].some(k => keys.has(k)) && chars.some(c => c.id === id)) {
+    const pub = {hp: {cur: next.hp.cur, max: next.hp.max}, ac: H.effects(next, RB()).ac, name: next.name, level: 'Szint ' + H.level(next)};
     try { window.KDB?.pub(id, pub); } catch {}
     chars = chars.map(c => c.id === id ? normChar({...c, ...pub}) : c);
   }
   return true;
 }
 function patch(p) { if (write(view.id, p)) render(true); }
+// új koncentráció: ha már másra koncentrál, rákérdez (a régi spell nevével); a régi koncentrációs hatás lekerül. null = mégse
+function concTo(s, name, p = {}) {
+  const old = s.concentration, same = old && old.toLowerCase() === name.toLowerCase();
+  if (old && !same && !confirm(`Most erre koncentrálsz: ${old}.\nHa ezt választod (${name}), a koncentráció megszakad. Folytatod?`)) return null;
+  return {...p, concentration: name, conditions: same ? (p.conditions || s.conditions) : H.dropConc(p.conditions || s.conditions, old)};
+}
+// sebzés: koncentrációnál emlékeztető a CON mentőre (DC a sebzés fele, legalább 10)
+function takeDamage(s, n) {
+  patch(H.damage(s, n));
+  const now = cur();
+  if (now?.concentration) showRoll({label: 'Koncentráció: ' + now.concentration, total: 'DC ' + Math.max(10, Math.floor(n / 2)),
+    detail: `CON mentő (${sgn(H.saveBonus(now, 'con'))}) – Képességek fül → CON mentő`});
+}
+// 0 HP-n vagy cselekvésképtelen állapotban a koncentráció megszakad
+const concBroken = s => !!s.concentration && (s.hp.cur === 0 || s.conditions.some(c => H.INCAP.includes(c)));
 // felszerelés változása: a motoros lapnál a motor számol újra; a kézinél a fegyverek támadásként, páncél / pajzs esetén az AC is
 function invPatch(s, inventory, it) {
   if (s.auto) return {inventory};
@@ -576,7 +643,7 @@ function invPatch(s, inventory, it) {
 // a beérkező (vagy újonnan betöltött szabálykönyvvel számolandó) auto lapok újraszámolása; csak a változott mezők íródnak
 function recalcAll() {
   let any = false;
-  for (const [id, s] of sheets) if (canEdit(s) && canCalc(s) && sigOf(s) !== calcSig.get(id)) any = write(id, {}) || any;
+  for (const [id, s] of sheets) if (canEdit(s) && ((canCalc(s) && sigOf(s) !== calcSig.get(id)) || concBroken(s))) any = write(id, {}) || any;
   return any;
 }
 const cur = () => sheets.get(view.id);
@@ -607,7 +674,7 @@ document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender
 function route() {
   const m = location.hash.match(/^#lap\/([A-Za-z0-9_-]{1,64})$/);
   const id = m ? m[1] : null;
-  if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; hdOpen = false; castOpen = null; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
+  if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; hdOpen = false; castOpen = null; featPick = null; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
   render(true);
 }
 window.addEventListener('hashchange', route);
@@ -657,12 +724,12 @@ document.addEventListener('click', e => {
     case 'signIn': window.KAuth?.signIn(); break;
     case 'signOut': window.KAuth?.signOut(); break;
     case 'reload': location.reload(); break;
-    case 'd20': rollD20(+el.dataset.bonus || 0, el.dataset.label); break;
-    case 'dmg': rollDamage(el.dataset.expr, el.dataset.label); break;
+    case 'd20': rollD20(+el.dataset.bonus || 0, el.dataset.label, el.dataset.kind || ''); break;
+    case 'dmg': rollDamage(el.dataset.expr, el.dataset.label, el.dataset.kind || ''); break;
     case 'hpDmg': case 'hpHeal': case 'hpTemp': {
       const n = Math.abs(parseInt($('#hpIn').value));
       if (isNaN(n)) break;
-      if (act === 'hpDmg' && n) patch(H.damage(s, n));
+      if (act === 'hpDmg' && n) takeDamage(s, n);
       else if (act === 'hpHeal' && n) patch(H.heal(s, n));
       else if (act === 'hpTemp') patch({hp: {...s.hp, temp: n}});
       break;
@@ -685,7 +752,11 @@ document.addEventListener('click', e => {
     case 'res': patch({resources: s.resources.map((r, k) => k === i ? {...r, used: pipToggle(r.used, +el.dataset.j)} : r)}); break;
     case 'slot': { const l = +el.dataset.l, used = [...s.spellcasting.used]; used[l] = pipToggle(used[l], +el.dataset.j); patch({spellcasting: {...s.spellcasting, used}}); break; }
     case 'pact': patch({spellcasting: {...s.spellcasting, pact: {...s.spellcasting.pact, used: pipToggle(s.spellcasting.pact.used, +el.dataset.j)}}}); break;
-    case 'condRm': patch({conditions: s.conditions.filter((_, k) => k !== i)}); break;
+    case 'condRm': {
+      const p = {conditions: s.conditions.filter((_, k) => k !== i)};
+      if (s.concentration && s.conditions[i]?.toLowerCase() === s.concentration.toLowerCase()) p.concentration = '';
+      patch(p); break;
+    }
     case 'spellRm': if (confirm(`Eltávolítod: ${s.spells[i].name}?`)) patch({spells: s.spells.filter((_, k) => k !== i)}); break;
     case 'spellAdd': {
       const sp = H.byRef(RB().spells, el.dataset.ref); if (!sp) break;
@@ -698,13 +769,29 @@ document.addEventListener('click', e => {
     case 'cast': {
       const sp = s.spells[i], how = el.dataset.how, sc = s.spellcasting;
       if (!sp) break;
-      const p = how === 'pact' ? {spellcasting: {...sc, pact: {...sc.pact, used: Math.min(sc.pact.max, sc.pact.used + 1)}}}
-        : how === 'ritual' ? {} : {spellcasting: {...sc, used: sc.used.map((u, l) => l === +how - 1 ? Math.min(sc.slots[l], u + 1) : u)}};
+      let p = how === 'pact' ? {spellcasting: {...sc, pact: {...sc.pact, used: Math.min(sc.pact.max, sc.pact.used + 1)}}}
+        : how === 'ritual' || how === '0' ? {} : {spellcasting: {...sc, used: sc.used.map((u, l) => l === +how - 1 ? Math.min(sc.slots[l], u + 1) : u)}};
       castOpen = null;
-      showRoll({label: sp.name, total: '✨', detail: how === 'ritual' ? 'rituáléként, slot nélkül' : how === 'pact' ? `Pact slotból (${sc.pact.level}. szint)` : `${how}. szintű slotból` + (+how > sp.level ? ' (upcast)' : '')});
+      // koncentrációs spell: ha már másra koncentrál, előbb rákérdez (Mégse = nem castol, slot sem fogy)
+      if (rbSpell(sp)?.k) { const c = concTo(s, sp.name, p); if (!c) { render(true); break; } p = c; }
+      // hatással járó spell (Mage Armor, Shield, Haste…): magára is érvényesüljön?
+      const conds = p.conditions || s.conditions;
+      if (H.effectOf(sp.name) && !conds.some(c => c.toLowerCase() === sp.name.toLowerCase()) && confirm(`${sp.name}: rád is hat? (bekerül az aktív hatások közé, és a bónusza magától érvényesül)`))
+        p.conditions = [...conds, sp.name];
+      showRoll({label: sp.name, total: '✨', detail: how === '0' ? 'cantrip' : how === 'ritual' ? 'rituáléként, slot nélkül' : how === 'pact' ? `Pact slotból (${sc.pact.level}. szint)` : `${how}. szintű slotból` + (+how > sp.level ? ' (upcast)' : '')});
       if (Object.keys(p).length) patch(p); else render(true);
       break;
     }
+    case 'concEnd': patch({concentration: '', conditions: H.dropConc(s.conditions, s.concentration)}); break;
+    case 'effToggle': { const k = el.dataset.key; patch({effOff: s.effOff.includes(k) ? s.effOff.filter(x => x !== k) : [...s.effOff, k]}); break; }
+    case 'featPick': {
+      if (!featPick) break;
+      const a = el.dataset.a, p = {abilities: H.addAb(s.abilities, {[a]: featPick.amt})};
+      if (/^resilient$/i.test(featPick.name) && !s.saveProf.includes(a)) p.saveProf = [...s.saveProf, a];
+      featPick = featPick.left > 1 ? {...featPick, left: featPick.left - 1, from: featPick.from.filter(x => x !== a)} : null;
+      patch(p); break;
+    }
+    case 'featPickSkip': featPick = null; render(true); break;
     case 'itemAdd': {
       const it = H.byRef(H.allItems(RB()), el.dataset.ref); if (!it) break;
       const ref = H.refOf(it), k = s.inventory.findIndex(x => x.ref === ref);
@@ -712,9 +799,19 @@ document.addEventListener('click', e => {
       break;
     }
     case 'itemCustom': { const n = $('#itemNew').value.trim(); if (n) patch({inventory: [...s.inventory, {name: n, qty: Math.max(1, +$('#itemNewQ').value || 1)}]}); break; }
-    case 'featAdd': { const f = H.byRef(RB().feats, el.dataset.ref); if (f) patch({features: [...s.features, {name: f.n, text: f.tx || '', src: 'Feat'}]}); break; }
+    case 'featAdd': {
+      const f = H.byRef(RB().feats, el.dataset.ref); if (!f) break;
+      const p = {features: [...s.features, {name: f.n, text: f.tx || '', src: 'Feat'}]};
+      // kézi lapon a feat képességbónusza a beírt értékekhez adódik; a választhatót (pl. Resilient) a játékos választja ki
+      if (!s.auto) {
+        const b = H.abBonusOf(f.fx);
+        if (Object.keys(b.fixed).length) p.abilities = H.addAb(s.abilities, b.fixed);
+        featPick = b.choose.length ? {name: f.n, from: b.choose[0].from, amt: b.choose[0].amt, left: b.choose[0].n} : null;
+      }
+      patch(p); break;
+    }
     case 'featCustom': { const n = $('#featNew').value.trim(); if (n) patch({features: [...s.features, {name: n, text: $('#featNewT').value, src: $('#featNewS').value}]}); break; }
-    case 'featRm': if (confirm(`Eltávolítod: ${s.features[i].name}?`)) patch({features: s.features.filter((_, k) => k !== i)}); break;
+    case 'featRm': if (confirm(`Eltávolítod: ${s.features[i].name}?` + (s.auto ? '' : '\n(Ha képességbónuszt adott, azt az Alapadatokon vedd vissza kézzel.)'))) patch({features: s.features.filter((_, k) => k !== i)}); break;
     case 'rowAdd': { const d = readForm(); d[el.dataset.list].push({name: '', subclass: '', level: 1, hitDie: 8, hit: '', dmg: '', note: '', max: 1, used: 0, reset: 'long'}); render(true); break; }
     case 'rowRm': { const d = readForm(); d[el.dataset.list].splice(i, 1); render(true); break; }
     case 'slotsAuto': { const d = readForm(), sl = H.slotsFor(H.norm(d).classes); d.spellcasting = {...d.spellcasting, slots: sl.slots, pact: {...d.spellcasting.pact, ...sl.pact}}; render(true); break; }
@@ -738,7 +835,19 @@ document.addEventListener('change', e => {
   const i = +t.dataset.i, act = t.dataset.act;
   const setItem = f => patch(invPatch(s, s.inventory.map((it, k) => k === i ? {...it, ...f} : it), s.inventory[i]));
   if (t.form?.id === 'edForm' && /^(cl_name_|cl_sub_|cl_lvl_|race$)/.test(t.name)) formPicked(t.name);
-  else if (t.id === 'condAdd' && t.value) patch({conditions: [...s.conditions, t.value]});
+  else if (t.id === 'condAdd' && t.value) {
+    // aktív hatás: a Rage elhasznál egyet az erőforrásból; a koncentrációs spell átveszi a koncentrációt (rákérdez, ha már van)
+    const n = t.value, fx = H.effectOf(n);
+    let p = {conditions: [...s.conditions, n]};
+    const k = fx?.res ? s.resources.findIndex(r => r.name.toLowerCase() === fx.res.toLowerCase()) : -1;
+    if (k >= 0) {
+      const r = s.resources[k];
+      if (r.used >= r.max && !confirm(`Elfogyott: ${r.name} (${r.max} / ${r.max} elhasználva). Mégis bekapcsolod?`)) { t.value = ''; return; }
+      p.resources = s.resources.map((x, j) => j === k ? {...x, used: Math.min(x.max, x.used + 1)} : x);
+    }
+    if (fx?.conc) { const c = concTo(s, n, p); if (!c) { t.value = ''; return; } p = c; }
+    patch(p);
+  }
   else if (t.id === 'exh') patch({exhaustion: +t.value});
   else if (t.id === 'spellMine') { searchQ.all = !t.checked; spellResults(s); }
   else if (act === 'prep') patch({spells: s.spells.map((sp, k) => k === i ? {...sp, prepared: t.checked} : sp)});
@@ -770,7 +879,7 @@ document.addEventListener('input', e => {
 document.addEventListener('keydown', e => {
   if (e.target.id !== 'hpIn' || e.key !== 'Enter') return;
   const s = cur(), n = parseInt(e.target.value);
-  if (n > 0) patch(H.damage(s, n)); else if (n < 0) patch(H.heal(s, -n));
+  if (n > 0) takeDamage(s, n); else if (n < 0) patch(H.heal(s, -n));
 });
 route();
 </script>

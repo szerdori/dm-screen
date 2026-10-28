@@ -1847,6 +1847,28 @@ const mkS = (build, extra = {}) => W.Sheet.norm({auto: true, build, ...extra});
 const inv = (...names) => names.map(n => typeof n === 'string' ? {name: n, qty: 1, equipped: true} : {qty: 1, equipped: true, ...n});
 
 describe('Szabálymotor: teljes számolás (3. lépés)', () => {
+  test('hatások: AC (Mage Armor, pajzs, páncél), speed (Haste, Grappled, Exhaustion), dobás-módosítók, DM-kikapcsolás; faji bónusz cseréje', () => {
+    const H = W.Sheet, rb = rb3();
+    const mk = extra => H.norm({ac: 12, speed: '30 ft.', abilities: {dex: 16}, ...extra});
+    eq(H.effects(mk({conditions: ['Mage Armor']}), rb).ac, 16);
+    eq(H.effects(mk({conditions: ['Mage Armor'], inventory: [{name: 'Shield', equipped: true}]}), rb).ac, 18, 'pajzzsal 13 + 3 + 2');
+    eq(H.effects(mk({ac: 18, conditions: ['Mage Armor'], inventory: [{name: 'Chain Mail', equipped: true}]}), rb).ac, 18, 'páncélban nem hat');
+    eq(H.effects(mk({conditions: ['Mage Armor']})).ac, 16, 'szabálykönyv nélkül is (név alapján)');
+    let e = H.effects(mk({conditions: ['Haste', 'Shield of Faith']}));
+    eq([e.ac, e.speed, e.acParts], [16, '60 ft.', ['Haste', 'Shield of Faith']]);
+    eq(H.effects(mk({conditions: ['Grappled'], speed: '30 ft., fly 30 ft.'})).speed, '0 ft., fly 30 ft.');
+    eq(H.effects(mk({exhaustion: 2})).speed, '15 ft.');
+    e = H.effects(mk({conditions: ['Poisoned', 'Rage', 'Bless', 'Bladesong']}));
+    eq(H.rollFx(e, 'atk'), {adv: [], dis: ['Poisoned'], fail: [], bonus: [{k: 'atk', v: '1d4', src: 'Bless'}]});
+    eq([H.rollFx(e, 'check:str:athletics').adv, H.rollFx(e, 'check:dex:acrobatics').adv, H.rollFx(e, 'check:dex:stealth').adv], [['Rage'], ['Bladesong'], []]);
+    eq(H.rollFx(e, 'check:wis').dis, ['Poisoned']);
+    eq(H.rollFx(H.effects(mk({conditions: ['Poisoned'], effOff: ['Poisoned']})), 'atk').dis, [], 'a DM kikapcsolta');
+    eq(H.rollFx(H.effects(mk({conditions: ['Stunned']})), 'save:dex').fail, ['Stunned']);
+    eq(H.effects(mk({conditions: ['Rage'], classes: [{name: 'Barbarian', level: 9}]})).dmg, [{v: '3', melee: true, src: 'Rage'}]);
+    eq(H.dropConc(['Bless', 'Prone', 'Mage Armor'], 'bless'), ['Prone', 'Mage Armor']);
+    eq(H.swapRaceAb({str: 8, con: 16, wis: 13, cha: 10}, 'Hill Dwarf', 'Human', rb), {str: 9, dex: 11, con: 15, int: 11, wis: 13, cha: 11});
+    eq(H.raceAb('Human (Variant)', rb), {fixed: {}, choose: [{from: ['str', 'dex', 'con', 'int', 'wis', 'cha'], n: 2, amt: 1}]});
+  });
   test('ovEdits: a számolt mezők kézi átírása felülírás-kulcsokra (AC, max HP, speed, initiative, képesség, mentő, skill)', () => {
     const H = W.Sheet, s = H.norm({abilities: {dex: 14}, saveProf: ['dex'], skillProf: {stealth: 1}, jack: true});
     eq(H.ovEdits(s, s), {});
@@ -2151,6 +2173,18 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     f.log.splice(0);
     const [x] = W.addToEncounter(lib(), 1); W.damage(x, 5); W.save(); await wait(500);
     ok(f.log.includes('update sheets/p1 hp.cur,hp.temp'), f.log.join('; '));
+  });
+  test('aktív hatás a lapon (Mage Armor) → a könyvtári AC; koncentráció a harcba és vissza (a DM kikapcsolja → a lapon is vége)', async () => {
+    const f = await loadWith({'sheets/p1': sheetDoc({ac: 12, inventory: [], conditions: ['Mage Armor', 'Bless'], concentration: 'Bless'})});
+    eq([lib().ac, lib().acNote], [16, 'leather armor + Mage Armor'], '13 + DEX 3');
+    f.log.splice(0);
+    const [x] = W.addToEncounter(lib(), 1);
+    eq(x.conc, true, 'a lap koncentrációjával indul');
+    W.save(); await wait(500);
+    ok(!f.log.some(l => /sheets\//.test(l)), 'nem ír vissza: ' + f.log);
+    x.conc = false; W.save(); await wait(500);
+    ok(f.log.includes('update sheets/p1 concentration,conditions'), f.log.join('; '));
+    eq([f.store['sheets/p1'].concentration, f.store['sheets/p1'].conditions], ['', ['Mage Armor']]);
   });
   test('karakterlap létrehozása meglévő (D&D Beyond-os) játékosból: osztály, mentők, skillek, támadás, spellek', () => {
     const c = W.normCreature(pc('Rella', 5, {id: 'p9', owner: 'a@x.hu', type: 'Half-Elf — Bard 5 (College of Lore)', abilities: {dex: 14, cha: 18, con: 12}, saves: {dex: 4, cha: 7},
@@ -2518,6 +2552,81 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-act="edSave"]');
     const s = K.eval('sheets.get("p1")');
     eq([s.build.levels, s.build.race, s.build.subrace, s.classes[0].level, s.abilities.con, s.ov], [[{c: 'Barbarian', hp: null}, {c: 'Barbarian', hp: 9}, {c: 'Barbarian', hp: null}], 'Human|PHB', 'Human (alap)|PHB', 3, 15, {}]);
+  });
+  // gomb a lapra téve és megnyomva (pl. featAdd egy keresési találatból)
+  const kact = data => { const b = K.document.createElement('button'); Object.assign(b.dataset, data); kq('#main').appendChild(b); kclick(b); };
+  const rbFx = () => { const rb = rb3(); rb.spells.push({n: 'Shield of Faith', s: 'PHB', l: 1, k: true}); rb.spells[0].k = true;
+    rb.feats.push({n: 'Heavy Armor Master', s: 'PHB', fx: [{ab: {str: 1}}]}, {n: 'Resilient', s: 'PHB', fx: [{abChoose: {from: ['str', 'dex', 'con', 'int', 'wis', 'cha'], n: 1, amt: 1}}]}); return rb; };
+  ktest('koncentráció: jól látható sáv; másik koncentrációs spellnél rákérdez a régi nevével; Mégse = nem castol; 0 HP-n vége', () => {
+    K.KApp.setRulebook({version: 'v1', rb: rbFx()});
+    openSheet({spells: [{name: 'Bless', level: 1, prepared: true}, {name: 'Shield of Faith', level: 1, prepared: true}], inventory: [],
+      spellcasting: {ability: 'wis', slots: [4, 0, 0, 0, 0, 0, 0, 0, 0]}});
+    let asked = []; K.confirm = m => { asked.push(m); return true; };
+    kclick('[data-tab="var"]'); kclick('[data-act="castOpen"][data-i="0"]'); kclick('[data-act="cast"][data-how="1"]');
+    let s = K.eval('sheets.get("p1")');
+    eq([s.concentration, s.conditions, s.spellcasting.used[0]], ['Bless', ['Bless'], 1]);
+    has(kq('.concbar').textContent, 'Bless'); has(kq('.fxbar').textContent, 'Bless');
+    asked = []; K.confirm = m => { asked.push(m); return !/koncentrálsz/.test(m); };
+    kclick('[data-act="castOpen"][data-i="1"]'); kclick('[data-act="cast"][data-how="1"]');
+    has(asked[0], 'Most erre koncentrálsz: Bless'); has(asked[0], 'Shield of Faith');
+    eq([K.eval('sheets.get("p1").concentration'), K.eval('sheets.get("p1").spellcasting.used[0]')], ['Bless', 1], 'Mégse: marad, slot sem fogy');
+    K.confirm = () => true;
+    kclick('[data-act="castOpen"][data-i="1"]'); kclick('[data-act="cast"][data-how="1"]');
+    s = K.eval('sheets.get("p1")');
+    eq([s.concentration, s.conditions, s.spellcasting.used[0]], ['Shield of Faith', ['Shield of Faith'], 2], 'a Bless hatása lekerült');
+    kclick('[data-tab="adat"]'); eq(kq('.chips .chip b').textContent, '16', 'AC 14 + 2');
+    kclick('[data-tab="harc"]');
+    kset('#hpIn', '6', 'input'); kclick('[data-act="hpDmg"]');
+    has(kq('#lastRoll').textContent, 'DC 10');
+    kset('#hpIn', '50', 'input'); kclick('[data-act="hpDmg"]');
+    s = K.eval('sheets.get("p1")');
+    eq([s.hp.cur, s.concentration, s.conditions], [0, '', []]); ok(!kq('.concbar'), 'a sáv eltűnt');
+  });
+  ktest('aktív hatások és állapotok: Mage Armor AC, Rage (erőforrás, sebzés), Poisoned hátrány; a DM kikapcsolhatja', () => {
+    K.KApp.setRulebook({version: 'v1', rb: rbFx()});
+    openSheet({inventory: [{name: 'Shortsword', qty: 1, equipped: true}], ac: 13, resources: [{name: 'Rage', max: 2, used: 0, reset: 'long'}]}, 'dm@x.hu', true);
+    kset('#condAdd', 'Mage Armor');
+    eq(klog.filter(l => l[0] === 'pub').at(-1)[2].ac, 16, 'a csapat felé is 13 + DEX 3');
+    kclick('[data-tab="adat"]'); eq(kq('.chips .chip b').textContent, '16'); has(kq('.chips .chip small').textContent, '✨');
+    kclick('[data-tab="harc"]');
+    kset('#condAdd', 'Rage');
+    eq(K.eval('sheets.get("p1").resources[0].used'), 1, 'a Rage elhasznált egyet');
+    K.rnd = () => 3;
+    kclick(kqa('[data-act="dmg"]').find(b => /Shortsword/.test(b.dataset.label)));
+    has(kq('#lastRoll').textContent, 'Rage'); eq(kq('#lastRoll b').textContent, '8', '1d6 (3) + 3 + Rage 2');
+    kset('#condAdd', 'Poisoned');
+    kclick('[data-tab="kep"]'); kclick(kqa('.rb').find(b => b.dataset.label === 'Stealth'));
+    has(kq('#lastRoll').textContent, 'hátrány: Poisoned');
+    kclick(kq('[data-label="Strength mentő"]'));
+    has(kq('#lastRoll').textContent, 'előny: Rage');
+    kclick('[data-tab="harc"]');
+    kclick('[data-act="effToggle"][data-key="Poisoned"]');
+    eq(K.eval('sheets.get("p1").effOff'), ['Poisoned']);
+    has(ktext(), 'automatikus hatás kikapcsolva');
+    kclick('[data-tab="kep"]'); kclick(kqa('.rb').find(b => b.dataset.label === 'Stealth'));
+    hasNot(kq('#lastRoll').textContent, 'hátrány');
+    kclick('[data-tab="harc"]'); kset('#condAdd', 'Paralyzed');
+    kclick('[data-tab="kep"]'); kclick(kq('[data-label="Dexterity mentő"]'));
+    has(kq('#lastRoll').textContent, 'automatikus kudarc (Paralyzed)');
+  });
+  ktest('kézi lap: fajváltáskor a faji bónusz átíródik; a feat bónusza hozzáadódik, a választhatót a játékos választja (Resilient: mentő is)', () => {
+    K.KApp.setRulebook({version: 'v1', rb: rbFx()});
+    openSheet({race: 'Dwarf (Hill)', abilities: {str: 8, dex: 14, con: 14, int: 10, wis: 11, cha: 10}});
+    kclick('[data-tab="adat"]');
+    kset(kq('#edForm').elements.race, 'Human');
+    const ab = () => ['str', 'con', 'wis'].map(a => kq('#edForm').elements['ab_' + a].value);
+    eq(ab(), ['9', '13', '11'], 'Hill Dwarf (CON +2, WIS +1) le, Human (+1 mind) fel');
+    kset(kq('#edForm').elements.race, 'Human (Variant)');
+    eq(ab(), ['8', '12', '10']); has(kq('#raceNote').textContent, '2× +1');
+    kclick('[data-act="edCancel"]');
+    kclick('[data-tab="kep"]');
+    kact({act: 'featAdd', ref: 'Heavy Armor Master|PHB'});
+    eq(lastUpdate().abilities.str, 9);
+    kact({act: 'featAdd', ref: 'Resilient|PHB'});
+    ok(kq('#featPickBox'), 'választó');
+    kclick('[data-act="featPick"][data-a="wis"]');
+    eq([lastUpdate().abilities.wis, lastUpdate().saveProf], [12, ['dex', 'int', 'wis']]);
+    ok(!kq('#featPickBox'), 'a választó bezárult');
   });
   ktest('gépelés közben a beérkező változás nem rajzolja újra a lapot (a fókusz elvesztésekor igen)', async () => {
     openSheet();

@@ -402,7 +402,7 @@ let SHEETS = {}, shadow = {}, cshadow = {}, sheetOps = {set: new Set(), del: new
 const LINK = {name: 'name', portrait: 'portrait', owner: 'owner', ac: 'ac', hpMax: 'hp.max', hpCur: 'hp.cur', speed: 'speed', abilities: 'abilities', inventory: 'inventory', currency: 'currency'};
 const linkFields = c => ({name: c.name, portrait: c.portrait || '', owner: c.owner || '', ac: c.ac, hpMax: c.hp.max, hpCur: c.hp.cur ?? c.hp.max,
   speed: c.speed, abilities: c.abilities, inventory: Sheet.normInventory(c.inventory), currency: c.currency});
-const hpShadow = x => JSON.stringify([x.hp, x.temp]);
+const hpShadow = x => JSON.stringify([x.hp, x.temp, !!x.conc]);
 function sheetToCreature(s, base) {
   const H = Sheet;
   // szabálymotoros lapnál a mentők és a skillek a cache-ből (abban már benne van pl. az Aura of Protection, a Remarkable Athlete);
@@ -425,12 +425,15 @@ function sheetToCreature(s, base) {
     traits.unshift({name: 'Varázslatok', text: [dc ? `spell save DC ${dc}, ${sgn(H.spellAtk(s))} to hit` : '',
       ...Object.keys(by).sort((a, b) => a - b).map(l => `${l == 0 ? 'Cantrips' : ordinal(+l) + ' level'}: ${by[l].join(', ')}`)].filter(Boolean).join('\n')});
   }
+  // az AC és a speed az aktív hatásokkal (Mage Armor, Haste, Grappled…) együtt; a hatások a lap állapotai között vannak
+  const fx = H.effects(s);
   return normCreature({...base, kind: 'pc', name: s.name, portrait: s.portrait, cr: 'Szint ' + H.level(s),
-    type: [s.race, H.classLabel(s)].filter(Boolean).join(' — '), alignment: s.alignment, ac: s.ac, acNote: s.acNote,
-    hp: {max: s.hp.max, cur: s.hp.cur, formula: ''}, speed: s.speed, abilities: s.abilities, saves, skillMods,
+    type: [s.race, H.classLabel(s)].filter(Boolean).join(' — '), alignment: s.alignment, ac: fx.ac,
+    acNote: [s.acNote, fx.acParts.length ? '+ ' + fx.acParts.join(', ') : ''].filter(Boolean).join(' '),
+    hp: {max: s.hp.max, cur: s.hp.cur, formula: ''}, speed: fx.speed, abilities: s.abilities, saves, skillMods,
     skills: Object.keys(SKILLS).filter(k => s.skillProf[k]).map(k => skillLabel(k) + ' ' + sgn(skillMods[k].b)).join(', '),
     senses: [s.senses, `passive Perception ${H.passive(s, 'perception')}`].filter(Boolean).join(', '),
-    languages: s.profs.languages, tools: s.profs.tools, resist: s.resist, initBonus: H.initiative(s),
+    languages: s.profs.languages, tools: s.profs.tools, resist: [s.resist, fx.resist].filter(Boolean).join(', '), initBonus: H.initiative(s),
     traits, actions, bonusActions: [], reactions: [], inventory: s.inventory, currency: s.currency,
     passiveBonus: {perception: 0, investigation: 0, insight: 0}, source: 'Karakterlap'});
 }
@@ -442,7 +445,7 @@ function applySheet(id) {
   S.library[i] = lib; shadow[id] = stableJson(linkFields(lib));
   for (const x of S.enc.list) if (x.c.libId === id) {
     const c = sheetToCreature(s, x.c); delete c.hp.cur; x.c = c;
-    x.hp = s.hp.cur; x.temp = s.hp.temp; cshadow[x.cid] = hpShadow(x);
+    x.hp = s.hp.cur; x.temp = s.hp.temp; x.conc = !!s.concentration; cshadow[x.cid] = hpShadow(x);
   }
 }
 const setPath = (o, path, v) => { const ks = path.split('.'); ks.slice(0, -1).reduce((a, k) => a[k] = a[k] || {}, o)[ks.at(-1)] = v; };
@@ -456,8 +459,14 @@ function syncSheets(ops) {
     const patch = {};
     for (const x of S.enc.list) if (x.c.libId === c.id) {
       // most került harcba: a lap értékeihez mérjük (a hozzáadáskor onnan kapta a HP-t)
-      const j = hpShadow(x), prev = cshadow[x.cid] ?? JSON.stringify([s.hp.cur, s.hp.temp]);
-      if (prev !== j) { patch['hp.cur'] = Math.min(x.hp, s.hp.max); patch['hp.temp'] = x.temp; c.hp.cur = patch['hp.cur']; }
+      const j = hpShadow(x), prev = cshadow[x.cid] ?? JSON.stringify([s.hp.cur, s.hp.temp, !!s.concentration]);
+      const [ph, pt, pc] = JSON.parse(prev);
+      if (ph !== x.hp || pt !== x.temp) { patch['hp.cur'] = Math.min(x.hp, s.hp.max); patch['hp.temp'] = x.temp; c.hp.cur = patch['hp.cur']; }
+      // a DM a harcban kapcsolta a koncentrációt: ki → a lapon is vége (a koncentrációs hatás is lekerül); be → jelölés név nélkül
+      if (pc !== !!x.conc) {
+        patch.concentration = x.conc ? s.concentration || 'Koncentráció' : '';
+        if (!x.conc && s.concentration) patch.conditions = Sheet.dropConc(s.conditions, s.concentration);
+      }
       cshadow[x.cid] = j;
     }
     const cur = linkFields(c), prev = shadow[c.id] ? JSON.parse(shadow[c.id]) : null;
@@ -812,7 +821,7 @@ function addToEncounter(creature, count = 1) {
     delete c.hp.cur;
     const sheet = c.kind === 'pc' && SHEETS[c.libId];  // telefonos lapnál a lap szerinti HP és temp HP
     if (sheet) hp = sheet.hp.cur;
-    const x = {cid: uid(), num, c, hp, temp: sheet ? sheet.hp.temp : 0, init: null, cond: [], conc: false, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group};
+    const x = {cid: uid(), num, c, hp, temp: sheet ? sheet.hp.temp : 0, init: null, cond: [], conc: !!sheet?.concentration, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group};
     S.enc.list.push(x); added.push(x);
   }
   // harc közben hozzáadott ellenfelek azonnal dobnak

@@ -140,6 +140,9 @@ window.Sheet = (() => {
       currency: Object.fromEntries(COINS.map(k => [k, int(cur[k], 0, 0, 1e9)])),
       conditions: [...new Set(arr(d.conditions, 30).map(c => str(c, 60).trim()).filter(Boolean))],
       exhaustion: int(d.exhaustion, 0, 0, 6),
+      // koncentráció: a spell neve (üres = nincs); effOff: azok az állapotok, amelyek automatikus hatását a DM kikapcsolta
+      concentration: str(d.concentration, 120).trim(),
+      effOff: [...new Set(arr(d.effOff, 40).map(c => str(c, 60).trim()).filter(Boolean))],
       profs: {armor: str(pr.armor, 500), weapons: str(pr.weapons, 500), tools: str(pr.tools, 500), languages: str(pr.languages, 500)},
       senses: str(d.senses, 300), resist: str(d.resist, 300), notes: str(d.notes, 20000),
       updatedAt: typeof d.updatedAt === 'string' && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(d.updatedAt) ? d.updatedAt : '',
@@ -756,6 +759,117 @@ window.Sheet = (() => {
     const sub = Object.fromEntries(classes.map(c => { const n = findClass(c.name) || c.name; return [n, subclassRef(n, c.subclass, rb)]; }).filter(([, r]) => r));
     return normBuild({...b, levels, sub});
   }
+  // ---------- faji és feat-képességbónusz a kézi lapon (a beírt értékekhez adva) ----------
+  // fixed: azonnal hozzáadható; choose: a játékos választ (pl. Half-Elf 2× +1, Resilient)
+  function abBonusOf(fx) {
+    const fixed = {}, choose = [];
+    for (const f of fx || []) {
+      if (isObj(f?.ab)) for (const a of ABIL) if (num(f.ab[a])) fixed[a] = (fixed[a] || 0) + num(f.ab[a]);
+      if (isObj(f?.abChoose)) choose.push({from: arr(f.abChoose.from, 6).filter(a => ABIL.includes(a)), n: Math.max(1, num(f.abChoose.n, 1)), amt: Math.max(1, num(f.abChoose.amt, 1))});
+    }
+    return {fixed, choose: choose.map(c => ({...c, from: c.from.length ? c.from : ABIL}))};
+  }
+  function raceAb(label, rb) {
+    const o = findRace(label, rb);
+    if (!o) return {fixed: {}, choose: []};
+    const r = rbFind(rb.races, o.race), sr = o.subrace ? rbFind(rb.subraces.filter(x => x.race === r?.n), o.subrace) : null;
+    const drop = new Set(sr?.ow || []);
+    return abBonusOf([...(r?.fx || []).filter(f => !(isObj(f) && Object.keys(f).some(k => drop.has(k)))), ...(sr?.fx || [])]);
+  }
+  // fajváltás: a régi faj rögzített bónusza le, az újé fel (legfeljebb 20, legalább 1)
+  function swapRaceAb(abilities, oldLabel, newLabel, rb) {
+    const o = raceAb(oldLabel, rb).fixed, n = raceAb(newLabel, rb).fixed;
+    return Object.fromEntries(ABIL.map(a => { const v = num(abilities[a], 10), d = (n[a] || 0) - (o[a] || 0); return [a, d > 0 ? Math.min(Math.max(v, 20), v + d) : Math.max(1, v + d)]; }));
+  }
+  const addAb = (abilities, inc) => Object.fromEntries(ABIL.map(a => [a, inc[a] ? Math.min(Math.max(num(abilities[a], 10), 20), num(abilities[a], 10) + inc[a]) : num(abilities[a], 10)]));
+
+  // ---------- aktív hatások (spell, feature) és állapotok: amíg a lapon vannak, a mechanikájuk magától érvényesül ----------
+  // ac: +AC; acMin: legalább ennyi (Barkskin); armorless: 13 + DEX páncél nélkül (Mage Armor); speed: +ft; speed0 / speedMul;
+  // adv / dis / fail: d20-dobások (atk, check, check:str, save, save:dex); bonus: kocka a dobáshoz; dmg: kocka / szám a fegyversebzéshez;
+  // conc: koncentrációs spell (a koncentráció végén lekerül); self: castoláskor felajánlja magára; neg: káros állapot (a DM kikapcsolhatja)
+  const EFFECTS = {
+    'Mage Armor': {armorless: 13, self: true, text: 'AC 13 + DEX, ha nincs rajtad páncél'},
+    'Shield': {ac: 5, self: true, text: '+5 AC a következő köröd elejéig'},
+    'Shield of Faith': {ac: 2, conc: true, text: '+2 AC'},
+    'Haste': {ac: 2, speedMul: 2, adv: ['save:dex'], conc: true, text: '+2 AC, dupla speed, előny a DEX mentőre'},
+    'Barkskin': {acMin: 16, conc: true, text: 'az AC legalább 16'},
+    'Longstrider': {speed: 10, text: '+10 ft speed'},
+    'Bless': {bonus: {atk: '1d4', save: '1d4'}, conc: true, text: '+1d4 a támadásra és a mentőre'},
+    'Bane': {bonus: {atk: '-1d4', save: '-1d4'}, conc: true, neg: true, text: '−1d4 a támadásra és a mentőre'},
+    "Hunter's Mark": {dmg: '1d6', conc: true, self: true, text: '+1d6 sebzés a megjelölt célpontra'},
+    'Hex': {dmg: '1d6', conc: true, self: true, text: '+1d6 necrotic sebzés a megátkozott célpontra'},
+    'Enlarge': {adv: ['check:str', 'save:str'], dmg: '1d4', conc: true, text: 'előny a STR próbára és mentőre, +1d4 fegyversebzés'},
+    'Reduce': {dis: ['check:str', 'save:str'], dmg: '-1d4', conc: true, neg: true, text: 'hátrány a STR próbára és mentőre, −1d4 fegyversebzés'},
+    'Rage': {adv: ['check:str', 'save:str'], dmg: 'rage', melee: true, resist: 'bludgeoning, piercing, slashing', res: 'Rage', text: 'előny a STR próbára és mentőre, + Rage-sebzés közelharcban, ellenállás: bludgeoning, piercing, slashing'},
+    'Bladesong': {acAbil: 'int', speed: 10, adv: ['check:dex:acrobatics'], text: '+INT az AC-hoz, +10 ft speed, előny az Acrobatics próbára'},
+    'Dodge': {adv: ['save:dex'], text: 'a rád irányuló támadás hátrányos, előny a DEX mentőre'},
+    // PHB 2014 állapotok
+    'Blinded': {dis: ['atk'], neg: true, text: 'hátrány a támadásra; a látást igénylő próba sikertelen'},
+    'Charmed': {neg: true, text: 'nem támadhatod a bűvölőt'},
+    'Deafened': {neg: true, text: 'a hallást igénylő próba sikertelen'},
+    'Frightened': {dis: ['atk', 'check'], neg: true, text: 'hátrány a támadásra és a próbákra, amíg látod a félelem forrását'},
+    'Grappled': {speed0: true, neg: true, text: 'a speed 0'},
+    'Incapacitated': {neg: true, text: 'nincs akció és reakció'},
+    'Invisible': {adv: ['atk'], text: 'előny a támadásra; a rád irányuló támadás hátrányos'},
+    'Paralyzed': {fail: ['save:str', 'save:dex'], speed0: true, neg: true, text: 'cselekvésképtelen, a STR és DEX mentő automatikusan sikertelen'},
+    'Petrified': {fail: ['save:str', 'save:dex'], speed0: true, neg: true, resist: 'minden sebzés', text: 'cselekvésképtelen, STR és DEX mentő sikertelen, ellenállás minden sebzésre'},
+    'Poisoned': {dis: ['atk', 'check'], neg: true, text: 'hátrány a támadásra és a próbákra'},
+    'Prone': {dis: ['atk'], neg: true, text: 'hátrány a támadásra; felállás: fél speed'},
+    'Restrained': {dis: ['atk', 'save:dex'], speed0: true, neg: true, text: 'a speed 0, hátrány a támadásra és a DEX mentőre'},
+    'Stunned': {fail: ['save:str', 'save:dex'], speed0: true, neg: true, text: 'cselekvésképtelen, a STR és DEX mentő automatikusan sikertelen'},
+    'Unconscious': {fail: ['save:str', 'save:dex'], speed0: true, neg: true, text: 'eszméletlen, a STR és DEX mentő automatikusan sikertelen'}
+  };
+  const INCAP = ['Incapacitated', 'Paralyzed', 'Petrified', 'Stunned', 'Unconscious'];
+  const effectOf = name => EFFECTS[Object.keys(EFFECTS).find(k => k.toLowerCase() === String(name).trim().toLowerCase())] || null;
+  // a felszerelt páncél / pajzs: a szabálykönyvből, ennek hiányában név alapján
+  function wornArmor(s, rb) {
+    const items = rb ? allItems(rb) : [];
+    const worn = s.inventory.filter(i => i.equipped).map(i => ({i, r: items.length ? byRef(items, i.ref, i.name) : null}));
+    const isShield = x => x.r ? x.r.tc === 'S' : /\bshield\b/i.test(x.i.name);
+    const isArmor = x => x.r ? ARMOR_TC.includes(x.r.tc) : /\b(armor|mail|plate|breastplate|hide)\b/i.test(x.i.name) && !isShield(x);
+    return {armor: worn.some(isArmor), shield: worn.some(isShield)};
+  }
+  const rageDmg = s => { const l = s.classes.filter(c => findClass(c.name) === 'Barbarian').reduce((t, c) => t + c.level, 0); return l >= 16 ? 4 : l >= 9 ? 3 : 2; };
+  // a lap aktív hatásai összesítve: AC, speed (a lapon tárolt alapértékből), dobás-módosítók, sebzés, teendőszöveg
+  function effects(s, rb = null) {
+    const off = new Set(s.effOff || []), act = [];
+    for (const n of s.conditions) { const fx = effectOf(n); if (fx && !off.has(n)) act.push({name: n, fx}); }
+    const ex = s.exhaustion, exFx = {dis: [...(ex >= 1 ? ['check'] : []), ...(ex >= 3 ? ['atk', 'save'] : [])], speedHalf: ex >= 2, speed0: ex >= 5};
+    if (ex && !off.has('Exhaustion')) act.push({name: 'Exhaustion ' + ex, fx: exFx});
+    const w = wornArmor(s, rb), dex = mod(s.abilities.dex);
+    let ac = s.ac; const acParts = [];
+    for (const {name, fx} of act) {
+      if (fx.armorless && !w.armor) { const v = fx.armorless + dex + (w.shield ? 2 : 0); if (v > ac) { acParts.push(name); ac = v; } }
+      if (fx.acMin && fx.acMin > ac) { acParts.push(name); ac = fx.acMin; }
+    }
+    for (const {name, fx} of act) {
+      if (fx.ac) { ac += fx.ac; acParts.push(name); }
+      if (fx.acAbil && !w.armor && !w.shield) { ac += Math.max(1, mod(s.abilities[fx.acAbil])); acParts.push(name); }
+    }
+    const m = String(s.speed).match(/\d+/);
+    let walk = m ? +m[0] : 30;
+    for (const {fx} of act) if (fx.speed) walk += fx.speed;
+    for (const {fx} of act) if (fx.speedMul) walk *= fx.speedMul;
+    if (act.some(x => x.fx.speedHalf)) walk = Math.floor(walk / 2);
+    const zero = act.find(x => x.fx.speed0);
+    if (zero) walk = 0;
+    const speed = m ? String(s.speed).replace(/\d+/, walk) : `${walk} ft.`;
+    const pick = k => act.flatMap(x => (x.fx[k] || []).map(t => ({t, src: x.name})));
+    const dmg = act.filter(x => x.fx.dmg).map(x => ({v: x.fx.dmg === 'rage' ? String(rageDmg(s)) : x.fx.dmg, melee: !!x.fx.melee, src: x.name}));
+    return {active: act.map(x => x.name), ac, acParts, speed, speedNote: zero ? zero.name : '', adv: pick('adv'), dis: pick('dis'), fail: pick('fail'),
+      bonus: act.flatMap(x => Object.entries(x.fx.bonus || {}).map(([k, v]) => ({k, v, src: x.name}))), dmg,
+      resist: act.map(x => x.fx.resist).filter(Boolean).join(', ')};
+  }
+  // egy d20-dobás (kind: 'atk', 'check:dex:stealth', 'save:wis', 'init' = DEX próba) módosítói a hatásokból
+  function rollFx(e, kind) {
+    const k = kind === 'init' ? 'check:dex' : String(kind || '');
+    const hit = list => list.filter(x => k === x.t || k.startsWith(x.t + ':'));
+    const type = k.split(':')[0];
+    return {adv: hit(e.adv).map(x => x.src), dis: hit(e.dis).map(x => x.src), fail: hit(e.fail).map(x => x.src), bonus: e.bonus.filter(x => x.k === type)};
+  }
+  // koncentráció vége: a koncentrációs hatás is lekerül
+  const dropConc = (conditions, spell) => conditions.filter(c => !(effectOf(c)?.conc && c.toLowerCase() === String(spell).toLowerCase()));
+
   // szabálymotoros lapnál a számolt mezők kézi átírása (s → n) felülírás-kulcsokra (ov) fordítva, különben a következő újraszámolás eltüntetné
   function ovEdits(s, n) {
     const out = {};
@@ -930,6 +1044,7 @@ window.Sheet = (() => {
     num, str, isObj, mod, sgn, norm, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     ASI_LEVELS, FEATURE_FX, classInfo, buildClasses, calc, materialize, ovEdits, refName,
+    abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, legacyCalc, derive, acItem, equipPatch, classesToBuild, skillKey,
     RB_FORMAT, RB_KINDS, emptyRulebook, joinChunks, splitChunks, loadRulebook, idb, variantFits, allItems, search, refOf, byRef, itemLine, spellLine};
 })();
