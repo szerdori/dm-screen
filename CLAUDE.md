@@ -51,6 +51,7 @@ Harckezelő és csapatnyilvántartó webapp D&D 5e mesélőnek. A felhasználó 
 - Nincs Node és Python; PowerShell 5.1 + Git (`C:\Program Files\Git\cmd\git.exe`), Chrome és Edge van.
 - PowerShell 5.1 a BOM nélküli UTF-8 `.ps1`-ben az ékezeteket elrontja → ékezetes szkriptet UTF-8 **BOM-mal** ments (vagy maradj ASCII-nál).
 - `teszt.ps1`: saját kis webszerver a 8767-es porton + `chrome --headless --dump-dom`; az app `index.html?test=1`-gyel töltődik iframe-be. Tesztsegédek a `tests.js` elején (`A()`, `W`, `mk()`, `pc()`, `stubRnd()`, `makeFakeDb()`, `assertNoXss()`); a `const`-tal deklarált app-függvényeket a futtató `W.név` alá másolja – új ilyen segédnél add a listához.
+- **`sheet.js` változata:** az oldalak `sheet.js?v=N`-nel töltik, és ellenőrzik a `Sheet.VERSION`-t (`karakter.html` → `SHEET_V`, `index.html` → `syncSheets`); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lapokra nem írnak. **Ha a `sheet.js` új függvényt vagy mezőt kap, amit az oldalak használnak, mindhárom helyen emeld a számot.** (2026-10-28: régi `sheet.js` mellett az Átállítás gomb hibára futott, és utána a Mentés üres lapot írt három karakterre; azóta a piszkozat nélküli Mentés sem ír.)
 - Böngészős előnézethez a `.claude\launch.json`-ba (git-ignorált) egy statikus szerver kell; a régi PowerShell-szerver (`server.ps1`) már nincs meg.
 
 ## Terv: játékos app telefonra (elfogadva 2026-10-19; 0. fázis kódja kész 2026-10-27)

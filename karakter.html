@@ -158,13 +158,16 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
   <div id="lastRoll"><span>Koppints egy értékre a dobáshoz.</span></div>
 </div></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
-<script src="sheet.js"></script>
+<script src="sheet.js?v=3"></script>
 <script>
 'use strict';
 // Játékos app: belépés Google-fiókkal; a saját karakter teljes telefonos lapja (sheets/{id}) és a csapat nyilvános lapjai (characters/{id}).
 // A lapot a gazdája (és a DM) írja; minden változás mezőnként megy a felhőbe, a DM Screen élőben látja.
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
+// a betöltött sheet.js változata egyezik-e ezzel az oldallal (a böngésző gyorsítótárából régi is jöhet); ha nem, a lap nem írható
+const SHEET_V = 3;
+let sheetStale = H.VERSION !== SHEET_V;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const {isObj, num, str, mod, sgn} = H;
@@ -696,7 +699,8 @@ function autoForm(s) {
 
 function readForm() {
   const fm = $('#edForm');
-  if (!fm || !draft || draft.id !== view.id) return draft?.s;
+  // piszkozat nélkül (pl. egy hibára futott művelet után) null: ilyenkor a hívó nem írhat a lapra, csak újrarajzol
+  if (!fm || !draft || draft.id !== view.id) return draft?.id === view.id ? draft.s : null;
   const v = n => fm.elements[n]?.value ?? '', ch = n => !!fm.elements[n]?.checked;
   const d = draft.s;
   if (fm.dataset.mode === 'auto') {
@@ -736,6 +740,7 @@ function canCalc(s) {
 function write(id, p) {
   const s = sheets.get(id);
   if (!s || !canEdit(s)) return false;
+  if (sheetStale) { alert('Az oldal egy része régi változatból töltődött be, ezért nem mentettem.\nFrissítsd az oldalt (Ctrl + F5).'); return false; }
   let next = H.norm({...s, ...p, owner: s.owner});
   const keys = new Set(Object.keys(p));
   if (concBroken(next)) {
@@ -960,11 +965,14 @@ document.addEventListener('click', e => {
     }
     case 'featCustom': { const n = $('#featNew').value.trim(); if (n) patch({features: [...s.features, {name: n, text: $('#featNewT').value, src: $('#featNewS').value}]}); break; }
     case 'featRm': if (confirm(`Eltávolítod: ${s.features[i].name}?` + (s.auto ? '' : '\n(Ha képességbónuszt adott, azt az Alapadatokon vedd vissza kézzel.)'))) patch({features: s.features.filter((_, k) => k !== i)}); break;
-    case 'rowAdd': { const d = readForm(); d[el.dataset.list].push({name: '', subclass: '', level: 1, hitDie: 8, hit: '', dmg: '', note: '', max: 1, used: 0, reset: 'long'}); render(true); break; }
-    case 'rowRm': { const d = readForm(); d[el.dataset.list].splice(i, 1); render(true); break; }
-    case 'slotsAuto': { const d = readForm(), sl = H.slotsFor(H.norm(d).classes); d.spellcasting = {...d.spellcasting, slots: sl.slots, pact: {...d.spellcasting.pact, ...sl.pact}}; render(true); break; }
+    case 'rowAdd': { const d = readForm(); if (!d) { render(true); break; } d[el.dataset.list].push({name: '', subclass: '', level: 1, hitDie: 8, hit: '', dmg: '', note: '', max: 1, used: 0, reset: 'long'}); render(true); break; }
+    case 'rowRm': { const d = readForm(); if (!d) { render(true); break; } d[el.dataset.list].splice(i, 1); render(true); break; }
+    case 'slotsAuto': { const d = readForm(); if (!d) { render(true); break; } const sl = H.slotsFor(H.norm(d).classes); d.spellcasting = {...d.spellcasting, slots: sl.slots, pact: {...d.spellcasting.pact, ...sl.pact}}; render(true); break; }
     case 'toAuto':
-      if (confirm('Átállítod a lapot a szabálymotorra? A jelenlegi értékek megmaradnak (ahol eltérnek a számolttól, felülírásként), a hiányzó választások a Teendők közé kerülnek.')) { draft = null; patch(H.toAuto(s, RB())); }
+      if (!confirm('Átállítod a lapot a szabálymotorra? A jelenlegi értékek megmaradnak (ahol eltérnek a számolttól, felülírásként), a hiányzó választások a Teendők közé kerülnek.')) break;
+      // hibánál semmi nem íródik, és az űrlap piszkozata is megmarad
+      try { const p = H.toAuto(s, RB()); draft = null; patch(p); }
+      catch (err) { console.error(err); alert('Az átállítás nem sikerült, a lapon nem változott semmi.\nFrissítsd az oldalt (Ctrl + F5), és próbáld újra.\n\nHiba: ' + err.message); render(true); }
       break;
     case 'todoGo': if (view.tab === 'adat') readForm(); view.tab = 'adat'; openKeys.add('todos'); render(true); $('details[data-key="todos"]')?.scrollIntoView({block: 'start'}); break;
     case 'chGo': document.getElementById(chId(el.dataset.key))?.scrollIntoView({block: 'center'}); break;
@@ -973,6 +981,8 @@ document.addEventListener('click', e => {
     case 'lvAdd': if (isDM) patch({build: {...s.build, levels: [...s.build.levels, {c: $('#lvCls').value, hp: null}]}}); break;
     case 'lvRm': if (isDM && confirm('Leveszed az utolsó szintet?')) patch({build: {...s.build, levels: s.build.levels.slice(0, -1)}}); break;
     case 'edSave': {
+      // piszkozat nélkül nincs mit menteni: üres lap soha nem íródhat a karakterre
+      if (!readForm()) { alert('Az űrlap közben újratöltődött, ezért nem mentettem. Nézd át, és nyomd meg újra a Mentést.'); render(true); break; }
       if (s.auto) {
         // a számolt tételek (auto) a lapról maradnak, a piszkozatból csak a sajátok jönnek
         const d = readForm();

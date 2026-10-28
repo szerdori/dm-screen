@@ -2304,13 +2304,31 @@ describe('Telefonos karakterlap (karakter.html)', () => {
   const ktext = () => kq('main').textContent;
   let klog;
   const ORIGK = {};
-  const ktest = (name, fn) => test(name, async () => {
+  const ktest = (name, fn, opts) => test(name, async () => {
     for (const k of ['rnd', 'confirm']) ORIGK[k] ??= K[k];
     klog = []; K.KDB = {update: (id, p) => klog.push(['update', id, p]), pub: (id, p) => klog.push(['pub', id, p])};
     K.confirm = () => true;
     try { await fn(); }
     finally { Object.assign(K, ORIGK); K.KDB = undefined; K.location.hash = ''; K.KApp.setSheets([]); K.KApp.setChars([]); K.KApp.setRulebook(null); K.route(); }
-  });
+  }, opts);
+  ktest('valódi szabálykönyvvel: kézi lap átállítása minden osztályra (5. szint, alosztállyal, különböző faj és háttér) – a Felépítés-fül hiba nélkül megjelenik, a gomb eltűnik', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet;
+    K.KApp.setRulebook({version: 'online', rb});
+    const races = H.raceOptions(rb).map(o => o.label), bgs = rb.backgrounds.map(b => b.n), errs = [];
+    rb.classes.forEach((c, i) => {
+      const sub = H.subclassesOf(c.n, rb)[0]?.n || '';
+      openSheet({race: races[i % races.length], background: bgs[i % bgs.length], classes: [{name: c.n, subclass: sub, level: 5}], features: [], resources: [], attacks: []}, 'dm@x.hu', true);
+      kclick('[data-tab="adat"]');
+      try { kclick('[data-act="toAuto"]'); K.eval('tabBuild(sheets.get("p1"))'); }
+      catch (e) { errs.push(`${c.n} (${races[i % races.length]}, ${bgs[i % bgs.length]}): ${e.message}`); return; }
+      const s = K.eval('sheets.get("p1")');
+      const lost = [s.name !== 'Minta Tolvaj' && 'név: ' + s.name, s.build?.levels?.length !== 5 && 'szintek: ' + s.build?.levels?.length, !s.build?.race && 'faj üres', H.level(s) !== 5 && 'szint: ' + H.level(s)].filter(Boolean);
+      if (lost.length) errs.push(`${c.n} (${races[i % races.length]}): ${lost.join(', ')}`);
+      if (!s.auto) errs.push(c.n + ': nem állt át');
+      else if (kq('[data-act="toAuto"]') || !ktext().includes('Felépítés')) errs.push(c.n + ': a felület nem váltott át');
+    });
+    eq(errs, []);
+  }, {online: true});
   const openSheet = (extra = {}, email = 'a@x.hu', dm = false) => {
     K.KApp.setAuth({status: 'signedIn', email, dm});
     K.KApp.setChars([{id: 'p1', kind: 'pc', owner: 'a@x.hu', visibility: 'party', name: 'Minta Tolvaj', ac: 14, hp: {cur: 24, max: 24}}]);
@@ -2569,6 +2587,34 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="adat"]'); kset('#lvCls', 'Paladin'); kclick('[data-act="lvAdd"]');
     eq(K.eval('sheets.get("p1").build.levels').map(l => l.c), ['Fighter', 'Fighter', 'Paladin']);
     kclick('[data-act="lvRm"]'); eq(K.eval('sheets.get("p1").build.levels').length, 2);
+  });
+  ktest('biztonság: hibára futó átállítás nem ír és a piszkozat megmarad; piszkozat nélküli Mentés nem ír üres lapot; régi sheet.js mellett nem ír', () => {
+    K.KApp.setRulebook({version: 'v1', rb: rb3()});
+    const alerts = [], origAlert = K.alert, origToAuto = K.Sheet.toAuto;
+    K.alert = m => alerts.push(m);
+    try {
+      openSheet();
+      kclick('[data-tab="adat"]');
+      K.Sheet.toAuto = () => { throw new Error('próba'); };
+      kclick('[data-act="toAuto"]');
+      eq(klog.filter(l => l[0] === 'update'), [], 'nem írt');
+      has(alerts.at(-1), 'nem változott semmi');
+      ok(K.eval('draft') && kq('#edForm').elements.name.value === 'Minta Tolvaj', 'a piszkozat és az űrlap megmaradt');
+      K.Sheet.toAuto = origToAuto;
+      // a régi hiba: piszkozat nélkül a Mentés üres lapot írt (név, faj, osztály, skillek elvesztek)
+      K.eval('draft = null');
+      kclick('[data-act="edSave"]');
+      eq(klog.filter(l => l[0] === 'update'), [], 'üres lap nem íródott');
+      has(alerts.at(-1), 'nem mentettem');
+      eq(K.eval('sheets.get("p1").name'), 'Minta Tolvaj');
+      for (const a of ['rowAdd', 'slotsAuto']) { K.eval('draft = null'); kclick(`[data-act="${a}"]`); }
+      eq(klog.filter(l => l[0] === 'update'), [], 'a sorhozzáadás és a slot-kitöltés sem ír');
+      // régi (gyorsítótárazott) sheet.js: semmi nem íródik
+      K.eval('sheetStale = true');
+      K.patch({hp: {max: 24, cur: 3, temp: 0}});
+      eq(klog.filter(l => l[0] === 'update'), [], 'régi sheet.js mellett nem ír');
+      has(alerts.at(-1), 'Ctrl + F5');
+    } finally { K.alert = origAlert; K.Sheet.toAuto = origToAuto; K.eval('sheetStale = false'); }
   });
   ktest('Átállítás gomb kézi lapon; ✋ teendő kipipálása; befecskendezett választás-érték nem fut le', () => {
     K.KApp.setRulebook({version: 'v1', rb: rb3()});

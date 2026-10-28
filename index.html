@@ -195,7 +195,7 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 <div id="gate"><div>Betöltés…</div></div>
 <input type="file" id="fileIn" accept=".json,application/json" hidden>
 
-<script src="sheet.js"></script>
+<script src="sheet.js?v=3"></script>
 <script>
 'use strict';
 // ---------- alapok ----------
@@ -456,6 +456,8 @@ function applySheet(id) {
 const setPath = (o, path, v) => { const ks = path.split('.'); ks.slice(0, -1).reduce((a, k) => a[k] = a[k] || {}, o)[ks.at(-1)] = v; };
 // a DM oldali változások visszaírása a lapokra (doSave hívja; internet nélkül is lefut, ilyenkor csak helyben)
 function syncSheets(ops) {
+  // a böngésző gyorsítótárából régi sheet.js jött: a lapokra nem írunk, amíg az oldal nem frissül (a könyvtári változás megmarad)
+  if (Sheet.VERSION !== 3) { if (!syncSheets.warned) log('⚠ Az oldal egy része régi változatból töltődött be: frissítsd (Ctrl + F5), addig a karakterlapokra nem írok.'); syncSheets.warned = true; return; }
   const now = new Date().toISOString(), by = authInfo.email || 'DM';
   for (const id of sheetOps.del) { delete SHEETS[id]; delete shadow[id]; if (DB) ops.push(DB.del('sheets/' + id)); }
   sheetOps.del.clear();
