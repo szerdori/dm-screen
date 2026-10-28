@@ -1602,6 +1602,97 @@ describe('Karakterlap: formátum és számolás (sheet.js)', () => {
   });
 });
 
+describe('Szabálymotor (sheet.js, 2. fázis)', () => {
+  // kitalált szabálykönyv-elemek a hatásformátumban (nem valódi szabályszöveg)
+  const RB = () => ({
+    races: [{n: 'Próbafaj', s: 'HB', fx: [{ab: {cha: 2}}, {abChoose: {from: ['str', 'dex', 'con', 'int', 'wis'], n: 2, amt: 1}}, {skillChoose: {from: 'any', n: 2}}, {hpPerLevel: 1}]}],
+    subraces: [], backgrounds: [{n: 'Próbaháttér', s: 'HB', fx: [{skill: {insight: true, religion: true}}]}],
+    feats: [{n: 'Próbafeat', s: 'HB', fx: [{ab: {dex: 1}}, {expertise: {n: 1}}, {save: ['wis']}, {init: 5}]}]
+  });
+  const fighter = (extra = {}) => W.Sheet.norm({auto: true, build: {base: {str: 15, dex: 12, con: 14, int: 10, wis: 13, cha: 8},
+    levels: [{c: 'Fighter'}, {c: 'Fighter', hp: 7}, {c: 'Fighter'}, {c: 'Fighter', hp: 4}, {c: 'Fighter'}], ch: {'Fighter:4:asi': {str: 2}}, ...extra}});
+
+  test('tisztítás: build, ov, auto, todoDone; régi lapnál nincs build és az auto ki van kapcsolva', () => {
+    const H = W.Sheet, s = H.norm({});
+    eq([s.build, s.auto, s.ov, s.todoDone], [null, false, {}, []]);
+    eq(H.norm({auto: true}).auto, false, 'build nélkül nincs auto');
+    const e = H.norm({auto: true, build: {race: XSS, base: {str: 99, dex: 'x'}, levels: [{c: 'fighter'}, {c: 'Fighter', hp: 99}, {c: ''}, {c: 'Wizard', hp: '3'}],
+      sub: {Fighter: 'Champion|PHB', Rogue: 'Thief|PHB', Wizard: ''}, ch: {'race:ability': ['dex', 'con'], 'rossz\nkulcs': 1, x: {a: 1, 'b c': 2, d: {}}, z: [1, [2], 'a']},
+      origin: {dex: 5, con: 1, foo: 2}}, ov: {'ab:str': 40, 'save:dex': '1', 'skill:stealth': 3, 'skill:arcana': 0.5, hpMax: 0, foo: 1, speed: '  '}, todoDone: ['a', 'a', '', {}]});
+    const b = e.build;
+    eq([e.auto, b.race, b.base.str, b.base.dex], [true, XSS, 30, 10]);
+    eq(b.levels, [{c: 'Fighter', hp: null}, {c: 'Fighter', hp: 12}, {c: 'Wizard', hp: 3}]);
+    eq([b.sub, b.ch, b.origin], [{Fighter: 'Champion|PHB'}, {'race:ability': ['dex', 'con'], x: {a: 1}, z: [1, 'a']}, {dex: 2, con: 1}]);
+    eq(e.ov, {'ab:str': 30, 'save:dex': 1, 'skill:stealth': 0, 'skill:arcana': 0.5, hpMax: 1});
+    eq(e.todoDone, ['a']);
+  });
+
+  test('Fighter 5: ASI, HP (1. szint max, utána dobott / átlag), első osztály mentői, alosztály-teendő', () => {
+    const H = W.Sheet, c = H.calc(fighter());
+    eq([c.level, c.pb, c.classes], [5, 3, [{name: 'Fighter', subclass: '', level: 5, hitDie: 10}]]);
+    eq([c.abilities.str.v, c.mods.con], [17, 2]);
+    eq(c.hpMax.v, 43, '10 + 7 + 6 + 4 + 6 + 5 × CON 2');
+    eq([c.saves.str.v, c.saves.con.v, c.saves.dex.v, c.skills.athletics.v, c.init.v], [6, 5, 1, 3, 1]);
+    eq(c.todos.map(t => t.key), ['Fighter:sub']);
+    eq(c.slots.filter(Boolean), []);
+    const c2 = H.calc(fighter({sub: {Fighter: 'Champion|PHB'}}));
+    eq([c2.todos, c2.classes[0].subclass], [[], 'Champion']);
+    const bad = H.calc(fighter({ch: {'Fighter:4:asi': {str: 3}}}));
+    eq([bad.abilities.str.v, bad.todos.map(t => t.key)], [15, ['Fighter:sub', 'Fighter:4:asi']], 'érvénytelen ASI nem számít');
+    eq(H.calc(fighter({base: {str: 19}, ch: {'Fighter:4:asi': {str: 2}}})).abilities.str.v, 20, 'legfeljebb 20');
+  });
+
+  test('faj, háttér, feat ASI helyett: választások, expertise csak jártas skillre, HP-bónusz, initiative, hiányzó elem', () => {
+    const H = W.Sheet, rb = RB();
+    const mkR = (ch = {}, extra = {}) => H.norm({auto: true, build: {race: 'Próbafaj|HB', background: 'Próbaháttér|HB', base: {str: 8, dex: 16, con: 14, int: 10, wis: 12, cha: 10},
+      levels: [{c: 'Rogue'}, {c: 'Rogue'}, {c: 'Rogue'}, {c: 'Rogue'}],
+      ch: {'race:ability': ['dex', 'cha', 'con'], 'race:skills': ['Sleight of Hand', 'stealth', 'perception'], 'Rogue:4:asi': {feat: 'Próbafeat|HB'}, ...ch}, ...extra}});
+    let c = H.calc(mkR({'feat:Próbafeat|HB:expertise': ['arcana']}), rb);
+    eq([c.abilities.dex.v, c.abilities.con.v, c.abilities.cha.v], [18, 15, 12], 'faj: CHA +2, választott DEX/CON +1 (a CHA nem választható), feat: DEX +1');
+    eq(c.hpMax.v, 35, '8 + 3 × 5 + 4 × CON 2 + 4 × 1');
+    eq([c.saves.dex.v, c.saves.wis.v, c.saves.int.prof, c.init.v], [6, 3, 1, 9]);
+    eq([c.skills['sleight-of-hand'].prof, c.skills.stealth.prof, c.skills.perception.prof, c.skills.insight.prof, c.skills.religion.prof], [1, 1, 0, 1, 1]);
+    eq(c.todos.map(t => t.key), ['Rogue:sub', 'feat:Próbafeat|HB:expertise'], 'arcana nem jártas → az expertise nincs kitöltve');
+    c = H.calc(mkR({'feat:Próbafeat|HB:expertise': ['stealth']}), rb);
+    eq([c.skills.stealth.prof, c.skills.stealth.v, c.todos.map(t => t.key)], [2, 8, ['Rogue:sub']]);
+    // TCE Customizing Your Origin: a faji képességbónusz helyett az áthelyezett
+    c = H.calc(mkR({}, {origin: {dex: 2, con: 1}}), rb);
+    eq([c.abilities.dex.v, c.abilities.con.v, c.abilities.cha.v, c.choices.some(x => x.key === 'race:ability')], [19, 15, 10, false]);
+    c = H.calc(H.norm({auto: true, build: {race: 'Nincs|HB', levels: [{c: 'Bard'}]}}), rb);
+    eq([c.missing, c.todos.map(t => t.key)], [['Faj: Nincs'], ['missing:Faj: Nincs']]);
+  });
+
+  test('kézi felülírás: a számolt érték megmarad mellette, és a ráépülő értékek is az újat használják', () => {
+    const H = W.Sheet;
+    const c = H.calc(H.norm({...fighter(), ov: {'ab:dex': 20, hpMax: 50, 'skill:stealth': 2, 'save:wis': 1, init: 2}}));
+    eq([c.abilities.dex.v, c.abilities.dex.calc, c.abilities.dex.ov, c.mods.dex], [20, 12, true, 5]);
+    eq([c.skills.stealth.v, c.skills.stealth.ov, c.saves.wis.v, c.saves.wis.ov], [11, true, 4, true]);
+    eq([c.hpMax.v, c.hpMax.calc, c.hpMax.ov, c.init.v, c.init.calc, c.init.ov], [50, 43, true, 2, 5, true]);
+    eq(H.calc(H.norm({...fighter(), ov: {hpMax: 43}})).hpMax.ov, false, 'a számolttal egyező felülírás nem jelzett');
+  });
+
+  test('multiclass: mentők csak az első osztályból, HP, slotok, alosztály szintje osztályonként', () => {
+    const H = W.Sheet;
+    const c = H.calc(H.norm({auto: true, build: {base: {con: 12, int: 16}, levels: [{c: 'Fighter'}, {c: 'Wizard', hp: 2}, {c: 'Wizard'}]}}));
+    eq(c.classes, [{name: 'Fighter', subclass: '', level: 1, hitDie: 10}, {name: 'Wizard', subclass: '', level: 2, hitDie: 6}]);
+    eq([c.hpMax.v, c.saves.str.prof, c.saves.con.prof, c.saves.int.prof, c.saves.wis.prof], [19, 1, 1, 0, 0]);
+    eq([c.slots.filter(Boolean), c.todos.map(t => t.key)], [[3], ['Wizard:sub']]);
+  });
+
+  test('kiírás a lapra: csak a változott mezők, másodszorra már semmi', () => {
+    const H = W.Sheet;
+    const s = H.norm({...fighter(), hp: {max: 10, cur: 10}, skillProf: {stealth: 1}, saveProf: ['dex'], classes: [{name: 'Rogue', level: 1}], spellcasting: {slots: [2], used: [1]}});
+    const p = H.materialize(s, H.calc(s));
+    eq(Object.keys(p).sort(), ['abilities', 'classes', 'hp', 'saveProf', 'skillProf', 'spellcasting']);
+    eq([p.hp, p.saveProf, p.skillProf, p.abilities.str, p.spellcasting.slots[0], p.spellcasting.used[0]], [{max: 43, cur: 10, temp: 0}, ['str', 'con'], {}, 17, 0, 0]);
+    const s2 = H.norm({...s, ...p});
+    eq(H.materialize(s2, H.calc(s2)), {});
+    eq([H.level(s2), H.saveBonus(s2, 'str'), H.initiative(s2)], [5, 6, 1], 'a régi számoló függvények a kiírt értékekből ugyanazt adják');
+    const o = H.norm({...s2, ov: {init: 4}});
+    eq(H.materialize(o, H.calc(o)), {initBonus: 4});
+  });
+});
+
 describe('Szabálykönyv és tárgy-import', () => {
   test('5e.tools → saját formátum: csak PHB / XGE / TCE (tárgyaknál DMG) 2014, a 2024-es könyvek nélkül', async () => {
     const rb = await fakeRb();

@@ -13,12 +13,17 @@ window.Sheet = (() => {
   const COINS = ['pp', 'gp', 'ep', 'sp', 'cp'];
   const RESETS = ['short', 'long', 'none'];
   const DICE = [6, 8, 10, 12];
-  // PHB 2014 osztályok (+ TCE Artificer): hit die, varázsló-típus, varázsképesség
+  // PHB 2014 osztályok (+ TCE Artificer): hit die, varázsló-típus, varázsképesség, mentő-jártasság, alosztály szintje, extra ASI-szintek
+  // (a szabálymotor tartaléka, ha a szabálykönyvben még nincs osztályadat)
+  const ASI_LEVELS = [4, 8, 12, 16, 19];
   const CLASSES = {
-    Artificer: {hd: 8, caster: 'artificer', ab: 'int'}, Barbarian: {hd: 12}, Bard: {hd: 8, caster: 'full', ab: 'cha'},
-    Cleric: {hd: 8, caster: 'full', ab: 'wis'}, Druid: {hd: 8, caster: 'full', ab: 'wis'}, Fighter: {hd: 10}, Monk: {hd: 8},
-    Paladin: {hd: 10, caster: 'half', ab: 'cha'}, Ranger: {hd: 10, caster: 'half', ab: 'wis'}, Rogue: {hd: 8},
-    Sorcerer: {hd: 6, caster: 'full', ab: 'cha'}, Warlock: {hd: 8, caster: 'pact', ab: 'cha'}, Wizard: {hd: 6, caster: 'full', ab: 'int'}
+    Artificer: {hd: 8, caster: 'artificer', ab: 'int', saves: ['con', 'int'], subLvl: 3}, Barbarian: {hd: 12, saves: ['str', 'con'], subLvl: 3},
+    Bard: {hd: 8, caster: 'full', ab: 'cha', saves: ['dex', 'cha'], subLvl: 3}, Cleric: {hd: 8, caster: 'full', ab: 'wis', saves: ['wis', 'cha'], subLvl: 1},
+    Druid: {hd: 8, caster: 'full', ab: 'wis', saves: ['int', 'wis'], subLvl: 2}, Fighter: {hd: 10, saves: ['str', 'con'], subLvl: 3, asi: [6, 14]},
+    Monk: {hd: 8, saves: ['str', 'dex'], subLvl: 3}, Paladin: {hd: 10, caster: 'half', ab: 'cha', saves: ['wis', 'cha'], subLvl: 3},
+    Ranger: {hd: 10, caster: 'half', ab: 'wis', saves: ['str', 'dex'], subLvl: 3}, Rogue: {hd: 8, saves: ['dex', 'int'], subLvl: 3, asi: [10]},
+    Sorcerer: {hd: 6, caster: 'full', ab: 'cha', saves: ['con', 'cha'], subLvl: 1}, Warlock: {hd: 8, caster: 'pact', ab: 'cha', saves: ['wis', 'cha'], subLvl: 1},
+    Wizard: {hd: 6, caster: 'full', ab: 'int', saves: ['int', 'wis'], subLvl: 2}
   };
   const THIRD_CASTERS = /^(eldritch knight|arcane trickster)$/i;
 
@@ -41,6 +46,45 @@ window.Sheet = (() => {
     })).filter(i => i.name);
   }
   const named = (list, max, f) => arr(list, max).filter(isObj).map(f).filter(x => x.name);
+  // szabálymotor: a felépítés (választások) és a kézi felülírások tisztítása
+  const CH_KEY = /^[\p{L}\p{N}_ ':|.,+()\/-]{1,160}$/u;
+  function chVal(v) {
+    if (typeof v === 'string') return str(v, 200);
+    if (typeof v === 'number') return num(v);
+    if (typeof v === 'boolean') return v;
+    if (Array.isArray(v)) return v.slice(0, 30).filter(x => typeof x === 'string' || typeof x === 'number').map(x => typeof x === 'string' ? str(x, 200) : num(x));
+    if (isObj(v)) return Object.fromEntries(Object.entries(v).filter(([k, x]) => /^[\w-]{1,40}$/.test(k) && (typeof x === 'string' || typeof x === 'number')).slice(0, 10)
+      .map(([k, x]) => [k, typeof x === 'string' ? str(x, 200) : num(x)]));
+    return null;
+  }
+  function normBuild(b) {
+    const base = isObj(b.base) ? b.base : {}, sub = isObj(b.sub) ? b.sub : {}, ch = isObj(b.ch) ? b.ch : {}, org = isObj(b.origin) ? b.origin : {};
+    const levels = arr(b.levels, 20).filter(isObj).map(l => ({c: findClass(l.c) || str(l.c, 60).trim(), hp: l.hp == null || l.hp === '' ? null : int(l.hp, 1, 1, 12)})).filter(l => l.c);
+    const origin = Object.fromEntries(ABIL.filter(a => num(org[a]) > 0).map(a => [a, int(org[a], 0, 0, 2)]));
+    return {
+      v: 1, race: str(b.race, 200), subrace: str(b.subrace, 200), background: str(b.background, 200),
+      base: Object.fromEntries(ABIL.map(a => [a, int(base[a], 10, 1, 30)])), levels,
+      sub: Object.fromEntries(Object.entries(sub).filter(([k, v]) => levels.some(l => l.c === k) && typeof v === 'string' && v.trim()).map(([k, v]) => [k, str(v, 200)])),
+      ch: Object.fromEntries(Object.entries(ch).filter(([k]) => CH_KEY.test(k)).slice(0, 300).map(([k, v]) => [k, chVal(v)]).filter(([, v]) => v !== null)),
+      origin: Object.keys(origin).length ? origin : null
+    };
+  }
+  // felülírható kulcsok: ab:str, save:dex (0/1), skill:stealth (0 / 0.5 / 1 / 2), hpMax, init, ac, speed
+  function normOv(o) {
+    const out = {};
+    for (const [k, v] of Object.entries(isObj(o) ? o : {})) {
+      const [t, x] = k.split(':');
+      if (v === null || v === '') continue;
+      if (t === 'ab' && ABIL.includes(x)) out[k] = int(v, 10, 1, 30);
+      else if (t === 'save' && ABIL.includes(x)) out[k] = num(v) ? 1 : 0;
+      else if (t === 'skill' && SKILLS[x]) out[k] = [0, 0.5, 1, 2].includes(num(v, -1)) ? num(v) : 0;
+      else if (k === 'hpMax') out[k] = int(v, 1, 1, 9999);
+      else if (k === 'init') out[k] = int(v, 0, -20, 30);
+      else if (k === 'ac') out[k] = int(v, 10, 0, 50);
+      else if (k === 'speed') { const s = str(v, 100).trim(); if (s) out[k] = s; }
+    }
+    return out;
+  }
   function norm(d) {
     d = isObj(d) ? d : {};
     const hp = isObj(d.hp) ? d.hp : {};
@@ -93,6 +137,11 @@ window.Sheet = (() => {
       updatedBy: str(d.updatedBy, 200)
     };
     if (!s.classes.length) s.classes = [{name: '', subclass: '', level: 1, hitDie: 8}];
+    // szabálymotor (2. fázis): a régi, kézi lapon nincs build, és az auto is ki van kapcsolva
+    s.build = isObj(d.build) ? normBuild(d.build) : null;
+    s.auto = !!d.auto && !!s.build;
+    s.ov = normOv(d.ov);
+    s.todoDone = [...new Set(arr(d.todoDone, 300).map(x => str(x, 200)).filter(Boolean))];
     return s;
   }
 
@@ -135,6 +184,191 @@ window.Sheet = (() => {
     const row = SLOTS[Math.min(20, cl)] || [];
     const wl = classes.filter(c => findClass(c.name) === 'Warlock').reduce((t, c) => t + c.level, 0);
     return {slots: Array.from({length: 9}, (_, i) => row[i] || 0), pact: PACT(wl) || {level: 0, max: 0}};
+  }
+
+  // ---------- szabálymotor (2. fázis): a lap felépítéséből (build) és a kézi felülírásokból (ov) számol ----------
+  // A szabálykönyv elemei (faj, alfaj, háttér, feat…) hatáslistát (fx) hordoznak; egy hatás egy objektum, pl.
+  //   {ab: {dex: 2}}  {abChoose: {from: [...], n: 2, amt: 1}}  {abSet: {str: 19}}  {save: ['dex']}  {skill: {stealth: 1}}
+  //   {skillChoose: {from: [...] | 'any', n: 2}}  {expertise: {n: 2}}  {jack: true}  {hpPerLevel: 1}  {init: 5}  {feat: {n: 1}}
+  // A választást kérő hatások kulcsa: '<forrás>:<fajta>' (pl. 'race:ability', 'Fighter:4:asi', 'feat:Alert|PHB:skills'); az érték a build.ch-ban van.
+  const refName = r => String(r || '').split('|')[0];
+  const skillKey = k => String(k || '').trim().toLowerCase().replace(/\s+/g, '-');
+  function rbFind(list, ref) {
+    if (!ref || !Array.isArray(list)) return null;
+    const [n, s] = String(ref).split('|');
+    return list.find(x => x.n === n && (!s || x.s === s)) || list.find(x => String(x.n).toLowerCase() === n.toLowerCase()) || null;
+  }
+  function classInfo(name, rb) {
+    const b = CLASSES[name] || {}, r = (rb?.classes || []).find(c => c.n === name) || {};
+    return {hd: DICE.includes(r.hd) ? r.hd : b.hd || 8, saves: r.saves || b.saves || [], subLvl: r.subLvl || b.subLvl || 3,
+      asi: [...new Set([...(r.asi || ASI_LEVELS), ...(r.asi ? [] : b.asi || [])])].sort((x, y) => x - y)};
+  }
+  // osztályösszesítő a szintek sorrendjéből (a meglévő kód a classes mezőt használja)
+  function buildClasses(b, rb) {
+    const out = [];
+    for (const l of b.levels) {
+      let c = out.find(x => x.name === l.c);
+      if (!c) out.push(c = {name: l.c, subclass: refName(b.sub[l.c]), level: 0, hitDie: classInfo(l.c, rb).hd});
+      c.level++;
+    }
+    return out;
+  }
+  const CHOICE_KIND = {abChoose: 'ability', skillChoose: 'skills', expertise: 'expertise', feat: 'feat'};
+  const FX_LABEL = {ability: 'képességérték-növelés', skills: 'skill-jártasság', expertise: 'expertise', feat: 'feat', asi: 'ASI vagy feat', subclass: 'alosztály'};
+
+  function calc(s, rb = null) {
+    const b = s.build || normBuild({}), ov = s.ov || {};
+    const classes = buildClasses(b, rb);
+    const L = Math.max(1, Math.min(20, b.levels.length)), PB = Math.floor((L - 1) / 4) + 2;
+    const fxs = [], choices = [], missing = [];
+    // egy forrás hatásai; a választást kérők kulcsot kapnak, és bekerülnek a választási helyek közé
+    function addFx(list, src, prefix, depth = 0) {
+      const seen = {};
+      for (const fx of Array.isArray(list) ? list : []) {
+        if (!isObj(fx)) continue;
+        for (const [t, kind] of Object.entries(CHOICE_KIND)) {
+          if (!fx[t]) continue;
+          const n = seen[kind] = (seen[kind] || 0) + 1;
+          const key = `${prefix}:${kind}${n > 1 ? n : ''}`;
+          const o = isObj(fx[t]) ? fx[t] : {};
+          choices.push({key, kind, src, n: Math.max(1, num(o.n, 1)), amt: num(o.amt, 1), from: o.from, value: b.ch[key]});
+          if (t === 'feat' && depth < 2) for (const ref of arr(b.ch[key], num(o.n, 1))) featFx(ref, depth);
+        }
+        fxs.push({fx, src});
+      }
+    }
+    function featFx(ref, depth) {
+      const f = rbFind(rb?.feats, ref);
+      if (f) addFx(f.fx, 'Feat: ' + f.n, 'feat:' + ref, depth + 1);
+      else if (ref) missing.push('Feat: ' + refName(ref));
+    }
+    const race = rbFind(rb?.races, b.race), subrace = rbFind(rb?.subraces, b.subrace), bg = rbFind(rb?.backgrounds, b.background);
+    if (b.race && !race) missing.push('Faj: ' + refName(b.race));
+    if (b.subrace && !subrace) missing.push('Alfaj: ' + refName(b.subrace));
+    if (b.background && !bg) missing.push('Háttér: ' + refName(b.background));
+    // TCE Customizing Your Origin: a faji képességbónusz helyett a megadott áthelyezés
+    const noAb = list => b.origin ? (list || []).filter(fx => !(isObj(fx) && (fx.ab || fx.abChoose))) : list;
+    if (race) addFx(noAb(race.fx), 'Faj: ' + race.n, 'race');
+    if (subrace) addFx(noAb(subrace.fx), 'Alfaj: ' + subrace.n, 'subrace');
+    if (b.origin) fxs.push({fx: {ab: b.origin}, src: 'Faj (áthelyezett bónusz, TCE)'});
+    if (bg) addFx(bg.fx, 'Háttér: ' + bg.n, 'bg');
+    // osztályok: az első osztály mentői; alosztály és ASI a szintek szerint
+    if (classes[0]) fxs.push({fx: {save: classInfo(classes[0].name, rb).saves}, src: classes[0].name + ' (első osztály)'});
+    for (const c of classes) {
+      const ci = classInfo(c.name, rb);
+      if (c.level >= ci.subLvl) choices.push({key: c.name + ':sub', kind: 'subclass', src: `${c.name} ${ci.subLvl}`, n: 1, value: b.sub[c.name] || ''});
+      for (const lv of ci.asi.filter(x => x <= c.level)) {
+        const key = `${c.name}:${lv}:asi`, v = b.ch[key], src = `ASI (${c.name} ${lv})`;
+        choices.push({key, kind: 'asi', src, n: 1, value: v});
+        if (isObj(v) && typeof v.feat === 'string' && v.feat) featFx(v.feat, 0);
+        else if (isObj(v)) { const inc = asiInc(v); if (inc) fxs.push({fx: {ab: inc}, src}); }
+      }
+    }
+
+    // választások ellenőrzése: csak az érvényes értékek számítanak
+    const valid = {};
+    for (const c of choices) {
+      let ok = [];
+      if (c.kind === 'ability') ok = arr(c.value, 6).filter(a => (Array.isArray(c.from) ? c.from : ABIL).includes(a));
+      else if (c.kind === 'skills') ok = arr(c.value, 18).map(skillKey).filter(k => SKILLS[k] && (c.from === 'any' || !Array.isArray(c.from) || c.from.map(skillKey).includes(k)));
+      else if (c.kind === 'feat') ok = arr(c.value, 4).filter(x => typeof x === 'string' && x);
+      else if (c.kind === 'asi') ok = isObj(c.value) && ((typeof c.value.feat === 'string' && c.value.feat) || asiInc(c.value)) ? [c.value] : [];
+      else if (c.kind === 'subclass') ok = c.value ? [c.value] : [];
+      else if (c.kind === 'expertise') ok = arr(c.value, 18).map(skillKey);   // a jártasság-feltételt lent nézzük
+      c.ok = [...new Set(ok.map(x => isObj(x) ? JSON.stringify(x) : x))].slice(0, c.n).map(x => typeof x === 'string' && x[0] === '{' ? JSON.parse(x) : x);
+      valid[c.key] = c;
+    }
+
+    // képességértékek: alap + növelések (ASI és feat legfeljebb 20-ig), utána a tárgyak minimuma
+    const abil = {};
+    for (const a of ABIL) abil[a] = {base: b.base[a], parts: [{v: b.base[a], src: 'alapérték'}], set: null};
+    const saveSet = {}, skillSet = {}, expert = [], fxFlags = {jack: null, hpPerLevel: [], init: []};
+    for (const {fx, src} of fxs) {
+      if (isObj(fx.ab)) for (const a of ABIL) if (num(fx.ab[a])) abil[a].parts.push({v: num(fx.ab[a]), src});
+      if (fx.abChoose) { const c = choices.find(x => x.src === src && x.kind === 'ability' && !x.used); if (c) { c.used = true; for (const a of c.ok) abil[a].parts.push({v: c.amt, src}); } }
+      if (isObj(fx.abSet)) for (const a of ABIL) if (num(fx.abSet[a]) && num(fx.abSet[a]) > (abil[a].set?.v || 0)) abil[a].set = {v: num(fx.abSet[a]), src};
+      for (const a of arr(fx.save, 6)) if (ABIL.includes(a) && !saveSet[a]) saveSet[a] = src;
+      if (isObj(fx.skill)) for (const [k, p] of Object.entries(fx.skill)) { const kk = skillKey(k); if (SKILLS[kk] && !skillSet[kk]) skillSet[kk] = {p: p === 2 ? 2 : 1, src}; }
+      if (fx.skillChoose) { const c = choices.find(x => x.src === src && x.kind === 'skills' && !x.used); if (c) { c.used = true; for (const k of c.ok) if (!skillSet[k]) skillSet[k] = {p: 1, src}; } }
+      if (fx.expertise) { const c = choices.find(x => x.src === src && x.kind === 'expertise' && !x.used); if (c) { c.used = true; expert.push(c); } }
+      if (fx.jack && !fxFlags.jack) fxFlags.jack = src;
+      if (num(fx.hpPerLevel)) fxFlags.hpPerLevel.push({v: num(fx.hpPerLevel), src});
+      if (num(fx.init)) fxFlags.init.push({v: num(fx.init), src});
+    }
+    // expertise csak jártas skillre (mindegyik után, hogy a sorrend ne számítson)
+    for (const c of expert) {
+      c.ok = c.ok.filter(k => skillSet[k]);
+      for (const k of c.ok) skillSet[k] = {p: 2, src: skillSet[k].src + ' + expertise (' + c.src + ')'};
+    }
+    for (const c of choices) c.done = c.ok.length >= c.n || (c.kind === 'ability' && c.ok.length >= (Array.isArray(c.from) ? c.from : ABIL).length);
+
+    const val = (key, v, parts) => (key in ov && ov[key] !== v ? {v: ov[key], calc: v, ov: true, parts} : {v, calc: v, ov: false, parts});
+    const abilities = {}, mods = {};
+    for (const a of ABIL) {
+      const x = abil[a], sum = x.parts.reduce((t, p) => t + p.v, 0);
+      let v = x.base > 20 ? sum : Math.min(20, sum);
+      const parts = [...x.parts];
+      if (v < sum) parts.push({v: v - sum, src: 'legfeljebb 20'});
+      if (x.set && x.set.v > v) { parts.push({v: x.set.v - v, src: x.set.src + ` (legalább ${x.set.v})`}); v = x.set.v; }
+      abilities[a] = val('ab:' + a, v, parts);
+      mods[a] = mod(abilities[a].v);
+    }
+    const jack = !!fxFlags.jack;
+    const saves = {};
+    for (const a of ABIL) {
+      const pc = saveSet[a] ? 1 : 0, p = 'save:' + a in ov ? ov['save:' + a] : pc;
+      saves[a] = {prof: p, ov: p !== pc, v: mods[a] + p * PB,
+        parts: [{v: mods[a], src: a.toUpperCase() + '-módosító'}, ...(p ? [{v: PB, src: 'jártasság' + (saveSet[a] ? ' – ' + saveSet[a] : ' (kézi)')}] : [])]};
+    }
+    const skills = {};
+    for (const k of Object.keys(SKILLS)) {
+      const a = SKILLS[k], pc = skillSet[k]?.p || (jack ? 0.5 : 0), p = 'skill:' + k in ov ? ov['skill:' + k] : pc;
+      const pv = p === 0.5 ? Math.floor(PB / 2) : p * PB;
+      skills[k] = {prof: p, ov: p !== pc, v: mods[a] + pv,
+        parts: [{v: mods[a], src: a.toUpperCase() + '-módosító'}, ...(p ? [{v: pv, src: p === 2 ? 'expertise' : p === 1 ? 'jártasság' : 'Jack of All Trades'}] : []), ...(skillSet[k] && p === pc ? [{v: 0, src: skillSet[k].src}] : [])]};
+    }
+    // HP: az első szinten a hit die maximuma, utána a tárolt dobás vagy az átlag; + CON-módosító és szintenkénti bónuszok szintenként
+    const hpParts = [];
+    b.levels.forEach((l, i) => {
+      const hd = classInfo(l.c, rb).hd;
+      hpParts.push(i === 0 ? {v: hd, src: `${l.c} 1. szint (d${hd} maximum)`} : {v: l.hp ?? hd / 2 + 1, src: `${i + 1}. szint: ${l.c} ` + (l.hp == null ? `(d${hd} átlag)` : '(dobott / kézi)')});
+    });
+    if (b.levels.length) hpParts.push({v: mods.con * b.levels.length, src: `CON-módosító × ${b.levels.length}`});
+    for (const x of fxFlags.hpPerLevel) hpParts.push({v: x.v * b.levels.length, src: `${x.src} (${x.v} × ${b.levels.length})`});
+    const hpMax = val('hpMax', Math.max(1, hpParts.reduce((t, p) => t + p.v, 0)), hpParts);
+    const initParts = [{v: mods.dex, src: 'DEX-módosító'}, ...(jack ? [{v: Math.floor(PB / 2), src: 'Jack of All Trades'}] : []), ...fxFlags.init];
+    const init = val('init', initParts.reduce((t, p) => t + p.v, 0), initParts);
+    const sl = slotsFor(classes);
+
+    const todos = [
+      ...choices.filter(c => !c.done).map(c => ({key: c.key, kind: c.kind, src: c.src, text: `${c.src}: ${FX_LABEL[c.kind] || c.kind}` + (c.n > 1 ? ` (${c.ok.length} / ${c.n})` : '')})),
+      ...missing.map(m => ({key: 'missing:' + m, kind: 'missing', text: m + ' – nincs a szabálykönyvben'}))
+    ];
+    return {level: L, pb: PB, classes, abilities, mods, saves, skills, jack, hpMax, init, slots: sl.slots, pact: sl.pact,
+      choices: choices.map(({used, ...c}) => c), todos, missing};
+  }
+  // ASI-érték: összesen +2 (egy képességre +2 vagy kettőre +1)
+  function asiInc(v) {
+    const inc = Object.fromEntries(ABIL.filter(a => num(v[a]) > 0).map(a => [a, Math.floor(num(v[a]))]));
+    const sum = Object.values(inc).reduce((t, x) => t + x, 0);
+    return sum > 0 && sum <= 2 ? inc : null;
+  }
+  // a számolt értékek kiírása a lap mezőibe (gyorsítótár: a DM Screen, a harc és a régi kód ezeket olvassa); csak a változott mezők
+  function materialize(s, c) {
+    const skillProf = Object.fromEntries(Object.entries(c.skills).filter(([, x]) => x.prof >= 1).map(([k, x]) => [k, x.prof]));
+    const abilities = Object.fromEntries(ABIL.map(a => [a, c.abilities[a].v]));
+    const jack = c.jack;
+    const dflt = mod(abilities.dex) + (jack ? Math.floor(c.pb / 2) : 0);
+    const max = c.hpMax.v, sc = s.spellcasting;
+    const p = {
+      classes: c.classes.length ? c.classes : s.classes, abilities, saveProf: ABIL.filter(a => c.saves[a].prof), skillProf, jack,
+      initBonus: c.init.v === dflt ? null : c.init.v,
+      hp: {...s.hp, max, cur: Math.min(s.hp.cur, max)},
+      spellcasting: {...sc, slots: c.slots, used: sc.used.map((u, i) => Math.min(u, c.slots[i])), pact: {level: c.pact.level, max: c.pact.max, used: Math.min(sc.pact.used, c.pact.max)}}
+    };
+    const next = norm({...s, ...p}), out = {};
+    for (const k of Object.keys(p)) if (JSON.stringify(next[k]) !== JSON.stringify(s[k])) out[k] = next[k];
+    return out;
   }
 
   // pihenők: a változott mezőket adják vissza (a hívó írja a felhőbe)
@@ -293,5 +527,6 @@ window.Sheet = (() => {
   return {FORMAT, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, norm, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
+    ASI_LEVELS, classInfo, buildClasses, calc, materialize, refName, skillKey,
     RB_FORMAT, RB_KINDS, emptyRulebook, joinChunks, splitChunks, loadRulebook, idb, variantFits, allItems, search, refOf, byRef, itemLine, spellLine};
 })();
