@@ -402,7 +402,12 @@ let SHEETS = {}, shadow = {}, cshadow = {}, sheetOps = {set: new Set(), del: new
 const LINK = {name: 'name', portrait: 'portrait', owner: 'owner', ac: 'ac', hpMax: 'hp.max', hpCur: 'hp.cur', speed: 'speed', abilities: 'abilities', inventory: 'inventory', currency: 'currency'};
 const linkFields = c => ({name: c.name, portrait: c.portrait || '', owner: c.owner || '', ac: c.ac, hpMax: c.hp.max, hpCur: c.hp.cur ?? c.hp.max,
   speed: c.speed, abilities: c.abilities, inventory: Sheet.normInventory(c.inventory), currency: c.currency});
-const hpShadow = x => JSON.stringify([x.hp, x.temp, !!x.conc]);
+// a harcbeli példány lappal egyeztetett része: HP, temp, koncentráció, állapotok (az „Exhaustion” a lapon szint, az nem megy át)
+const syncedConds = list => list.map(k => k.name ?? k).filter(n => n && n !== 'Exhaustion');
+const hpShadow = x => JSON.stringify([x.hp, x.temp, !!x.conc, syncedConds(x.cond)]);
+// a lap állapotai a harcbeli példányra; a DM által megadott körszám név szerint megmarad, a csak harcbeli „Exhaustion” is
+const condsFromSheet = (s, old = []) => [...s.conditions.map(n => ({name: n, rounds: old.find(k => k.name.toLowerCase() === n.toLowerCase())?.rounds ?? null})),
+  ...old.filter(k => k.name === 'Exhaustion')];
 function sheetToCreature(s, base) {
   const H = Sheet;
   // szabálymotoros lapnál a mentők és a skillek a cache-ből (abban már benne van pl. az Aura of Protection, a Remarkable Athlete);
@@ -445,7 +450,7 @@ function applySheet(id) {
   S.library[i] = lib; shadow[id] = stableJson(linkFields(lib));
   for (const x of S.enc.list) if (x.c.libId === id) {
     const c = sheetToCreature(s, x.c); delete c.hp.cur; x.c = c;
-    x.hp = s.hp.cur; x.temp = s.hp.temp; x.conc = !!s.concentration; cshadow[x.cid] = hpShadow(x);
+    x.hp = s.hp.cur; x.temp = s.hp.temp; x.conc = !!s.concentration; x.cond = condsFromSheet(s, x.cond); cshadow[x.cid] = hpShadow(x);
   }
 }
 const setPath = (o, path, v) => { const ks = path.split('.'); ks.slice(0, -1).reduce((a, k) => a[k] = a[k] || {}, o)[ks.at(-1)] = v; };
@@ -459,20 +464,26 @@ function syncSheets(ops) {
     const patch = {};
     for (const x of S.enc.list) if (x.c.libId === c.id) {
       // most került harcba: a lap értékeihez mérjük (a hozzáadáskor onnan kapta a HP-t)
-      const j = hpShadow(x), prev = cshadow[x.cid] ?? JSON.stringify([s.hp.cur, s.hp.temp, !!s.concentration]);
-      const [ph, pt, pc] = JSON.parse(prev);
+      const prev = cshadow[x.cid] ?? JSON.stringify([s.hp.cur, s.hp.temp, !!s.concentration, syncedConds(s.conditions)]);
+      const [ph, pt, pc, pk] = JSON.parse(prev);
       if (ph !== x.hp || pt !== x.temp) { patch['hp.cur'] = Math.min(x.hp, s.hp.max); patch['hp.temp'] = x.temp; c.hp.cur = patch['hp.cur']; }
+      // a DM a harcban tett fel / vett le állapotot (vagy lejárt a körszáma): a lapra is, ott a hatása is érvényesül
+      let conds = JSON.stringify(pk) !== JSON.stringify(syncedConds(x.cond)) ? syncedConds(x.cond) : s.conditions;
       // a DM a harcban kapcsolta a koncentrációt: ki → a lapon is vége (a koncentrációs hatás is lekerül); be → jelölés név nélkül
       if (pc !== !!x.conc) {
         patch.concentration = x.conc ? s.concentration || 'Koncentráció' : '';
-        if (!x.conc && s.concentration) patch.conditions = Sheet.dropConc(s.conditions, s.concentration);
+        if (!x.conc && s.concentration) conds = Sheet.dropConc(conds, s.concentration);
       }
-      cshadow[x.cid] = j;
+      if (JSON.stringify(conds) !== JSON.stringify(s.conditions)) patch.conditions = conds;
+      if (!x.conc && s.concentration) x.cond = x.cond.filter(k => k.name === 'Exhaustion' || conds.some(n => n.toLowerCase() === k.name.toLowerCase()));
+      cshadow[x.cid] = hpShadow(x);
     }
     const cur = linkFields(c), prev = shadow[c.id] ? JSON.parse(shadow[c.id]) : null;
     if (prev) for (const k of Object.keys(LINK)) if (stableJson(cur[k]) !== stableJson(prev[k])) patch[LINK[k]] = cur[k];
     shadow[c.id] = stableJson(cur);
     if (!Object.keys(patch).length) continue;
+    // a könyvtárban a hatásokkal együtti AC látszik (pl. Shield of Faith +2): a lapra az alapérték megy
+    if ('ac' in patch) patch.ac = Math.max(0, patch.ac - Sheet.effects(s).acAdd);
     // szabálymotoros lapnál az AC, max HP, speed, képesség átírása felülírásként (ov) is megy, különben a telefon következő
     // újraszámolása eltüntetné; képességnél a mentők / skillek gyorsítótára törlődik, amíg a telefon újra nem számol
     if (s.auto) {
@@ -821,7 +832,7 @@ function addToEncounter(creature, count = 1) {
     delete c.hp.cur;
     const sheet = c.kind === 'pc' && SHEETS[c.libId];  // telefonos lapnál a lap szerinti HP és temp HP
     if (sheet) hp = sheet.hp.cur;
-    const x = {cid: uid(), num, c, hp, temp: sheet ? sheet.hp.temp : 0, init: null, cond: [], conc: !!sheet?.concentration, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group};
+    const x = {cid: uid(), num, c, hp, temp: sheet ? sheet.hp.temp : 0, init: null, cond: sheet ? condsFromSheet(sheet) : [], conc: !!sheet?.concentration, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group};
     S.enc.list.push(x); added.push(x);
   }
   // harc közben hozzáadott ellenfelek azonnal dobnak

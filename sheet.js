@@ -842,9 +842,10 @@ window.Sheet = (() => {
       if (fx.armorless && !w.armor) { const v = fx.armorless + dex + (w.shield ? 2 : 0); if (v > ac) { acParts.push(name); ac = v; } }
       if (fx.acMin && fx.acMin > ac) { acParts.push(name); ac = fx.acMin; }
     }
+    let acAdd = 0;  // a hozzáadott rész (Shield of Faith, Haste…): a DM AC-átírásából ezt kell levonni, hogy az alapérték maradjon a lapon
     for (const {name, fx} of act) {
-      if (fx.ac) { ac += fx.ac; acParts.push(name); }
-      if (fx.acAbil && !w.armor && !w.shield) { ac += Math.max(1, mod(s.abilities[fx.acAbil])); acParts.push(name); }
+      const v = (fx.ac || 0) + (fx.acAbil && !w.armor && !w.shield ? Math.max(1, mod(s.abilities[fx.acAbil])) : 0);
+      if (v) { ac += v; acAdd += v; acParts.push(name); }
     }
     const m = String(s.speed).match(/\d+/);
     let walk = m ? +m[0] : 30;
@@ -856,7 +857,7 @@ window.Sheet = (() => {
     const speed = m ? String(s.speed).replace(/\d+/, walk) : `${walk} ft.`;
     const pick = k => act.flatMap(x => (x.fx[k] || []).map(t => ({t, src: x.name})));
     const dmg = act.filter(x => x.fx.dmg).map(x => ({v: x.fx.dmg === 'rage' ? String(rageDmg(s)) : x.fx.dmg, melee: !!x.fx.melee, src: x.name}));
-    return {active: act.map(x => x.name), ac, acParts, speed, speedNote: zero ? zero.name : '', adv: pick('adv'), dis: pick('dis'), fail: pick('fail'),
+    return {active: act.map(x => x.name), ac, acAdd, acParts, speed, speedNote: zero ? zero.name : '', adv: pick('adv'), dis: pick('dis'), fail: pick('fail'),
       bonus: act.flatMap(x => Object.entries(x.fx.bonus || {}).map(([k, v]) => ({k, v, src: x.name}))), dmg,
       resist: act.map(x => x.fx.resist).filter(Boolean).join(', ')};
   }

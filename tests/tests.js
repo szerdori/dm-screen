@@ -2186,6 +2186,25 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     ok(f.log.includes('update sheets/p1 concentration,conditions'), f.log.join('; '));
     eq([f.store['sheets/p1'].concentration, f.store['sheets/p1'].conditions], ['', ['Mage Armor']]);
   });
+  test('állapotok a harc és a lap között oda-vissza (a körszám megmarad); AC-átírás aktív hatás mellett az alapértéket írja', async () => {
+    const f = await loadWith({'sheets/p1': sheetDoc({ac: 14, conditions: ['Shield of Faith']})});
+    eq(lib().ac, 16);
+    f.log.splice(0);
+    const [x] = W.addToEncounter(lib(), 1);
+    eq(x.cond, [{name: 'Shield of Faith', rounds: null}], 'a lap állapotaival indul');
+    x.cond.push({name: 'Prone', rounds: 2}); W.save(); await wait(500);
+    ok(f.log.includes('update sheets/p1 conditions'), f.log.join('; '));
+    eq(f.store['sheets/p1'].conditions, ['Shield of Faith', 'Prone']);
+    f.log.splice(0);
+    f.store['sheets/p1'].conditions = ['Shield of Faith', 'Prone', 'Poisoned']; f.emit('sheets'); await wait(500);
+    eq(A('S.enc.list[0].cond'), [{name: 'Shield of Faith', rounds: null}, {name: 'Prone', rounds: 2}, {name: 'Poisoned', rounds: null}], 'a telefonos állapot átjön, a DM körszáma marad');
+    ok(!f.log.some(l => /sheets\//.test(l)), 'nem ír vissza: ' + f.log);
+    A('S.enc.list[0].cond.splice(1, 1); save()'); await wait(500);
+    eq(f.store['sheets/p1'].conditions, ['Shield of Faith', 'Poisoned'], 'a DM levette a Prone-t');
+    W.openLib('lib'); click('[data-act="libEdit"]');
+    $('#edForm').elements.ac.value = '17'; click('[data-act="edSave"]'); await wait(500);
+    eq([f.store['sheets/p1'].ac, lib().ac], [15, 17], 'a lapon 15 (+2 Shield of Faith = 17)');
+  });
   test('karakterlap létrehozása meglévő (D&D Beyond-os) játékosból: osztály, mentők, skillek, támadás, spellek', () => {
     const c = W.normCreature(pc('Rella', 5, {id: 'p9', owner: 'a@x.hu', type: 'Half-Elf — Bard 5 (College of Lore)', abilities: {dex: 14, cha: 18, con: 12}, saves: {dex: 4, cha: 7},
       skillMods: {performance: {b: 10, p: 2}, perception: {b: 1, p: 0.5}, stealth: {b: 5, p: 1}}, hp: {max: 38, cur: 30},

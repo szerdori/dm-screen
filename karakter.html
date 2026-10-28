@@ -291,7 +291,7 @@ function renderSheet(s) {
     <div class="hero">${avatar(s.portrait, s.name)}<div class="main"><div class="name">${esc(s.name)}</div>
       <div class="sub">${esc([s.race, H.classLabel(s) || 'Szint ' + L].filter(Boolean).join(' · '))}</div></div></div>
     <div class="hpline">${hpBar(s.hp, 'slim')}${s.hp.temp ? `<span class="tmp">+${esc(s.hp.temp)} temp</span>` : ''}${s.hp.cur === 0 ? '<span class="tmp" style="color:var(--red)">halálmentők a Harc fül alján</span>' : ''}</div>
-    ${s.concentration ? `<div class="concbar">🧠 Koncentráció: <b>${esc(s.concentration)}</b><span class="grow"></span>${ed ? '<button class="small" data-act="concEnd">Megszakítás</button>' : ''}</div>` : ''}
+    ${s.concentration ? `<div class="concbar">🌀 Koncentráció: <b>${esc(s.concentration)}</b><span class="grow"></span>${ed ? '<button class="small" data-act="concEnd">Megszakítás</button>' : ''}</div>` : ''}
     ${fxBar(s)}
     <nav class="tabs">${TABS.map(([k, l]) => `<button class="${view.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</nav>
     ${body}`;
@@ -386,7 +386,7 @@ function spellRow(sp, i, ed, s) {
   const sum = `${sp.level ? `<input type="checkbox" data-act="prep" data-i="${i}" ${sp.prepared || sp.always ? 'checked' : ''} ${sp.always || !ed ? 'disabled' : ''} title="Felkészítve">` : ''}
     <span class="nm"><b>${esc(sp.name)}</b><small>${esc([r ? H.spellLine(r) : '', sp.always ? 'mindig felkészítve' : '', sp.note].filter(Boolean).join(' · '))}</small></span>
     ${r && diceOf(r.tx) ? dmgBtn(diceOf(r.tx), sp.name) : ''}${ed && sp.level ? `<button class="small cast ${castOpen === i ? 'on' : ''}" data-act="castOpen" data-i="${i}">✨ Cast</button>`
-      : ed && (r?.k || H.effectOf(sp.name)) ? `<button class="small cast" data-act="cast" data-i="${i}" data-how="0">✨ Cast</button>` : ''}${r?.k ? '<span class="hint" title="koncentráció">🧠</span>' : ''}`;
+      : ed && (r?.k || H.effectOf(sp.name)) ? `<button class="small cast" data-act="cast" data-i="${i}" data-how="0">✨ Cast</button>` : ''}${r?.k ? '<span class="hint" title="koncentráció">🌀</span>' : ''}`;
   const ch = ed && sp.level && castOpen === i ? castChoices(s, sp, r) : null;
   const pick = ch ? `<div class="row castpick">${ch.map(c => `<button class="small" data-act="cast" data-i="${i}" data-how="${esc(c.how)}">${esc(c.text)}</button>`).join('')
     || '<span class="hint">Nincs szabad slot ehhez a szinthez.</span>'}<button class="small" data-act="castOpen" data-i="${i}">Mégse</button></div>` : '';
