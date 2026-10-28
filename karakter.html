@@ -59,6 +59,8 @@ h3.sub2{color:var(--muted);font-weight:600}
 .top button.on{background:var(--accent);color:#1a1405;border-color:var(--accent)}
 .hdbox{margin:0 0 10px;padding:8px 10px}
 .hdbox .row+.row{margin-top:6px}
+button.cast.on{background:var(--accent);color:#1a1405;border-color:var(--accent)}
+.castpick{gap:6px;padding:6px 0 10px}
 .top a{color:var(--muted);text-decoration:none}
 .hero{display:flex;gap:12px;align-items:center}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
@@ -157,7 +159,7 @@ const TABS = [['harc', '⚔ Harc'], ['kep', '🎲 Képességek'], ['var', '✨ V
 
 let me = '', isDM = false, chars = [], sheets = new Map(), sheetErr = '';
 let view = {id: null, tab: 'harc'}, rbInfo = null, rbErr = '', rollMode = '', rolls = [];
-let hdOpen = false, pendingRender = false, draft = null, openKeys = new Set(), searchQ = {spell: '', item: '', feat: ''}, notesTimer = null;
+let hdOpen = false, castOpen = null, pendingRender = false, draft = null, openKeys = new Set(), searchQ = {spell: '', item: '', feat: ''}, notesTimer = null;
 
 function normChar(d) {
   d = isObj(d) ? d : {};
@@ -334,12 +336,26 @@ function profsHtml(s) {
   return `<h3>Jártasságok, nyelvek</h3>
     <p>${[['Páncél', pr.armor], ['Fegyver', pr.weapons], ['Eszköz', pr.tools], ['Nyelvek', pr.languages], ['Érzékek', s.senses], ['Ellenállás', s.resist]].filter(x => x[1]).map(([l, v]) => `<b>${l}:</b> ${esc(v)}`).join('<br>') || '<span class="hint">Nincs megadva.</span>'}</p>`;
 }
-function spellRow(sp, i, ed) {
+// cast: a spell szintjén vagy magasabb (upcast) szabad slotból, Pact slotból, vagy rituáléként slot nélkül
+function castChoices(s, sp, r) {
+  const sc = s.spellcasting, up = /at higher levels|higher[- ]level/i.test(r?.tx || ''), out = [];
+  for (let l = sp.level; l <= 9; l++) {
+    const free = sc.slots[l - 1] - sc.used[l - 1];
+    if (free > 0) out.push({how: String(l), text: `${l}. szint (${free} szabad)${l > sp.level ? (up ? ' ⬆ erősebb' : ' ⬆') : ''}`});
+  }
+  if (sc.pact.max > sc.pact.used && sc.pact.level >= sp.level) out.push({how: 'pact', text: `Pact slot (${sc.pact.level}. szint, ${sc.pact.max - sc.pact.used} szabad)`});
+  if (r?.ri) out.push({how: 'ritual', text: 'Rituáléként (+10 perc, nincs slot)'});
+  return out;
+}
+function spellRow(sp, i, ed, s) {
   const r = rbSpell(sp);
   const sum = `${sp.level ? `<input type="checkbox" data-act="prep" data-i="${i}" ${sp.prepared || sp.always ? 'checked' : ''} ${sp.always || !ed ? 'disabled' : ''} title="Felkészítve">` : ''}
     <span class="nm"><b>${esc(sp.name)}</b><small>${esc([r ? H.spellLine(r) : '', sp.always ? 'mindig felkészítve' : '', sp.note].filter(Boolean).join(' · '))}</small></span>
-    ${r && diceOf(r.tx) ? dmgBtn(diceOf(r.tx), sp.name) : ''}`;
-  return det('sp:' + sp.name, sum, `${r ? `<div class="tx">${esc(r.tx)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>'}${ed ? `<div class="row" style="margin-top:8px"><button class="small" data-act="spellRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`);
+    ${r && diceOf(r.tx) ? dmgBtn(diceOf(r.tx), sp.name) : ''}${ed && sp.level ? `<button class="small cast ${castOpen === i ? 'on' : ''}" data-act="castOpen" data-i="${i}">✨ Cast</button>` : ''}`;
+  const ch = ed && sp.level && castOpen === i ? castChoices(s, sp, r) : null;
+  const pick = ch ? `<div class="row castpick">${ch.map(c => `<button class="small" data-act="cast" data-i="${i}" data-how="${esc(c.how)}">${esc(c.text)}</button>`).join('')
+    || '<span class="hint">Nincs szabad slot ehhez a szinthez.</span>'}<button class="small" data-act="castOpen" data-i="${i}">Mégse</button></div>` : '';
+  return det('sp:' + sp.name, sum, `${r ? `<div class="tx">${esc(r.tx)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>'}${ed ? `<div class="row" style="margin-top:8px"><button class="small" data-act="spellRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`) + pick;
 }
 function tabVar(s, ed) {
   const sc = s.spellcasting, dis = ed ? '' : 'disabled', ab = H.spellAbility(s);
@@ -348,7 +364,7 @@ function tabVar(s, ed) {
   const pact = sc.pact.max ? `<div class="li"><span class="nm"><b>Pact Magic (${H.ORD[sc.pact.level] || '?'} level)</b><small>${sc.pact.max - sc.pact.used} / ${sc.pact.max} szabad · short restnél visszatöltődik</small></span>
     <span class="pips">${pipRow(sc.pact.max, sc.pact.used, 'data-act="pact"', dis, 'Pact slot')}</span></div>` : '';
   const by = {};
-  s.spells.forEach((sp, i) => (by[sp.level] = by[sp.level] || []).push(spellRow(sp, i, ed)));
+  s.spells.forEach((sp, i) => (by[sp.level] = by[sp.level] || []).push(spellRow(sp, i, ed, s)));
   const prepared = s.spells.filter(sp => sp.level && (sp.prepared || sp.always)).length;
   return `${ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>'}
     ${slots || pact ? `<h3>Spell slotok</h3><div class="list">${slots}${pact}</div>` : ''}
@@ -417,6 +433,28 @@ function tabJegyz(s, ed) {
   return `<h3>Jegyzetek</h3><textarea id="notes" rows="14" ${ed ? '' : 'readonly'} placeholder="Bármi, amit meg akarsz jegyezni: NPC-nevek, nyomok, tervek…">${esc(s.notes)}</textarea>
     <p class="hint">Magától mentődik. A DM is látja.</p>`;
 }
+// legördülő lista; a lapon lévő, listában nem szereplő (régi / saját) érték is megmarad választhatónak
+const listOpts = (list, cur, empty) => {
+  const has = list.some(x => x === cur);
+  return `<option value="">${esc(empty)}</option>${!has && cur ? `<option value="${esc(cur)}" selected>${esc(cur)} (saját)</option>` : ''}${list.map(x => `<option value="${esc(x)}" ${x === cur ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
+};
+// faj: a szabálykönyv fajai alfajjal együtt; szabálykönyv nélkül szabad szöveg
+function raceField(cur) {
+  const opts = H.raceOptions(RB());
+  if (!opts.length) return `<label>Faj<input name="race" value="${esc(cur)}"></label>`;
+  return `<label>Faj<select name="race">${listOpts(opts.map(o => o.label), H.findRace(cur, RB())?.label || cur, '(válassz fajt)')}</select></label>`;
+}
+// osztály / alosztály / szint / faj választásakor: a kézi lapon az osztályból és a fajból kitölthető mezők, a motorosnál csak a hit die
+function formPicked(field) {
+  const d = readForm(), s = cur();
+  if (!d || !s) return;
+  // új osztálynál a régi osztály alosztálya kiesik
+  const m = String(field).match(/^cl_name_(\d+)$/), c = m && d.classes[+m[1]];
+  if (c && !H.subclassRef(H.findClass(c.name) || c.name, c.subclass, RB())) c.subclass = '';
+  if (s.auto) d.classes = d.classes.map(c => ({...c, hitDie: H.classInfo(H.findClass(c.name) || c.name, RB()).hd}));
+  else Object.assign(d, H.derive(H.norm(d), RB()));
+  render(true);
+}
 // alapadatok: piszkozaton dolgozik (draft), csak a Mentés írja a lapra
 const EDIT_KEYS = ['name', 'race', 'background', 'alignment', 'classes', 'abilities', 'saveProf', 'skillProf', 'jack', 'ac', 'acNote', 'speed', 'initBonus', 'spellcasting', 'attacks', 'resources', 'profs', 'senses', 'resist'];
 function tabAdat(s, ed) {
@@ -426,12 +464,17 @@ function tabAdat(s, ed) {
   const opt = (v, l, cur) => `<option value="${esc(v)}" ${String(cur) === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
   return `${statChips(s)}<p class="hint">A karakter alapadatai. A módosítás csak a <b>Mentés</b> gombbal kerül a lapra. A módosítókat, mentőket, skilleket, spell DC-t a program számolja.</p>
   <form id="edForm" class="form" onsubmit="return false">
-    ${f('name', 'Név', d.name, 'w2')}${f('race', 'Faj', d.race)}${f('background', 'Háttér', d.background)}${f('alignment', 'Alignment', d.alignment, 'w2')}
+    ${f('name', 'Név', d.name, 'w2')}${raceField(d.race)}${f('background', 'Háttér', d.background)}${f('alignment', 'Alignment', d.alignment, 'w2')}
     <h3>Osztályok</h3>
-    <datalist id="classList">${Object.keys(H.CLASSES).map(c => `<option value="${c}">`).join('')}</datalist>
-    ${d.classes.map((c, i) => `<div class="rowedit"><input name="cl_name_${i}" list="classList" value="${esc(c.name)}" placeholder="Osztály"><input name="cl_sub_${i}" value="${esc(c.subclass)}" placeholder="Alosztály">
-      <input name="cl_lvl_${i}" type="number" min="1" max="20" value="${esc(c.level)}" style="max-width:64px" title="Szint"><select name="cl_hd_${i}" style="max-width:76px" title="Hit die">${[6, 8, 10, 12].map(n => opt(n, 'd' + n, c.hitDie)).join('')}</select>
-      ${d.classes.length > 1 ? `<button class="small" data-act="rowRm" data-list="classes" data-i="${i}">✕</button>` : ''}</div>`).join('')}
+    <p class="hint w2">${s.auto ? 'Az osztályból, alosztályból és fajból a program számol mindent (mentés után).' : 'Osztály vagy faj választásakor a hit die, a mentő-jártasság, a jártasságok és a spell slotok magától kitöltődnek (utána átírhatod).'}</p>
+    ${d.classes.map((c, i) => {
+      const subs = H.subclassesOf(H.findClass(c.name) || c.name, RB());
+      return `<div class="rowedit"><select name="cl_name_${i}" title="Osztály">${listOpts(H.classNames(RB()), c.name, '(válassz osztályt)')}</select>
+      ${subs.length ? `<select name="cl_sub_${i}" title="Alosztály">${listOpts(subs.map(x => x.n), subs.find(x => [x.n, x.short].some(n => String(n).toLowerCase() === String(c.subclass).trim().toLowerCase()))?.n || c.subclass, '(nincs alosztály)')}</select>`
+        : `<input name="cl_sub_${i}" value="${esc(c.subclass)}" placeholder="Alosztály">`}
+      <input name="cl_lvl_${i}" type="number" min="1" max="20" value="${esc(c.level)}" style="max-width:64px" title="Szint"><select name="cl_hd_${i}" style="max-width:76px" title="Hit die (az osztály alapján)">${[6, 8, 10, 12].map(n => opt(n, 'd' + n, c.hitDie)).join('')}</select>
+      ${d.classes.length > 1 ? `<button class="small" data-act="rowRm" data-list="classes" data-i="${i}">✕</button>` : ''}</div>`;
+    }).join('')}
     <div class="w2"><button class="small" data-act="rowAdd" data-list="classes">＋ Osztály (multiclass)</button></div>
     <h3>Képességértékek</h3>
     <div class="g6">${H.ABIL.map(a => `<label>${a.toUpperCase()}<input name="ab_${a}" type="number" min="1" max="30" value="${esc(d.abilities[a])}"></label>`).join('')}</div>
@@ -525,6 +568,11 @@ function write(id, p) {
   return true;
 }
 function patch(p) { if (write(view.id, p)) render(true); }
+// felszerelés változása: a motoros lapnál a motor számol újra; a kézinél a fegyverek támadásként, páncél / pajzs esetén az AC is
+function invPatch(s, inventory, it) {
+  if (s.auto) return {inventory};
+  return {inventory, ...H.equipPatch(H.norm({...s, inventory}), RB(), H.acItem(it && rbItem(it)))};
+}
 // a beérkező (vagy újonnan betöltött szabálykönyvvel számolandó) auto lapok újraszámolása; csak a változott mezők íródnak
 function recalcAll() {
   let any = false;
@@ -559,7 +607,7 @@ document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender
 function route() {
   const m = location.hash.match(/^#lap\/([A-Za-z0-9_-]{1,64})$/);
   const id = m ? m[1] : null;
-  if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; hdOpen = false; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
+  if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; hdOpen = false; castOpen = null; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
   render(true);
 }
 window.addEventListener('hashchange', route);
@@ -645,7 +693,18 @@ document.addEventListener('click', e => {
     }
     case 'spellCustom': { const n = $('#spellNew').value.trim(); if (n) patch({spells: [...s.spells, {name: n, level: +$('#spellNewL').value, prepared: true}]}); break; }
     case 'qty': patch({inventory: s.inventory.map((it, k) => k === i ? {...it, qty: Math.max(0, it.qty + +el.dataset.d)} : it)}); break;
-    case 'itemRm': if (confirm(`Eltávolítod: ${s.inventory[i].name}?`)) patch({inventory: s.inventory.filter((_, k) => k !== i)}); break;
+    case 'itemRm': if (confirm(`Eltávolítod: ${s.inventory[i].name}?`)) patch(invPatch(s, s.inventory.filter((_, k) => k !== i), s.inventory[i])); break;
+    case 'castOpen': castOpen = castOpen === i ? null : i; render(true); break;
+    case 'cast': {
+      const sp = s.spells[i], how = el.dataset.how, sc = s.spellcasting;
+      if (!sp) break;
+      const p = how === 'pact' ? {spellcasting: {...sc, pact: {...sc.pact, used: Math.min(sc.pact.max, sc.pact.used + 1)}}}
+        : how === 'ritual' ? {} : {spellcasting: {...sc, used: sc.used.map((u, l) => l === +how - 1 ? Math.min(sc.slots[l], u + 1) : u)}};
+      castOpen = null;
+      showRoll({label: sp.name, total: '✨', detail: how === 'ritual' ? 'rituáléként, slot nélkül' : how === 'pact' ? `Pact slotból (${sc.pact.level}. szint)` : `${how}. szintű slotból` + (+how > sp.level ? ' (upcast)' : '')});
+      if (Object.keys(p).length) patch(p); else render(true);
+      break;
+    }
     case 'itemAdd': {
       const it = H.byRef(H.allItems(RB()), el.dataset.ref); if (!it) break;
       const ref = H.refOf(it), k = s.inventory.findIndex(x => x.ref === ref);
@@ -663,6 +722,11 @@ document.addEventListener('click', e => {
       const d = H.norm(readForm()), p = {};
       for (const k of EDIT_KEYS) p[k] = d[k];
       p.hp = {...s.hp, max: d.hp.max};
+      // szabálymotoros lap: az osztályok és a faj a felépítésbe kerülnek (a számolt mezőket a motor írja újra)
+      if (s.auto) {
+        const ra = H.findRace(d.race, RB());
+        p.build = {...H.classesToBuild(s.build, d.classes, RB()), ...(ra ? {race: ra.race, subrace: ra.subrace} : {})};
+      }
       draft = null; patch(p); break;
     }
     case 'edCancel': draft = null; render(true); break;
@@ -672,8 +736,9 @@ document.addEventListener('toggle', e => { const k = e.target.dataset?.key; if (
 document.addEventListener('change', e => {
   const t = e.target, s = cur(); if (!s) return;
   const i = +t.dataset.i, act = t.dataset.act;
-  const setItem = f => patch({inventory: s.inventory.map((it, k) => k === i ? {...it, ...f} : it)});
-  if (t.id === 'condAdd' && t.value) patch({conditions: [...s.conditions, t.value]});
+  const setItem = f => patch(invPatch(s, s.inventory.map((it, k) => k === i ? {...it, ...f} : it), s.inventory[i]));
+  if (t.form?.id === 'edForm' && /^(cl_name_|cl_sub_|cl_lvl_|race$)/.test(t.name)) formPicked(t.name);
+  else if (t.id === 'condAdd' && t.value) patch({conditions: [...s.conditions, t.value]});
   else if (t.id === 'exh') patch({exhaustion: +t.value});
   else if (t.id === 'spellMine') { searchQ.all = !t.checked; spellResults(s); }
   else if (act === 'prep') patch({spells: s.spells.map((sp, k) => k === i ? {...sp, prepared: t.checked} : sp)});

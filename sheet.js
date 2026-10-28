@@ -685,6 +685,77 @@ window.Sheet = (() => {
     for (const k of Object.keys(p)) if (JSON.stringify(next[k]) !== JSON.stringify(s[k])) out[k] = next[k];
     return out;
   }
+  // ---------- kézi (régi) lap: a motor a lap mezőiből (osztály-, alosztály-, fajnév; a képességek a beírt végleges értékek) ----------
+  // a választólisták: osztályok, egy osztály alosztályai, faj + alfaj párok ('Dwarf (Hill)'; az alapváltozat csak a faj neve)
+  const classNames = rb => rb?.classes?.length ? rb.classes.map(c => c.n) : Object.keys(CLASSES);
+  const subclassesOf = (cls, rb) => (rb?.subclasses || []).filter(x => x.cls === cls);
+  function subclassRef(cls, name, rb) {
+    const n = String(name || '').trim().toLowerCase();
+    const x = n && subclassesOf(cls, rb).find(sc => sc.n.toLowerCase() === n || String(sc.short || '').toLowerCase() === n);
+    return x ? x.n + '|' + x.s : '';
+  }
+  function raceOptions(rb) {
+    const out = [];
+    for (const r of rb?.races || []) {
+      const subs = (rb.subraces || []).filter(x => x.race === r.n);
+      if (!subs.length) out.push({label: r.n, race: r.n + '|' + r.s, subrace: ''});
+      for (const sr of subs) out.push({label: /\(alap\)$/.test(sr.n) ? r.n : `${r.n} (${sr.n})`, race: r.n + '|' + r.s, subrace: sr.n + '|' + sr.s});
+    }
+    return out;
+  }
+  // a lapon tárolt fajnév → választás; a régi, szabad szöveges nevet is felismeri (pl. „Hill Dwarf”, „Lightfoot Halfling”)
+  function findRace(label, rb) {
+    const t = String(label || '').trim().toLowerCase();
+    if (!t) return null;
+    return raceOptions(rb).find(o => {
+      const [r, sr] = [refName(o.race), refName(o.subrace)].map(x => x.toLowerCase());
+      return o.label.toLowerCase() === t || (sr && !/\(alap\)$/.test(sr) && `${sr} ${r}` === t) || (sr && /\(alap\)$/.test(sr) && r === t);
+    }) || null;
+  }
+  function legacyBuild(s, rb, withRace) {
+    const levels = s.classes.filter(c => findClass(c.name) || (rb?.classes || []).some(x => x.n === c.name))
+      .flatMap(c => Array.from({length: c.level}, () => ({c: findClass(c.name) || c.name})));
+    const sub = Object.fromEntries(s.classes.map(c => [findClass(c.name) || c.name, subclassRef(findClass(c.name) || c.name, c.subclass, rb)]).filter(([, r]) => r));
+    const ra = withRace ? findRace(s.race, rb) : null;
+    const b = normBuild({base: s.abilities, levels, sub, race: ra?.race || '', subrace: ra?.subrace || ''});
+    b.origin = {};  // a beírt képességértékekben a faji bónusz már benne van
+    return b;
+  }
+  const legacyCalc = (s, rb, withRace = true) => calc({...s, auto: true, build: legacyBuild(s, rb, withRace), ov: {}}, rb);
+  // az osztályokból és a fajból kitölthető mezők (az Alapadatok űrlapjának): hit die, mentők, jártasságok (a meglévők mellé), slotok
+  function derive(s, rb) {
+    // összefésülés a meglévő szöveggel; a „light armor” és a „light”, a „simple weapons” és a „simple” ugyanaz
+    const key = x => x.trim().toLowerCase().replace(/\s+(armor|weapons?)$/, ''), have = s.profs, c = legacyCalc(s, rb);
+    const merge = (a, b) => { const seen = new Set(); return [...String(a || '').split(','), ...String(b || '').split(',')].map(x => x.trim()).filter(x => x && !seen.has(key(x)) && seen.add(key(x))).join(', '); };
+    return {
+      classes: s.classes.map(x => { const n = findClass(x.name) || x.name; return {...x, name: n, hitDie: classInfo(n, rb).hd}; }),
+      saveProf: ABIL.filter(a => c.saves[a].prof),
+      profs: {armor: merge(have.armor, c.profs.armor), weapons: merge(have.weapons, c.profs.weapons), tools: merge(have.tools, c.profs.tools), languages: merge(have.languages, c.profs.languages)},
+      spellcasting: {...s.spellcasting, ability: c.casting[0]?.ab || s.spellcasting.ability, slots: c.slots, pact: {...s.spellcasting.pact, level: c.pact.level, max: c.pact.max}}
+    };
+  }
+  // felszerelés hatása a kézi lapon: a felszerelt fegyverek támadásként (auto), és ha páncél / pajzs / AC-bónuszos tárgy változott, az AC
+  const acItem = r => !!r && (ARMOR_TC.includes(r.tc) || r.tc === 'S' || !!num(r.bAc));
+  function equipPatch(s, rb, withAc) {
+    if (!rb?.classes?.length) return {};
+    const c = legacyCalc(s, rb), names = new Set(c.attacks.map(x => x.name.toLowerCase()));
+    const p = {attacks: [...c.attacks.map(x => ({...x, auto: true})), ...s.attacks.filter(x => !x.auto && !names.has(x.name.toLowerCase()))]};
+    if (withAc) Object.assign(p, {ac: c.ac.v, acNote: c.acNote});
+    return p;
+  }
+  // a kézi lap Alapadatok-űrlapjának osztályai → a szabálymotoros lap felépítése (a meglévő szintek sorrendje és HP-ja marad)
+  function classesToBuild(b, classes, rb) {
+    let levels = [...b.levels];
+    const want = classes.map(c => ({c: findClass(c.name) || c.name, n: c.level})).filter(x => x.c);
+    levels = levels.filter(l => want.some(w => w.c === l.c));
+    for (const w of want) {
+      const have = levels.filter(l => l.c === w.c).length;
+      if (have < w.n) levels.push(...Array.from({length: w.n - have}, () => ({c: w.c, hp: null})));
+      for (let k = have; k > w.n; k--) levels.splice(levels.map(l => l.c).lastIndexOf(w.c), 1);
+    }
+    const sub = Object.fromEntries(classes.map(c => { const n = findClass(c.name) || c.name; return [n, subclassRef(n, c.subclass, rb)]; }).filter(([, r]) => r));
+    return normBuild({...b, levels, sub});
+  }
   // szabálymotoros lapnál a számolt mezők kézi átírása (s → n) felülírás-kulcsokra (ov) fordítva, különben a következő újraszámolás eltüntetné
   function ovEdits(s, n) {
     const out = {};
@@ -858,6 +929,7 @@ window.Sheet = (() => {
   return {FORMAT, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, norm, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    ASI_LEVELS, FEATURE_FX, classInfo, buildClasses, calc, materialize, ovEdits, refName, skillKey,
+    ASI_LEVELS, FEATURE_FX, classInfo, buildClasses, calc, materialize, ovEdits, refName,
+    classNames, subclassesOf, subclassRef, raceOptions, findRace, legacyCalc, derive, acItem, equipPatch, classesToBuild, skillKey,
     RB_FORMAT, RB_KINDS, emptyRulebook, joinChunks, splitChunks, loadRulebook, idb, variantFits, allItems, search, refOf, byRef, itemLine, spellLine};
 })();

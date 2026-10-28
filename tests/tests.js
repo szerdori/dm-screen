@@ -2235,6 +2235,7 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     K.location.hash = '#lap/p1'; K.route();
   };
   const lastUpdate = () => klog.filter(l => l[0] === 'update').at(-1)?.[2] || {};
+  const H_sv = fm => ['str', 'dex', 'con', 'int', 'wis', 'cha'].filter(a => fm.elements['sv_' + a].checked);
   ktest('lista → lap: a saját kártya a lapra visz; fejléc, HP, AC, initiative, fülek', () => {
     K.KApp.setAuth({status: 'signedIn', email: 'a@x.hu'});
     K.KApp.setChars([{id: 'p1', kind: 'pc', owner: 'a@x.hu', visibility: 'party', name: 'Minta Tolvaj', ac: 14, hp: {cur: 24, max: 24}}]);
@@ -2447,6 +2448,76 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     const m = klog.length;
     K.KApp.setRulebook({version: 'v2', rb: rb3()});
     eq(klog.length, m, 'azonos eredménynél nem ír');
+  });
+  ktest('alapadatok: osztály, alosztály, faj legördülőből; választáskor hit die, mentők, jártasságok, slotok magától', () => {
+    K.KApp.setRulebook({version: 'v1', rb: rb3()});
+    openSheet();
+    kclick('[data-tab="adat"]');
+    const fm = () => kq('#edForm'), opts = n => [...fm().elements[n].options].map(o => o.textContent);
+    eq(fm().elements.cl_name_0.tagName, 'SELECT');
+    ok(opts('cl_name_0').includes('Fighter') && opts('cl_name_0').includes('Rogue (saját)'), opts('cl_name_0').join());
+    eq(opts('race').slice(0, 2), ['(válassz fajt)', 'Lightfoot Halfling (saját)'], 'a régi, listában nem szereplő faj megmarad');
+    ok(['Dwarf (Hill)', 'Human', 'Human (Variant)'].every(x => opts('race').includes(x)), opts('race').join());
+    kset(fm().elements.cl_name_0, 'Fighter');
+    eq([fm().elements.cl_hd_0.value, H_sv(fm()), fm().elements.pf_armor.value], ['10', ['str', 'con'], 'light armor, medium, heavy, shields'], 'a meglévő „light armor” nem duplázódik');
+    eq(opts('cl_sub_0'), ['(nincs alosztály)', 'Champion'], 'az alosztály a választott osztályé');
+    kset(fm().elements.race, 'Dwarf (Hill)');
+    has(fm().elements.pf_languages.value, 'Dwarvish'); has(fm().elements.pf_languages.value, "Thieves' Cant", 'a meglévő megmarad');
+    kset(fm().elements.cl_name_0, 'Cleric'); kset(fm().elements.cl_lvl_0, '3');
+    eq([fm().elements.slot_0.value, fm().elements.slot_1.value, fm().elements.cl_hd_0.value, H_sv(fm())], ['4', '2', '8', ['wis', 'cha']]);
+    kset(fm().elements.cl_sub_0, 'Life Domain');
+    kclick('[data-act="edSave"]');
+    const u = lastUpdate();
+    eq([u.race, u.classes[0], u.saveProf, u.spellcasting.ability], ['Dwarf (Hill)', {name: 'Cleric', subclass: 'Life Domain', level: 3, hitDie: 8}, ['wis', 'cha'], 'wis']);
+    eq(K.Sheet.findRace('Hill Dwarf', rb3())?.label, 'Dwarf (Hill)', 'a régi „Hill Dwarf” név is felismerhető');
+  });
+  ktest('cast: a spell szintjén vagy magasabb szabad slotból (upcast), Pact slotból, rituáléként; elfogyott slotnál szól', () => {
+    const rb = rb3(); rb.spells[0].tx = 'Bless. At Higher Levels. One more creature.'; rb.spells[0].ri = true;
+    K.KApp.setRulebook({version: 'v1', rb});
+    openSheet({spells: [{name: 'Bless', level: 1, prepared: true, ref: 'Bless|PHB'}, {name: 'Spiritual Weapon', level: 2, prepared: true}, {name: 'Light', level: 0}],
+      spellcasting: {ability: 'wis', slots: [2, 1, 0, 0, 0, 0, 0, 0, 0], used: [1, 0], pact: {level: 2, max: 1, used: 0}}});
+    kclick('[data-tab="var"]');
+    eq(kqa('[data-act="castOpen"]').length, 2, 'cantripnél nincs Cast');
+    kclick('[data-act="castOpen"][data-i="0"]');
+    eq(kqa('[data-act="cast"]').map(b => b.textContent), ['1. szint (1 szabad)', '2. szint (1 szabad) ⬆ erősebb', 'Pact slot (2. szint, 1 szabad)', 'Rituáléként (+10 perc, nincs slot)']);
+    kclick('[data-act="cast"][data-how="2"]');
+    eq(lastUpdate().spellcasting.used.slice(0, 2), [1, 1], 'a 2. szintű slot fogyott');
+    has(kq('#lastRoll').textContent, 'upcast');
+    ok(!kq('[data-act="cast"]'), 'a választó bezárult');
+    kclick('[data-act="castOpen"][data-i="1"]');
+    eq(kqa('[data-act="cast"]').map(b => b.dataset.how), ['pact']);
+    kclick('[data-act="cast"][data-how="pact"]');
+    eq(lastUpdate().spellcasting.pact.used, 1);
+    kclick('[data-act="castOpen"][data-i="1"]');
+    has(ktext(), 'Nincs szabad slot');
+    const n = klog.length; kclick('[data-act="castOpen"][data-i="0"]'); kclick('[data-act="cast"][data-how="ritual"]');
+    eq(klog.length, n, 'rituáléként nem fogy slot');
+  });
+  ktest('felszerelés a kézi lapon: a felszerelt fegyver támadás lesz a Harc fülön, a pajzs növeli az AC-t; levéve visszaáll', () => {
+    K.KApp.setRulebook({version: 'v1', rb: rb3()});
+    openSheet({classes: [{name: 'Fighter', level: 3}], abilities: {str: 16, dex: 14, con: 12}, ac: 13, acNote: 'leather armor',
+      inventory: [{name: 'Leather Armor', qty: 1, equipped: true}, {name: 'Shield', qty: 1}, {name: 'Longsword', qty: 1}],
+      attacks: [{name: 'Saját ütés', hit: '+1', dmg: '1d4'}, {name: 'Longsword', hit: '+9', dmg: 'régi'}]});
+    kclick('[data-tab="fel"]');
+    kset(kq('[data-act="equip"][data-i="2"]'), true);
+    let u = lastUpdate();
+    eq(u.attacks.map(a => [a.name, a.hit, a.dmg, !!a.auto]), [['Longsword', '+5', '1d8+3 slashing', true], ['Saját ütés', '+1', '1d4', false]]);
+    ok(!('ac' in u), 'a kard nem változtat AC-t');
+    kset(kq('[data-act="equip"][data-i="1"]'), true);
+    eq([lastUpdate().ac, lastUpdate().acNote], [15, 'Leather Armor, Shield']);
+    kclick('[data-tab="harc"]'); has(ktext(), 'Longsword');
+    kclick('[data-tab="fel"]');
+    kset(kq('[data-act="equip"][data-i="2"]'), false); kset(kq('[data-act="equip"][data-i="1"]'), false);
+    eq([lastUpdate().ac, K.eval('sheets.get("p1").attacks').map(a => a.name)], [13, ['Saját ütés']]);
+  });
+  ktest('szabálymotoros lap: az Alapadatokon átírt osztályszint és faj a felépítésbe kerül, a motor újraszámol', () => {
+    K.KApp.setRulebook({version: 'v1', rb: rb3()});
+    openSheet({auto: true, build: {race: 'Dwarf|PHB', subrace: 'Hill|PHB', base: {str: 16, dex: 14, con: 14}, levels: [{c: 'Barbarian', hp: null}, {c: 'Barbarian', hp: 9}]}});
+    kclick('[data-tab="adat"]');
+    kset(kq('#edForm').elements.cl_lvl_0, '3'); kset(kq('#edForm').elements.race, 'Human');
+    kclick('[data-act="edSave"]');
+    const s = K.eval('sheets.get("p1")');
+    eq([s.build.levels, s.build.race, s.build.subrace, s.classes[0].level, s.abilities.con, s.ov], [[{c: 'Barbarian', hp: null}, {c: 'Barbarian', hp: 9}, {c: 'Barbarian', hp: null}], 'Human|PHB', 'Human (alap)|PHB', 3, 15, {}]);
   });
   ktest('gépelés közben a beérkező változás nem rajzolja újra a lapot (a fókusz elvesztésekor igen)', async () => {
     openSheet();
