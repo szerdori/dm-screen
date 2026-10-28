@@ -405,8 +405,14 @@ const linkFields = c => ({name: c.name, portrait: c.portrait || '', owner: c.own
 const hpShadow = x => JSON.stringify([x.hp, x.temp]);
 function sheetToCreature(s, base) {
   const H = Sheet;
-  const saves = {}; ABIL.forEach(a => { if (s.saveProf.includes(a)) saves[a] = H.saveBonus(s, a); });
-  const skillMods = {}; for (const k of Object.keys(SKILLS)) skillMods[k] = {b: H.skillBonus(s, k), p: H.skillProfOf(s, k)};
+  // szabálymotoros lapnál a mentők és a skillek a cache-ből (abban már benne van pl. az Aura of Protection, a Remarkable Athlete);
+  // a nem jártas mentő is kiíródik, ha eltér a sima módosítótól
+  const cache = s.auto ? s.cache : null;
+  const saves = {}; ABIL.forEach(a => {
+    const v = cache?.saves?.[a] ?? H.saveBonus(s, a);
+    if (s.saveProf.includes(a) || (cache?.saves?.[a] != null && v !== mod(s.abilities[a]))) saves[a] = v;
+  });
+  const skillMods = {}; for (const k of Object.keys(SKILLS)) skillMods[k] = {b: cache?.skills?.[k] ?? H.skillBonus(s, k), p: H.skillProfOf(s, k)};
   const actions = s.attacks.map(a => {
     const hit = a.hit.trim() ? sgn(parseInt(a.hit.replace('−', '-')) || 0) : '';
     return {name: a.name, text: [hit ? `Attack: ${hit} to hit.` : '', a.dmg ? `Hit: ${a.dmg}.` : '', a.note].filter(Boolean).join(' ')};
@@ -422,7 +428,7 @@ function sheetToCreature(s, base) {
   return normCreature({...base, kind: 'pc', name: s.name, portrait: s.portrait, cr: 'Szint ' + H.level(s),
     type: [s.race, H.classLabel(s)].filter(Boolean).join(' — '), alignment: s.alignment, ac: s.ac, acNote: s.acNote,
     hp: {max: s.hp.max, cur: s.hp.cur, formula: ''}, speed: s.speed, abilities: s.abilities, saves, skillMods,
-    skills: Object.keys(SKILLS).filter(k => s.skillProf[k]).map(k => skillLabel(k) + ' ' + sgn(H.skillBonus(s, k))).join(', '),
+    skills: Object.keys(SKILLS).filter(k => s.skillProf[k]).map(k => skillLabel(k) + ' ' + sgn(skillMods[k].b)).join(', '),
     senses: [s.senses, `passive Perception ${H.passive(s, 'perception')}`].filter(Boolean).join(', '),
     languages: s.profs.languages, tools: s.profs.tools, resist: s.resist, initBonus: H.initiative(s),
     traits, actions, bonusActions: [], reactions: [], inventory: s.inventory, currency: s.currency,
@@ -458,6 +464,15 @@ function syncSheets(ops) {
     if (prev) for (const k of Object.keys(LINK)) if (stableJson(cur[k]) !== stableJson(prev[k])) patch[LINK[k]] = cur[k];
     shadow[c.id] = stableJson(cur);
     if (!Object.keys(patch).length) continue;
+    // szabálymotoros lapnál az AC, max HP, speed, képesség átírása felülírásként (ov) is megy, különben a telefon következő
+    // újraszámolása eltüntetné; képességnél a mentők / skillek gyorsítótára törlődik, amíg a telefon újra nem számol
+    if (s.auto) {
+      const nx = structuredClone(s);
+      Object.entries(patch).forEach(([p, v]) => setPath(nx, p, structuredClone(v)));
+      const ov = Sheet.ovEdits(s, Sheet.norm(nx));
+      for (const [k, v] of Object.entries(ov)) if (['ac', 'hpMax', 'speed'].includes(k) || k.startsWith('ab:')) patch['ov.' + k] = v;
+      if (Object.keys(ov).some(k => k.startsWith('ab:'))) patch.cache = null;
+    }
     Object.entries(patch).forEach(([p, v]) => setPath(s, p, structuredClone(v)));
     SHEETS[c.id] = Sheet.norm({...s, updatedAt: now, updatedBy: by});
     if (DB && !sheetOps.set.has(c.id)) ops.push(DB.update('sheets/' + c.id, {...JSON.parse(JSON.stringify(patch)), updatedAt: now, updatedBy: by}));

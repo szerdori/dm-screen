@@ -1803,50 +1803,57 @@ describe('Szabálymotor (sheet.js, 2. fázis)', () => {
   });
 });
 
-describe('Szabálymotor: teljes számolás (3. lépés)', () => {
-  // kitalált szabálykönyv a motor formátumában (a valódi adat szerkezetét követi, szöveg nélkül)
-  const R20 = f => Array.from({length: 20}, (_, i) => f(i + 1));
-  const ASI = [4, 8, 12, 16, 19];
-  const rb3 = () => ({
-    classes: [
-      {n: 'Barbarian', s: 'PHB', hd: 12, saves: ['str', 'con'], fx: [{armor: ['light', 'medium', 'shields']}, {weapon: ['simple', 'martial']}], subLvl: 3, asi: ASI,
-        cols: [{l: 'Rages', v: R20(l => l < 3 ? 2 : l < 6 ? 3 : 4)}], feats: [{n: 'Rage', lvl: 1}, {n: 'Unarmored Defense', lvl: 1}, {n: 'Fast Movement', lvl: 5}]},
-      {n: 'Monk', s: 'PHB', hd: 8, saves: ['str', 'dex'], fx: [{weapon: ['simple', 'shortswords']}], subLvl: 3, asi: ASI,
-        cols: [{l: 'Martial Arts', v: R20(l => l < 5 ? '1d4' : '1d6')}, {l: 'Ki Points', v: R20(l => l < 2 ? 0 : l)}, {l: 'Unarmored Movement', v: R20(l => l < 2 ? 0 : l < 6 ? 10 : 15)}],
-        feats: [{n: 'Unarmored Defense', lvl: 1}, {n: 'Martial Arts', lvl: 1}, {n: 'Ki', lvl: 2}, {n: 'Unarmored Movement', lvl: 2}]},
-      {n: 'Paladin', s: 'PHB', hd: 10, saves: ['wis', 'cha'], fx: [{armor: ['light', 'medium', 'heavy', 'shields']}, {weapon: ['simple', 'martial']}], caster: 'half', ab: 'cha', prep: 'lvl/2+cha',
-        subLvl: 3, asi: ASI, feats: [{n: 'Divine Sense', lvl: 1}, {n: 'Lay on Hands', lvl: 1}, {n: 'Aura of Protection', lvl: 6}], opt: [{n: 'Fighting Style', t: ['FS:P'], p: R20(l => l >= 2 ? 1 : 0)}]},
-      {n: 'Bard', s: 'PHB', hd: 8, saves: ['dex', 'cha'], fx: [{skillChoose: {from: 'any', n: 3}}], caster: 'full', ab: 'cha', cantrips: R20(() => 2), known: R20(l => l + 3), subLvl: 3, asi: ASI,
-        feats: [{n: 'Bardic Inspiration', lvl: 1}, {n: 'Jack of All Trades', lvl: 2}, {n: 'Expertise', lvl: 3}]},
-      {n: 'Cleric', s: 'PHB', hd: 8, saves: ['wis', 'cha'], fx: [{armor: ['light', 'medium', 'shields']}], caster: 'full', ab: 'wis', cantrips: R20(() => 3), prep: 'lvl+wis', subLvl: 1, asi: ASI,
-        feats: [{n: 'Channel Divinity', lvl: 2}]},
-      {n: 'Fighter', s: 'PHB', hd: 10, saves: ['str', 'con'], fx: [{armor: ['light', 'medium', 'heavy', 'shields']}, {weapon: ['simple', 'martial']}], subLvl: 3, asi: [4, 6, 8, 12, 14, 16, 19],
-        feats: [{n: 'Second Wind', lvl: 1}, {n: 'Martial Archetype', lvl: 3, sub: true}, {n: 'Martial Archetype feature', lvl: 7, sub: true}], opt: [{n: 'Fighting Style', t: ['FS:F'], p: R20(() => 1)}]},
-      {n: 'Wizard', s: 'PHB', hd: 6, saves: ['int', 'wis'], caster: 'full', ab: 'int', prep: 'lvl+int', cantrips: R20(() => 3), subLvl: 2, asi: ASI, feats: [{n: 'Arcane Recovery', lvl: 1}]},
-      {n: 'Ranger', s: 'PHB', hd: 10, saves: ['str', 'dex'], caster: 'half', ab: 'wis', subLvl: 3, asi: ASI, feats: [{n: 'Favored Enemy', lvl: 1}]}],
-    subclasses: [{n: 'Champion', short: 'Champion', cls: 'Fighter', s: 'PHB'},
-      {n: 'Life Domain', short: 'Life', cls: 'Cleric', s: 'PHB', fx: [{spells: [{t: 'prepared', lvl: 1, sp: ['bless', 'cure wounds']}, {t: 'prepared', lvl: 3, sp: ['spiritual weapon']}, {t: 'prepared', lvl: 5, sp: ['revivify']}]}]}],
-    features: [{n: 'Rage', cls: 'Barbarian', lvl: 1, s: 'PHB', tx: 'Düh.'}, {n: 'Improved Critical', cls: 'Fighter', sub: 'Champion', ss: 'PHB', lvl: 3, s: 'PHB', tx: '19–20.'},
-      {n: 'Remarkable Athlete', cls: 'Fighter', sub: 'Champion', ss: 'PHB', lvl: 7, s: 'PHB', tx: 'Fél.'}, {n: 'Bonus Proficiency', cls: 'Cleric', sub: 'Life', ss: 'PHB', lvl: 1, s: 'PHB', tx: 'Nehéz.'}],
-    races: [{n: 'Dwarf', s: 'PHB', sp: {walk: 25}, fx: [{ab: {con: 2}}, {lang: ['Common', 'Dwarvish']}, {dv: 60}, {resist: ['poison']}], traits: [{n: 'Stonecunning', tx: 'Kő.'}], subs: 1},
-      {n: 'Human', s: 'PHB', sp: {walk: 30}, fx: [{lang: ['Common']}], subs: 2}],
-    subraces: [{n: 'Hill', race: 'Dwarf', s: 'PHB', fx: [{ab: {wis: 1}}], traits: [{n: 'Dwarven Toughness', tx: 'HP.'}]},
-      {n: 'Human (alap)', race: 'Human', s: 'PHB', fx: [{ab: {str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1}}]},
-      {n: 'Variant', race: 'Human', s: 'PHB', fx: [{abChoose: {from: ['str', 'dex', 'con', 'int', 'wis', 'cha'], n: 2, amt: 1}}, {feat: {n: 1}}], ow: ['ab', 'abChoose']}],
-    backgrounds: [], feats: [{n: 'Alert', s: 'PHB', tx: 'Éber.'}],
-    optfeatures: [{n: 'Defense', s: 'PHB', t: ['FS:F', 'FS:P'], tx: '+1'}, {n: 'Archery', s: 'PHB', t: ['FS:F'], tx: '+2'}],
-    baseItems: [{n: 'Chain Mail', s: 'PHB', tc: 'HA', ac: 16, str: '13'}, {n: 'Leather Armor', s: 'PHB', tc: 'LA', ac: 11}, {n: 'Shield', s: 'PHB', tc: 'S', ac: 2},
-      {n: 'Longsword', s: 'PHB', tc: 'M', wc: 'martial', dmg: '1d8 slashing', d2: '1d10', pr: 'versatile', m: {weapon: true}},
-      {n: 'Longbow', s: 'PHB', tc: 'R', wc: 'martial', dmg: '1d8 piercing', pr: 'heavy, two-handed', rg: '150/600', m: {weapon: true}},
-      {n: 'Quarterstaff', s: 'PHB', tc: 'M', wc: 'simple', dmg: '1d6 bludgeoning', pr: 'versatile', m: {weapon: true}}],
-    items: [{n: 'Cloak of Protection', s: 'DMG', att: 'requires attunement', bAc: 1, bS: 1}, {n: 'Gauntlets of Ogre Power', s: 'DMG', att: 'requires attunement', abS: {str: 19}}],
-    variants: [{n: '+1 Weapon', s: 'DMG', pre: '+1 ', bW: 1, req: [{weapon: true}]}],
-    spells: [{n: 'Bless', s: 'PHB', l: 1}, {n: 'Cure Wounds', s: 'PHB', l: 1}, {n: 'Spiritual Weapon', s: 'PHB', l: 2}, {n: 'Revivify', s: 'PHB', l: 3}], conditions: []
-  });
-  const lv = (c, n) => Array.from({length: n}, () => ({c}));
-  const mkS = (build, extra = {}) => W.Sheet.norm({auto: true, build, ...extra});
-  const inv = (...names) => names.map(n => typeof n === 'string' ? {name: n, qty: 1, equipped: true} : {qty: 1, equipped: true, ...n});
+// kitalált szabálykönyv a motor formátumában (a valódi adat szerkezetét követi, szöveg nélkül)
+const R20 = f => Array.from({length: 20}, (_, i) => f(i + 1));
+const ASI = [4, 8, 12, 16, 19];
+const rb3 = () => ({
+  classes: [
+    {n: 'Barbarian', s: 'PHB', hd: 12, saves: ['str', 'con'], fx: [{armor: ['light', 'medium', 'shields']}, {weapon: ['simple', 'martial']}], subLvl: 3, asi: ASI,
+      cols: [{l: 'Rages', v: R20(l => l < 3 ? 2 : l < 6 ? 3 : 4)}], feats: [{n: 'Rage', lvl: 1}, {n: 'Unarmored Defense', lvl: 1}, {n: 'Fast Movement', lvl: 5}]},
+    {n: 'Monk', s: 'PHB', hd: 8, saves: ['str', 'dex'], fx: [{weapon: ['simple', 'shortswords']}], subLvl: 3, asi: ASI,
+      cols: [{l: 'Martial Arts', v: R20(l => l < 5 ? '1d4' : '1d6')}, {l: 'Ki Points', v: R20(l => l < 2 ? 0 : l)}, {l: 'Unarmored Movement', v: R20(l => l < 2 ? 0 : l < 6 ? 10 : 15)}],
+      feats: [{n: 'Unarmored Defense', lvl: 1}, {n: 'Martial Arts', lvl: 1}, {n: 'Ki', lvl: 2}, {n: 'Unarmored Movement', lvl: 2}]},
+    {n: 'Paladin', s: 'PHB', hd: 10, saves: ['wis', 'cha'], fx: [{armor: ['light', 'medium', 'heavy', 'shields']}, {weapon: ['simple', 'martial']}], caster: 'half', ab: 'cha', prep: 'lvl/2+cha',
+      subLvl: 3, asi: ASI, feats: [{n: 'Divine Sense', lvl: 1}, {n: 'Lay on Hands', lvl: 1}, {n: 'Aura of Protection', lvl: 6}], opt: [{n: 'Fighting Style', t: ['FS:P'], p: R20(l => l >= 2 ? 1 : 0)}]},
+    {n: 'Bard', s: 'PHB', hd: 8, saves: ['dex', 'cha'], fx: [{skillChoose: {from: 'any', n: 3}}], caster: 'full', ab: 'cha', cantrips: R20(() => 2), known: R20(l => l + 3), subLvl: 3, asi: ASI,
+      feats: [{n: 'Bardic Inspiration', lvl: 1}, {n: 'Jack of All Trades', lvl: 2}, {n: 'Expertise', lvl: 3}]},
+    {n: 'Cleric', s: 'PHB', hd: 8, saves: ['wis', 'cha'], fx: [{armor: ['light', 'medium', 'shields']}], caster: 'full', ab: 'wis', cantrips: R20(() => 3), prep: 'lvl+wis', subLvl: 1, asi: ASI,
+      feats: [{n: 'Channel Divinity', lvl: 2}]},
+    {n: 'Fighter', s: 'PHB', hd: 10, saves: ['str', 'con'], fx: [{armor: ['light', 'medium', 'heavy', 'shields']}, {weapon: ['simple', 'martial']}], subLvl: 3, asi: [4, 6, 8, 12, 14, 16, 19],
+      feats: [{n: 'Second Wind', lvl: 1}, {n: 'Martial Archetype', lvl: 3, sub: true}, {n: 'Martial Archetype feature', lvl: 7, sub: true}], opt: [{n: 'Fighting Style', t: ['FS:F'], p: R20(() => 1)}]},
+    {n: 'Wizard', s: 'PHB', hd: 6, saves: ['int', 'wis'], caster: 'full', ab: 'int', prep: 'lvl+int', cantrips: R20(() => 3), subLvl: 2, asi: ASI, feats: [{n: 'Arcane Recovery', lvl: 1}]},
+    {n: 'Ranger', s: 'PHB', hd: 10, saves: ['str', 'dex'], caster: 'half', ab: 'wis', subLvl: 3, asi: ASI, feats: [{n: 'Favored Enemy', lvl: 1}]}],
+  subclasses: [{n: 'Champion', short: 'Champion', cls: 'Fighter', s: 'PHB'},
+    {n: 'Life Domain', short: 'Life', cls: 'Cleric', s: 'PHB', fx: [{spells: [{t: 'prepared', lvl: 1, sp: ['bless', 'cure wounds']}, {t: 'prepared', lvl: 3, sp: ['spiritual weapon']}, {t: 'prepared', lvl: 5, sp: ['revivify']}]}]}],
+  features: [{n: 'Rage', cls: 'Barbarian', lvl: 1, s: 'PHB', tx: 'Düh.'}, {n: 'Improved Critical', cls: 'Fighter', sub: 'Champion', ss: 'PHB', lvl: 3, s: 'PHB', tx: '19–20.'},
+    {n: 'Remarkable Athlete', cls: 'Fighter', sub: 'Champion', ss: 'PHB', lvl: 7, s: 'PHB', tx: 'Fél.'}, {n: 'Bonus Proficiency', cls: 'Cleric', sub: 'Life', ss: 'PHB', lvl: 1, s: 'PHB', tx: 'Nehéz.'}],
+  races: [{n: 'Dwarf', s: 'PHB', sp: {walk: 25}, fx: [{ab: {con: 2}}, {lang: ['Common', 'Dwarvish']}, {dv: 60}, {resist: ['poison']}], traits: [{n: 'Stonecunning', tx: 'Kő.'}], subs: 1},
+    {n: 'Human', s: 'PHB', sp: {walk: 30}, fx: [{lang: ['Common']}], subs: 2}],
+  subraces: [{n: 'Hill', race: 'Dwarf', s: 'PHB', fx: [{ab: {wis: 1}}], traits: [{n: 'Dwarven Toughness', tx: 'HP.'}]},
+    {n: 'Human (alap)', race: 'Human', s: 'PHB', fx: [{ab: {str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1}}]},
+    {n: 'Variant', race: 'Human', s: 'PHB', fx: [{abChoose: {from: ['str', 'dex', 'con', 'int', 'wis', 'cha'], n: 2, amt: 1}}, {feat: {n: 1}}], ow: ['ab', 'abChoose']}],
+  backgrounds: [], feats: [{n: 'Alert', s: 'PHB', tx: 'Éber.'}],
+  optfeatures: [{n: 'Defense', s: 'PHB', t: ['FS:F', 'FS:P'], tx: '+1'}, {n: 'Archery', s: 'PHB', t: ['FS:F'], tx: '+2'}],
+  baseItems: [{n: 'Chain Mail', s: 'PHB', tc: 'HA', ac: 16, str: '13'}, {n: 'Leather Armor', s: 'PHB', tc: 'LA', ac: 11}, {n: 'Shield', s: 'PHB', tc: 'S', ac: 2},
+    {n: 'Longsword', s: 'PHB', tc: 'M', wc: 'martial', dmg: '1d8 slashing', d2: '1d10', pr: 'versatile', m: {weapon: true}},
+    {n: 'Longbow', s: 'PHB', tc: 'R', wc: 'martial', dmg: '1d8 piercing', pr: 'heavy, two-handed', rg: '150/600', m: {weapon: true}},
+    {n: 'Quarterstaff', s: 'PHB', tc: 'M', wc: 'simple', dmg: '1d6 bludgeoning', pr: 'versatile', m: {weapon: true}}],
+  items: [{n: 'Cloak of Protection', s: 'DMG', att: 'requires attunement', bAc: 1, bS: 1}, {n: 'Gauntlets of Ogre Power', s: 'DMG', att: 'requires attunement', abS: {str: 19}}],
+  variants: [{n: '+1 Weapon', s: 'DMG', pre: '+1 ', bW: 1, req: [{weapon: true}]}],
+  spells: [{n: 'Bless', s: 'PHB', l: 1}, {n: 'Cure Wounds', s: 'PHB', l: 1}, {n: 'Spiritual Weapon', s: 'PHB', l: 2}, {n: 'Revivify', s: 'PHB', l: 3}], conditions: []
+});
+const lv = (c, n) => Array.from({length: n}, () => ({c}));
+const mkS = (build, extra = {}) => W.Sheet.norm({auto: true, build, ...extra});
+const inv = (...names) => names.map(n => typeof n === 'string' ? {name: n, qty: 1, equipped: true} : {qty: 1, equipped: true, ...n});
 
+describe('Szabálymotor: teljes számolás (3. lépés)', () => {
+  test('ovEdits: a számolt mezők kézi átírása felülírás-kulcsokra (AC, max HP, speed, initiative, képesség, mentő, skill)', () => {
+    const H = W.Sheet, s = H.norm({abilities: {dex: 14}, saveProf: ['dex'], skillProf: {stealth: 1}, jack: true});
+    eq(H.ovEdits(s, s), {});
+    const n = H.norm({...s, ac: 18, hp: {max: 40}, speed: '40 ft.', initBonus: 5, abilities: {dex: 16}, saveProf: ['con'], skillProf: {stealth: 2, arcana: 1}});
+    eq(H.ovEdits(s, n), {ac: 18, hpMax: 40, speed: '40 ft.', init: 5, 'ab:dex': 16, 'save:dex': 0, 'save:con': 1, 'skill:arcana': 1, 'skill:stealth': 2});
+    eq(H.ovEdits(s, H.norm({...s, skillProf: {}})), {'skill:stealth': 0.5}, 'Jack of All Trades mellett a levett jártasság fél');
+  });
   test('Hill Dwarf Barbarian 5: Unarmored Defense pajzzsal, Rage, Fast Movement (heavy armorban nem), HP, jártasságok, fegyver', () => {
     const H = W.Sheet, rb = rb3();
     const build = {race: 'Dwarf|PHB', subrace: 'Hill|PHB', base: {str: 16, dex: 14, con: 14}, levels: lv('Barbarian', 5)};
@@ -2126,6 +2133,25 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     $('#edForm').elements.ac.value = '17'; click('[data-act="edSave"]'); await wait(500);
     ok(f.log.includes('update sheets/p1 ac'), f.log.join('; ')); eq(f.store['sheets/p1'].ac, 17);
   });
+  test('szabálymotoros lap: mentők és skillek a cache-ből; a DM AC- és képesség-átírása felülírásként (ov) megy a lapra', async () => {
+    const H = W.Sheet, s0 = H.norm(sheetDoc({auto: true, build: {base: {cha: 16}, levels: lv('Paladin', 6)}}));
+    const f = await loadWith({'sheets/p1': JSON.parse(JSON.stringify({...s0, ...H.materialize(s0, H.calc(s0, rb3()))}))});
+    eq(lib().saves, {str: 3, dex: 3, con: 3, int: 3, wis: 6, cha: 9}, 'Aura of Protection: a nem jártas mentők is');
+    eq([lib().skillMods.persuasion, lib().skillMods.stealth], [{b: 3, p: 0}, {b: 0, p: 0}]);
+    f.log.splice(0);
+    W.openLib('lib'); click('[data-act="libEdit"]');
+    $('#edForm').elements.ac.value = '19'; click('[data-act="edSave"]'); await wait(500);
+    ok(f.log.includes('update sheets/p1 ac,ov.ac'), f.log.join('; '));
+    eq([f.store['sheets/p1'].ac, f.store['sheets/p1'].ov], [19, {ac: 19}]);
+    f.log.splice(0);
+    A('S.library[0].abilities.str = 14; save()'); await wait(500);
+    ok(f.log.includes('update sheets/p1 abilities,cache,ov.ab:str'), f.log.join('; '));
+    eq([f.store['sheets/p1'].ov, f.store['sheets/p1'].cache], [{ac: 19, 'ab:str': 14}, null]);
+    // HP a harcból: nem felülírás
+    f.log.splice(0);
+    const [x] = W.addToEncounter(lib(), 1); W.damage(x, 5); W.save(); await wait(500);
+    ok(f.log.includes('update sheets/p1 hp.cur,hp.temp'), f.log.join('; '));
+  });
   test('karakterlap létrehozása meglévő (D&D Beyond-os) játékosból: osztály, mentők, skillek, támadás, spellek', () => {
     const c = W.normCreature(pc('Rella', 5, {id: 'p9', owner: 'a@x.hu', type: 'Half-Elf — Bard 5 (College of Lore)', abilities: {dex: 14, cha: 18, con: 12}, saves: {dex: 4, cha: 7},
       skillMods: {performance: {b: 10, p: 2}, perception: {b: 1, p: 0.5}, stealth: {b: 5, p: 1}}, hp: {max: 38, cur: 30},
@@ -2387,6 +2413,40 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     K.location.hash = ''; K.route();
     eq(K.document.querySelectorAll('main [onmouseover], main img[src="x"]').length, 0, 'lista');
     ok(!K.__xss, 'lefutott a kód');
+  });
+  ktest('szabálymotoros lap: újraszámolás és mezőnkénti írás betöltéskor, felszereléskor, kézi átírásnál (felülírás); szabálykönyv nélkül nem', () => {
+    const doc = {auto: true, build: {race: 'Dwarf|PHB', subrace: 'Hill|PHB', base: {str: 16, dex: 14, con: 14}, levels: lv('Barbarian', 5)},
+      inventory: [{name: 'Shield', qty: 1}, {name: 'Longsword', qty: 1, equipped: true}]};
+    K.KApp.setRulebook(null);
+    openSheet(doc);
+    eq(klog, [], 'szabálykönyv nélkül a faj hatása hiányozna: nem ír');
+    K.KApp.setRulebook({version: 'v1', rb: rb3()});
+    let u = lastUpdate();
+    eq([u.ac, u.hp?.max, u.hp?.cur, u.speed, u.abilities?.con, u.cache?.saves?.con, u.classes?.[0]], [15, 60, 24, '35 ft.', 16, 6, {name: 'Barbarian', subclass: '', level: 5, hitDie: 12}]);
+    ok(u.features.some(f => f.name === 'Rage' && f.auto) && u.features.some(f => f.name === 'Sneak Attack' && !f.auto), 'a számolt jellemzők a saját mellé');
+    eq(klog.filter(l => l[0] === 'pub').at(-1)[2], {hp: {cur: 24, max: 60}, ac: 15, name: 'Minta Tolvaj', level: 'Szint 5'}, 'a csapat felé ugyanaz a nyilvános rész');
+    has(ktext(), 'Barbarian 5');
+    // a visszajött saját írás (és a csak HP-t érintő változás) nem számol újra
+    const n = klog.length;
+    K.KApp.setSheets([{...K.eval('sheets.get("p1")'), id: 'p1'}]);
+    eq(klog.length, n, 'a visszajött saját írás nem ír újra');
+    K.patch({hp: {max: 60, cur: 20, temp: 0}});
+    eq(Object.keys(lastUpdate()).sort(), ['hp', 'updatedAt', 'updatedBy']);
+    // pajzs felvétele → AC újraszámolva, ugyanabban az írásban
+    kclick('[data-tab="fel"]');
+    kset(kq('[data-act="equip"][data-i="0"]'), true);
+    u = lastUpdate();
+    eq([u.inventory?.[0].equipped, u.ac], [true, 17]);
+    // kézi AC az űrlapon → felülírás (ov), az újraszámolás után is megmarad
+    kclick('[data-tab="adat"]');
+    kq('#edForm').elements.ac.value = '19'; kclick('[data-act="edSave"]');
+    u = lastUpdate();
+    eq([u.ac, u.ov], [19, {ac: 19}]);
+    eq([K.eval('sheets.get("p1").ac'), K.eval('sheets.get("p1").ov')], [19, {ac: 19}]);
+    // új szabálykönyv-verzió: újraszámol (itt nincs mit változtatni)
+    const m = klog.length;
+    K.KApp.setRulebook({version: 'v2', rb: rb3()});
+    eq(klog.length, m, 'azonos eredménynél nem ír');
   });
   ktest('gépelés közben a beérkező változás nem rajzolja újra a lapot (a fókusz elvesztésekor igen)', async () => {
     openSheet();

@@ -481,23 +481,55 @@ function readForm() {
   return d;
 }
 
+// ---------- szabálymotor (auto lap): a számolt értékek a lap mezőibe (Sheet.calc + Sheet.materialize) ----------
+// Újraszámolás, ha a felépítés, a felülírás, a felszerelés vagy a szabálykönyv-verzió változott (betöltéskor is: a kiírt értékek ellenőrzése).
+const calcSig = new Map();  // lap-id → amiből legutóbb számoltunk
+const sigOf = s => JSON.stringify([s.build, s.ov, s.inventory, rbInfo?.version ?? null]);
+// szabálykönyv nélkül a faj, a háttér, az alosztály és a featek hatása hiányozna: ilyenkor a lapon tárolt értékek maradnak
+function canCalc(s) {
+  if (!s.auto || !rbInfo) return false;
+  if (RB()?.classes?.length) return true;
+  const b = s.build;
+  return !b.race && !b.subrace && !b.background && !Object.keys(b.sub).length && !JSON.stringify(b.ch).includes('|');
+}
+
 // ---------- írás: helyben azonnal, a felhőbe mezőnként ----------
-function patch(p) {
-  const id = view.id, s = sheets.get(id);
-  if (!s || !canEdit(s)) return;
-  const next = H.norm({...s, ...p, owner: s.owner});
+// a változott mezőket írja (auto lapnál a kézi átírás felülírásként, és ha kell, az újraszámolt mezőkkel együtt); false = nincs mit írni
+function write(id, p) {
+  const s = sheets.get(id);
+  if (!s || !canEdit(s)) return false;
+  let next = H.norm({...s, ...p, owner: s.owner});
+  const keys = new Set(Object.keys(p));
+  if (next.auto) {
+    const ov = H.ovEdits(s, next);
+    if (Object.keys(ov).length) { next = H.norm({...next, ov: {...next.ov, ...ov}}); keys.add('ov'); }
+    if (canCalc(next) && sigOf(next) !== calcSig.get(id)) {
+      const m = H.materialize(next, H.calc(next, RB()));
+      next = H.norm({...next, ...m});
+      Object.keys(m).forEach(k => keys.add(k));
+      calcSig.set(id, sigOf(next));
+    }
+  }
+  if (!keys.size) return false;
   const out = {};
-  for (const k of Object.keys(p)) out[k] = next[k];
+  for (const k of keys) out[k] = next[k];
   next.updatedAt = out.updatedAt = new Date().toISOString(); next.updatedBy = out.updatedBy = me;
   sheets.set(id, next);
   try { window.KDB?.update(id, JSON.parse(JSON.stringify(out))); } catch {}
   // a csapat felé látszó rész (characters/{id}) is frissül: HP, AC, név, szint
-  if (['hp', 'ac', 'name', 'classes'].some(k => k in p) && chars.some(c => c.id === id)) {
+  if (['hp', 'ac', 'name', 'classes'].some(k => keys.has(k)) && chars.some(c => c.id === id)) {
     const pub = {hp: {cur: next.hp.cur, max: next.hp.max}, ac: next.ac, name: next.name, level: 'Szint ' + H.level(next)};
     try { window.KDB?.pub(id, pub); } catch {}
     chars = chars.map(c => c.id === id ? normChar({...c, ...pub}) : c);
   }
-  render(true);
+  return true;
+}
+function patch(p) { if (write(view.id, p)) render(true); }
+// a beérkező (vagy újonnan betöltött szabálykönyvvel számolandó) auto lapok újraszámolása; csak a változott mezők íródnak
+function recalcAll() {
+  let any = false;
+  for (const [id, s] of sheets) if (canEdit(s) && canCalc(s) && sigOf(s) !== calcSig.get(id)) any = write(id, {}) || any;
+  return any;
 }
 const cur = () => sheets.get(view.id);
 const pipToggle = (used, j) => used === j + 1 ? j : j + 1;  // az adott pöttyig minden elhasználva; ugyanarra még egyszer = egyel vissza
@@ -554,10 +586,12 @@ window.KApp = {
   setSheets(list, err = '') {
     sheetErr = err;
     sheets = new Map((Array.isArray(list) ? list : []).filter(d => isObj(d) && okId(d.id)).map(d => [d.id, H.norm(d)]));
+    for (const id of calcSig.keys()) if (!sheets.has(id)) calcSig.delete(id);
+    recalcAll();
     render();
   },
   // info: Sheet.loadRulebook eredménye (null = a DM még nem töltötte fel)
-  setRulebook(info, err = '') { rbInfo = info?.rb ? info : {rb: null}; rbErr = err; render(); }
+  setRulebook(info, err = '') { rbInfo = info?.rb ? info : {rb: null}; rbErr = err; recalcAll(); render(); }
 };
 
 document.addEventListener('click', e => {

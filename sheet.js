@@ -685,6 +685,20 @@ window.Sheet = (() => {
     for (const k of Object.keys(p)) if (JSON.stringify(next[k]) !== JSON.stringify(s[k])) out[k] = next[k];
     return out;
   }
+  // szabálymotoros lapnál a számolt mezők kézi átírása (s → n) felülírás-kulcsokra (ov) fordítva, különben a következő újraszámolás eltüntetné
+  function ovEdits(s, n) {
+    const out = {};
+    if (n.ac !== s.ac) out.ac = n.ac;
+    if (n.hp.max !== s.hp.max) out.hpMax = n.hp.max;
+    if (n.speed !== s.speed) out.speed = n.speed;
+    if (n.initBonus !== s.initBonus) out.init = initiative(n);
+    for (const a of ABIL) {
+      if (n.abilities[a] !== s.abilities[a]) out['ab:' + a] = n.abilities[a];
+      if (n.saveProf.includes(a) !== s.saveProf.includes(a)) out['save:' + a] = n.saveProf.includes(a) ? 1 : 0;
+    }
+    for (const k of Object.keys(SKILLS)) if ((n.skillProf[k] || 0) !== (s.skillProf[k] || 0)) out['skill:' + k] = n.skillProf[k] || (n.jack ? 0.5 : 0);
+    return out;
+  }
 
   // pihenők: a változott mezőket adják vissza (a hívó írja a felhőbe)
   function shortRest(s) {
@@ -844,6 +858,6 @@ window.Sheet = (() => {
   return {FORMAT, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, norm, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    ASI_LEVELS, FEATURE_FX, classInfo, buildClasses, calc, materialize, refName, skillKey,
+    ASI_LEVELS, FEATURE_FX, classInfo, buildClasses, calc, materialize, ovEdits, refName, skillKey,
     RB_FORMAT, RB_KINDS, emptyRulebook, joinChunks, splitChunks, loadRulebook, idb, variantFits, allItems, search, refOf, byRef, itemLine, spellLine};
 })();
