@@ -53,7 +53,12 @@ h3.sub2{color:var(--muted);font-weight:600}
 #gate>div{max-width:420px;display:flex;flex-direction:column;gap:14px;align-items:center}
 #gate b.logo{font-size:44px;color:var(--accent)}
 /* karakterlap */
-.top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+/* a felső sor (vissza + pihenő gombok) görgetéskor is fent marad */
+.top{display:flex;align-items:center;gap:6px;margin:-12px 0 8px;padding:8px 0;position:sticky;top:0;z-index:15;background:var(--bg);border-bottom:1px solid var(--line)}
+.top button.small{padding:4px 8px;font-size:13px}
+.top button.on{background:var(--accent);color:#1a1405;border-color:var(--accent)}
+.hdbox{margin:0 0 10px;padding:8px 10px}
+.hdbox .row+.row{margin-top:6px}
 .top a{color:var(--muted);text-decoration:none}
 .hero{display:flex;gap:12px;align-items:center}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
@@ -99,16 +104,19 @@ details{background:var(--panel);border:1px solid var(--line);border-radius:10px;
 details>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
 details>summary::-webkit-details-marker{display:none}
 details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
-.form{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+/* minmax(0,…) és width:100%: a mezők ne a saját alapszélességüket kérjék, különben keskeny telefonon kilóg az űrlap */
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.form input:not([type=checkbox]),.form select,.form textarea{width:100%;min-width:0}
 .form label{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted)}
 .form .w2,.form h3{grid-column:1/-1}
-.form .g6{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.form .g9{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.form .g6{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.form .g9{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
 .form .rowedit{grid-column:1/-1;display:flex;gap:6px;align-items:end;flex-wrap:wrap}
-.form .rowedit input,.form .rowedit select{flex:1;min-width:60px}
+.form .rowedit input,.form .rowedit select{flex:1 1 70px;min-width:0}
 .form label.inl{flex-direction:row;align-items:center;gap:6px}
-.sk3{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
-.sk3 label{flex-direction:row !important;align-items:center;justify-content:space-between}
+.sk3{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px}
+.sk3 label{flex-direction:row !important;align-items:center;justify-content:space-between;gap:6px}
+.form .sk3 select{width:auto;flex:none}
 #rollbar{position:fixed;left:0;right:0;bottom:0;background:#14171cee;border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom));z-index:20}
 #rollbar[hidden]{display:none}
 #rollbar>div{max-width:720px;margin:0 auto}
@@ -149,7 +157,7 @@ const TABS = [['harc', '⚔ Harc'], ['kep', '🎲 Képességek'], ['var', '✨ V
 
 let me = '', isDM = false, chars = [], sheets = new Map(), sheetErr = '';
 let view = {id: null, tab: 'harc'}, rbInfo = null, rbErr = '', rollMode = '', rolls = [];
-let pendingRender = false, draft = null, openKeys = new Set(), searchQ = {spell: '', item: '', feat: ''}, notesTimer = null;
+let hdOpen = false, pendingRender = false, draft = null, openKeys = new Set(), searchQ = {spell: '', item: '', feat: ''}, notesTimer = null;
 
 function normChar(d) {
   d = isObj(d) ? d : {};
@@ -253,7 +261,12 @@ function renderSheet(s) {
   const body = {harc: tabHarc, kep: tabKep, var: tabVar, fel: tabFel, jegyz: tabJegyz, adat: tabAdat}[view.tab](s, ed);
   // fent csak egy vékony HP-sáv (a HP-t főleg a DM állítja); a kezelés a Harc fül alján van
   $('#main').innerHTML = `
-    <div class="top"><a href="#">‹ Vissza</a><span class="grow"></span>${!ed ? '<span class="hint">🔒 csak olvasható</span>' : ''}${s.updatedAt ? `<span class="hint">mentve ${esc(new Date(s.updatedAt).toLocaleTimeString('hu-HU', {hour: '2-digit', minute: '2-digit'}))}</span>` : ''}</div>
+    <div class="top"><a href="#">‹ Vissza</a>${s.updatedAt ? `<span class="hint" title="utoljára mentve">${esc(new Date(s.updatedAt).toLocaleTimeString('hu-HU', {hour: '2-digit', minute: '2-digit'}))}</span>` : ''}<span class="grow"></span>
+      ${ed ? `<button class="small" data-act="shortRest" title="Short rest">☕ Short</button><button class="small" data-act="longRest" title="Long rest">🌙 Long</button>
+        <button class="small ${hdOpen ? 'on' : ''}" data-act="hdToggle" title="Hit Dice elköltése">🎲 HD</button>` : '<span class="hint">🔒 csak olvasható</span>'}</div>
+    ${ed && hdOpen ? `<div class="box hdbox">${H.hitDice(s).map(h => `<div class="row"><span class="grow"><b>d${h.die}</b> <span class="hint">${h.max - h.used} / ${h.max} maradt · gyógyulás: d${h.die} ${sgn(mod(s.abilities.con))}</span></span>
+      <button class="small" data-act="hd" data-die="${h.die}" ${h.used >= h.max ? 'disabled' : ''}>Elköltés</button></div>`).join('')}
+      <p class="hint" style="margin:6px 0 0">Short rest: a „short rest” erőforrások és a Pact Magic slotok töltődnek vissza. Long rest: teljes HP, minden slot és erőforrás, a Hit Dice fele, −1 exhaustion.</p></div>` : ''}
     <div class="hero">${avatar(s.portrait, s.name)}<div class="main"><div class="name">${esc(s.name)}</div>
       <div class="sub">${esc([s.race, H.classLabel(s) || 'Szint ' + L].filter(Boolean).join(' · '))}</div></div></div>
     <div class="hpline">${hpBar(s.hp, 'slim')}${s.hp.temp ? `<span class="tmp">+${esc(s.hp.temp)} temp</span>` : ''}${s.hp.cur === 0 ? '<span class="tmp" style="color:var(--red)">halálmentők a Harc fül alján</span>' : ''}</div>
@@ -289,8 +302,6 @@ function tabHarc(s, ed) {
   const sDc = H.spellDc(s);
   const res = s.resources.map((r, i) => `<div class="li"><span class="nm"><b>${esc(r.name)}</b><small>${esc(r.max - r.used)} / ${esc(r.max)} · ${esc(RESET_HU[r.reset])}</small></span>
     <span class="pips">${pipRow(r.max, r.used, `data-act="res" data-i="${i}"`, dis, r.name)}</span></div>`).join('');
-  const hd = H.hitDice(s).map(h => `<div class="li"><span class="nm"><b>Hit Dice d${h.die}</b><small>${h.max - h.used} / ${h.max} maradt · gyógyulás: d${h.die} ${sgn(mod(s.abilities.con))}</small></span>
-    ${ed ? `<button class="small" data-act="hd" data-die="${h.die}" ${h.used >= h.max ? 'disabled' : ''}>🎲 Elköltés</button>` : ''}</div>`).join('');
   const conds = s.conditions.map((c, i) => {
     const t = RB()?.conditions.find(x => x.n.toLowerCase() === c.toLowerCase());
     return det('cond:' + c, `<b class="grow">${esc(c)}</b>${ed ? `<button class="small" data-act="condRm" data-i="${i}">✕</button>` : ''}`, t ? `<div class="tx">${esc(t.tx)}</div>` : '');
@@ -302,9 +313,7 @@ function tabHarc(s, ed) {
     <h3>Állapotok</h3><div class="list">${conds || '<p class="hint">Nincs.</p>'}</div>
     ${ed ? `<div class="row" style="margin-top:8px"><select id="condAdd"><option value="">＋ Állapot hozzáadása…</option>${H.CONDITIONS.filter(c => !s.conditions.includes(c)).map(c => `<option>${c}</option>`).join('')}</select>
       <label class="hint">Exhaustion <select id="exh">${[0, 1, 2, 3, 4, 5, 6].map(n => `<option ${n === s.exhaustion ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>` : ''}
-    <h3>Pihenő</h3><div class="list">${hd}</div>
-    ${ed ? `<div class="row" style="margin-top:8px"><button data-act="shortRest">☕ Short rest</button><button data-act="longRest">🌙 Long rest</button></div>
-      <p class="hint">Short rest: a „short rest” erőforrások és a Pact Magic slotok visszatöltődnek; a Hit Dice-t fent egyenként költheted el. Long rest: teljes HP, minden slot és erőforrás, a Hit Dice fele, −1 exhaustion.</p>` : ''}
+    ${profsHtml(s)}
     <h3>HP</h3>${hpBox(s, ed)}`;
 }
 function tabKep(s, ed) {
@@ -312,15 +321,18 @@ function tabKep(s, ed) {
     <span class="sv ${s.saveProf.includes(a) ? 'p' : ''}" data-act="d20" data-bonus="${H.saveBonus(s, a)}" data-label="${H.ABIL_FULL[a]} mentő">mentő ${esc(sgn(H.saveBonus(s, a)))}${s.saveProf.includes(a) ? ' ●' : ''}</span></div>`).join('');
   const sk = Object.keys(H.SKILLS).map(k => { const p = H.skillProfOf(s, k);
     return `<div class="li"><span class="mark" title="${p === 2 ? 'expertise' : p === 1 ? 'jártas' : p ? 'Jack of All Trades' : ''}">${PROF_MARK[p]}</span><span class="nm">${esc(H.skillLabel(k))} <span class="hint">${H.SKILLS[k].toUpperCase()}</span></span>${rollBtn(H.skillBonus(s, k), H.skillLabel(k))}</div>`; }).join('');
-  const pr = s.profs;
   return `<p class="hint">Koppints egy értékre a dobáshoz (nagy szám: próba, alatta: mentődobás). Előnyhöz / hátrányhoz előbb válaszd ki lent.</p>
     <div class="abils">${ab}</div>
     <h3>Skillek</h3><div class="list">${sk}</div>
     <p class="hint">● jártas · ◆ expertise${s.jack ? ' · ½ Jack of All Trades' : ''}</p>
     <h3>Passzív értékek</h3><p>Perception <b>${H.passive(s, 'perception')}</b> · Investigation <b>${H.passive(s, 'investigation')}</b> · Insight <b>${H.passive(s, 'insight')}</b></p>
-    <h3>Jártasságok, nyelvek</h3>
-    <p>${[['Páncél', pr.armor], ['Fegyver', pr.weapons], ['Eszköz', pr.tools], ['Nyelvek', pr.languages], ['Érzékek', s.senses], ['Ellenállás', s.resist]].filter(x => x[1]).map(([l, v]) => `<b>${l}:</b> ${esc(v)}`).join('<br>') || '<span class="hint">Nincs megadva.</span>'}</p>
     ${tabJell(s, ed)}`;
+}
+// a Harc fülön, a HP-kezelés fölött
+function profsHtml(s) {
+  const pr = s.profs;
+  return `<h3>Jártasságok, nyelvek</h3>
+    <p>${[['Páncél', pr.armor], ['Fegyver', pr.weapons], ['Eszköz', pr.tools], ['Nyelvek', pr.languages], ['Érzékek', s.senses], ['Ellenállás', s.resist]].filter(x => x[1]).map(([l, v]) => `<b>${l}:</b> ${esc(v)}`).join('<br>') || '<span class="hint">Nincs megadva.</span>'}</p>`;
 }
 function spellRow(sp, i, ed) {
   const r = rbSpell(sp);
@@ -515,7 +527,7 @@ document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender
 function route() {
   const m = location.hash.match(/^#lap\/([A-Za-z0-9_-]{1,64})$/);
   const id = m ? m[1] : null;
-  if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
+  if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; hdOpen = false; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
   render(true);
 }
 window.addEventListener('hashchange', route);
@@ -585,6 +597,7 @@ document.addEventListener('click', e => {
       showRoll({label: `Hit Die d${die}`, total: gain, detail: `${r.detail} ${sgn(mod(s.abilities.con))} (CON)`});
       patch({...H.heal(s, gain), hitDiceUsed: {...s.hitDiceUsed, [die]: (s.hitDiceUsed[die] || 0) + 1}}); break;
     }
+    case 'hdToggle': hdOpen = !hdOpen; render(true); break;
     case 'shortRest': if (confirm('Short rest: a „short rest” erőforrások és a Pact Magic slotok visszatöltődnek. Mehet?')) patch(H.shortRest(s)); break;
     case 'longRest': if (confirm('Long rest: teljes HP, minden spell slot és erőforrás visszatöltődik, a Hit Dice fele visszajön, exhaustion −1. Mehet?')) patch(H.longRest(s)); break;
     case 'res': patch({resources: s.resources.map((r, k) => k === i ? {...r, used: pipToggle(r.used, +el.dataset.j)} : r)}); break;

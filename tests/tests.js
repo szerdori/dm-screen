@@ -1854,6 +1854,37 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     eq(K.getComputedStyle(kq('.chips button.chip')).justifyContent, 'flex-start', 'az Initiative is felülre igazítva');
     kclick('[data-tab="kep"]');
     has(ktext(), 'Jellemzők'); has(ktext(), 'Sneak Attack'); ok(kq('#featNew'), 'jellemző felvétele is itt');
+    hasNot(ktext(), 'Jártasságok', 'a jártasságok a Harc fülön vannak');
+    kclick('[data-tab="harc"]');
+    const h3 = kqa('main h3').map(h => h.textContent);
+    eq(h3.slice(-2), ['Jártasságok, nyelvek', 'HP'], 'a jártasságok közvetlenül a HP-kezelés fölött');
+    has(ktext(), "thieves' tools");
+  });
+  ktest('pihenő gombok a felső sorban; a HD gomb a Hit Dice panelt nyitja, onnan elkölthető', () => {
+    openSheet({classes: [{name: 'Fighter', level: 3}, {name: 'Rogue', level: 2}], hp: {max: 30, cur: 10, temp: 0}});
+    const top = kq('.top');
+    ok(top.querySelector('[data-act="shortRest"]') && top.querySelector('[data-act="longRest"]') && top.querySelector('[data-act="hdToggle"]'), 'a három gomb fent van');
+    eq(K.getComputedStyle(top).position, 'sticky', 'görgetéskor is fent marad');
+    ok(!kq('[data-act="hd"]'), 'a panel alapból zárva');
+    kclick('[data-act="hdToggle"]');
+    eq(kqa('[data-act="hd"]').map(b => b.dataset.die), ['10', '8']);
+    K.rnd = () => 6; kclick('[data-act="hd"][data-die="10"]');
+    eq([lastUpdate().hp.cur, lastUpdate().hitDiceUsed], [18, {10: 1}], 'd10 = 6 + CON +2');
+    ok(kq('[data-act="hd"]'), 'a panel nyitva marad');
+    kclick('[data-act="hdToggle"]'); ok(!kq('[data-act="hd"]'));
+  });
+  ktest('keskeny (320 px) telefonon egyik fül sem lóg ki, az Alapadatok sem', async () => {
+    const fr = document.getElementById('karakter'), w0 = fr.width;
+    fr.width = 320; await wait(50);
+    try {
+      openSheet({classes: [{name: 'Fighter', level: 3}, {name: 'Rogue', subclass: 'Thief', level: 2}]});
+      const W = K.document.documentElement.clientWidth;
+      for (const t of ['harc', 'kep', 'var', 'fel', 'adat', 'jegyz']) {
+        kclick(`[data-tab="${t}"]`);
+        const wide = kqa('main *').filter(e => e.getBoundingClientRect().right > W + 1 && !e.closest('nav.tabs')).map(e => e.tagName + (e.name ? '[' + e.name + ']' : '') + '.' + e.className + ' ' + Math.round(e.getBoundingClientRect().right) + '/' + W);
+        eq(wide.slice(0, 5), [], t + ' fül');
+      }
+    } finally { fr.width = w0; }
   });
   ktest('fülre kattintva a fülsáv vízszintes görgetése megmarad', () => {
     openSheet();
