@@ -1884,7 +1884,7 @@ const featAbility = ab => (ab || []).map(a => 'Ability Score Increase: ' + (a.ch
   : Object.entries(a).filter(([k]) => ABIL.includes(k)).map(([k, v]) => `${k.toUpperCase()} +${v}`).join(', ')) + '.').join('\n');
 // ---- 2. fázis: a szabálymotor hatáslistái (fx, lásd sheet.js) az 5e.tools géppel olvasható mezőiből ----
 const RB_CLASS = ['PHB', 'TCE'], RB_SUB = ['PHB', 'XGE', 'TCE'];
-const refClean = s => tagStrip(String(s).split('|')[0]).replace(/#c$/, '').trim();
+const refClean = s => tagStrip(String(s).split('|')[0]).replace(/#.*$/, '').trim();
 const cap1 = s => String(s).replace(/(^|[\s(-])\S/g, m => m.toUpperCase());
 const first = v => Array.isArray(v) ? v[0] : v;
 const chooseOf = c => ({from: c.from, n: c.count || 1});
