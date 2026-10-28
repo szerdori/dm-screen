@@ -1969,6 +1969,36 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     eq([H.saveBonus(pal2, 'dex'), pc.saves.dex.v, H.passive(pal2, 'perception')], [3, 3, 10]);
     eq(Object.keys(H.materialize(s2, H.calc(s2))).includes('features'), false, 'szabálykönyv nélkül a jellemzők nem íródnak felül');
   });
+  test('választó-modul: opciók (tiltás a máshol már választottra), beírás a felépítésbe (alosztály, ch, törlés)', () => {
+    const H = W.Sheet, rb = rb3();
+    const s = mkS({race: 'Human|PHB', subrace: 'Variant|PHB', levels: [...lv('Fighter', 2), ...lv('Paladin', 2)], ch: {'Fighter:opt:Fighting Style': ['Defense|PHB']}});
+    const c = H.calc(s, rb), ch = k => c.choices.find(x => x.key === k);
+    eq(H.choiceOptions(ch('Paladin:opt:Fighting Style'), c, rb).opts.map(x => [x.l, !!x.dis]), [['Defense', true]], 'Paladin-stílus; a Fighterrel már választott tiltva');
+    eq(H.choiceOptions(ch('Fighter:opt:Fighting Style'), c, rb).opts.map(x => [x.l, !!x.dis]), [['Defense', false], ['Archery', false]], 'a saját választás nem tiltott');
+    const ab = H.choiceOptions(ch('subrace:ability'), c, rb);
+    eq([ab.multi, ab.n, ab.opts.length], [true, 2, 6]);
+    eq(H.choiceOptions(ch('subrace:feat'), c, rb).opts.map(x => x.v), ['Alert|PHB']);
+    const s2 = H.norm({...s, build: H.setChoice(s.build, ch('subrace:feat'), ['Alert|PHB'])}), c2 = H.calc(s2, rb);
+    eq([s2.build.ch['subrace:feat'], c2.init.v], [['Alert|PHB'], 5], 'Alert: +5 initiative');
+    eq(H.setChoice(s2.build, ch('subrace:feat'), []).ch['subrace:feat'], undefined, 'üres = törlés');
+    const f3 = mkS({levels: lv('Fighter', 3)}), c3 = H.calc(f3, rb), sub = c3.choices.find(x => x.kind === 'subclass');
+    eq(H.choiceOptions(sub, c3, rb).opts.map(x => x.v), ['Champion|PHB']);
+    eq(H.setChoice(f3.build, sub, 'Champion|PHB').sub, {Fighter: 'Champion|PHB'});
+    eq(H.setChoice({...f3.build, sub: {Fighter: 'Champion|PHB'}}, sub, '').sub, {});
+    // expertise: csak jártas skillre, és nem arra, ami már egy másik expertise-választásban szerepel
+    const bard = mkS({levels: lv('Bard', 3), ch: {'Bard:1:skills': ['stealth', 'arcana', 'history']}}), cb = H.calc(bard, rb);
+    eq(H.choiceOptions(cb.choices.find(x => x.kind === 'expertise'), cb, rb).opts.map(x => x.v), ['arcana', 'history', 'stealth']);
+  });
+  test('átállítás szabálymotorra: a felépítés a lap mezőiből, az eltérő régi értékek felülírásként maradnak', () => {
+    const H = W.Sheet, rb = rb3();
+    const s = H.norm({race: 'Hill Dwarf', background: '', classes: [{name: 'Fighter', subclass: 'Champion', level: 3}], abilities: {str: 16, dex: 12, con: 16, int: 10, wis: 12, cha: 8},
+      saveProf: ['str', 'con'], skillProf: {athletics: 1, perception: 1}, hp: {max: 40, cur: 30}, ac: 18, speed: '25 ft.'});
+    const p = H.toAuto(s, rb);
+    eq([p.auto, p.build.race, p.build.subrace, p.build.sub, p.build.base, p.build.levels.length], [true, 'Dwarf|PHB', 'Hill|PHB', {Fighter: 'Champion|PHB'}, {str: 16, dex: 12, con: 14, int: 10, wis: 11, cha: 8}, 3], 'az alapérték a faji bónusz nélkül');
+    eq(p.ov, {'skill:athletics': 1, 'skill:perception': 1, hpMax: 40, ac: 18}, 'csak ami eltér');
+    const n = H.norm({...s, ...p}), n2 = H.norm({...n, ...H.materialize(n, H.calc(n, rb))});
+    eq([n2.ac, n2.hp.max, n2.hp.cur, n2.abilities.con, n2.abilities.wis, n2.skillProf, n2.saveProf, n2.speed], [18, 40, 30, 16, 12, {athletics: 1, perception: 1}, ['str', 'con'], '25 ft.'], 'látható változás nincs');
+  });
 });
 
 describe('Szabálykönyv és tárgy-import', () => {
@@ -2491,9 +2521,9 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kset(kq('[data-act="equip"][data-i="0"]'), true);
     u = lastUpdate();
     eq([u.inventory?.[0].equipped, u.ac], [true, 17]);
-    // kézi AC az űrlapon → felülírás (ov), az újraszámolás után is megmarad
+    // kézi AC a Számolt értékeknél (✎) → felülírás (ov), az újraszámolás után is megmarad
     kclick('[data-tab="adat"]');
-    kq('#edForm').elements.ac.value = '19'; kclick('[data-act="edSave"]');
+    kset(kq('[data-ov="ac"]'), '19');
     u = lastUpdate();
     eq([u.ac, u.ov], [19, {ac: 19}]);
     eq([K.eval('sheets.get("p1").ac'), K.eval('sheets.get("p1").ov')], [19, {ac: 19}]);
@@ -2501,6 +2531,64 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     const m = klog.length;
     K.KApp.setRulebook({version: 'v2', rb: rb3()});
     eq(klog.length, m, 'azonos eredménynél nem ír');
+  });
+  ktest('Felépítés-fül: választók (képesség, feat, Fighting Style, ASI, alosztály), Teendők, ✎ felülírás és visszaállítás, szint-HP, név', () => {
+    K.KApp.setRulebook({version: 'v1', rb: rb3()});
+    openSheet({auto: true, build: {race: 'Human|PHB', subrace: 'Variant|PHB', base: {str: 15, dex: 14, con: 13}, levels: lv('Fighter', 4)}, inventory: [], attacks: [], resources: [], features: []});
+    has(kq('.todobar').textContent, 'Teendők (5)');
+    kclick('[data-act="todoGo"]');
+    ok(kq('details[data-key="todos"]').open, 'a teendőlista nyitva'); eq(K.eval('view.tab'), 'adat');
+    const abBox = a => kqa('[data-ch="subrace:ability"]').find(e => e.value === a);
+    kset(abBox('str'), true); eq(lastUpdate().build.ch['subrace:ability'], ['str']);
+    kset(abBox('con'), true);
+    ok(abBox('dex').disabled && !abBox('str').disabled, 'két választás után a többi tiltva');
+    kset(kq('select[data-ch="subrace:feat"]'), 'Alert|PHB'); eq(lastUpdate().build.ch['subrace:feat'], ['Alert|PHB']);
+    kset(kq('select[data-ch="Fighter:opt:Fighting Style"]'), 'Archery|PHB');
+    kset(kq('[data-ch="Fighter:4:asi"][data-asi="a0"]'), 'dex'); has(ktext(), 'Még 1 pont');
+    kset(kq('[data-ch="Fighter:4:asi"][data-asi="a1"]'), 'dex'); eq(lastUpdate().build.ch['Fighter:4:asi'], {dex: 2});
+    kset(kq('select[data-ch="Fighter:sub"]'), 'Champion|PHB'); eq(lastUpdate().build.sub, {Fighter: 'Champion|PHB'});
+    const s = K.eval('sheets.get("p1")');
+    eq([s.abilities.str, s.abilities.dex, s.abilities.con, K.Sheet.initiative(s), s.ac], [16, 16, 14, 8, 13]);
+    ok(!kq('.todobar'), 'nincs több teendő');
+    // ASI → feat módra váltás
+    kset(kq('[data-ch="Fighter:4:asi"][data-asi="mode"]'), 'feat'); ok(kq('[data-ch="Fighter:4:asi"][data-asi="feat"]'), 'feat-lista');
+    ok([...kq('[data-ch="Fighter:4:asi"][data-asi="feat"]').options].find(o => o.value === 'Alert|PHB').disabled, 'a már felvett feat nem választható újra');
+    // ✎ felülírás és visszaállítás
+    kset(kq('[data-ov="ac"]'), '20'); eq([lastUpdate().ov, lastUpdate().ac], [{ac: 20}, 20]); has(ktext(), 'számolt: 12', 'ASI helyett feat: DEX 14');
+    kclick('[data-act="ovReset"][data-key="ac"]'); eq([lastUpdate().ov, lastUpdate().ac], [{}, 12]);
+    kset(kq('[data-ov="skill:stealth"]'), '2'); eq(lastUpdate().ov, {'skill:stealth': 2});
+    // szintenkénti HP, alapérték; szintet a játékos nem ad
+    const hp0 = K.eval('sheets.get("p1").hp.max');
+    kset(kq('[data-act="lvHp"][data-i="1"]'), '10'); eq([K.eval('sheets.get("p1").build.levels[1].hp'), K.eval('sheets.get("p1").hp.max')], [10, hp0 + 4]);
+    kset(kq('[data-act="bBase"][data-a="wis"]'), '12'); eq(lastUpdate().abilities?.wis, 12);
+    ok(!kq('[data-act="lvAdd"]'), 'szintet csak a DM ad');
+    kq('#edForm').elements.name.value = 'Új név'; kclick('[data-act="edSave"]'); eq(lastUpdate().name, 'Új név');
+    ok(K.eval('sheets.get("p1").attacks').every(a => a.auto), 'a számolt támadások maradnak');
+    // DM: szint hozzáadása és levétele
+    openSheet({auto: true, build: {levels: lv('Fighter', 2)}}, 'dm@x.hu', true);
+    kclick('[data-tab="adat"]'); kset('#lvCls', 'Paladin'); kclick('[data-act="lvAdd"]');
+    eq(K.eval('sheets.get("p1").build.levels').map(l => l.c), ['Fighter', 'Fighter', 'Paladin']);
+    kclick('[data-act="lvRm"]'); eq(K.eval('sheets.get("p1").build.levels').length, 2);
+  });
+  ktest('Átállítás gomb kézi lapon; ✋ teendő kipipálása; befecskendezett választás-érték nem fut le', () => {
+    K.KApp.setRulebook({version: 'v1', rb: rb3()});
+    openSheet({race: 'Hill Dwarf', classes: [{name: 'Fighter', subclass: 'Champion', level: 3}], abilities: {str: 16, dex: 12, con: 16, int: 10, wis: 12, cha: 8},
+      saveProf: ['str', 'con'], skillProf: {athletics: 1}, hp: {max: 40, cur: 30, temp: 0}, ac: 18, speed: '25 ft.', attacks: [], resources: [], features: []});
+    kclick('[data-tab="adat"]'); kclick('[data-act="toAuto"]');
+    const s = K.eval('sheets.get("p1")');
+    eq([s.auto, s.ac, s.hp.max, s.hp.cur, s.ov.ac, s.ov.hpMax, s.build.sub], [true, 18, 40, 30, 18, 40, {Fighter: 'Champion|PHB'}]);
+    has(ktext(), 'Felépítés'); ok(kqa('.warn').some(e => e.textContent === '✎'), 'a felülírt értékek jelölve');
+    // ✋ teendő (Ranger: Favored Enemy)
+    openSheet({auto: true, build: {levels: lv('Ranger', 1)}, attacks: [], resources: [], features: []});
+    kclick('[data-act="todoGo"]');
+    const box = kqa('[data-act="todoDone"]')[0]; ok(box, 'kipipálható teendő');
+    kset(box, true); eq(lastUpdate().todoDone, [box.dataset.key]);
+    has(ktext(), 'Kipipáltak visszaállítása (1)'); kclick('[data-act="todoReset"]'); eq(lastUpdate().todoDone, []);
+    // befecskendezett érték a választásban
+    K.__xss = 0;
+    openSheet({auto: true, build: {levels: lv('Fighter', 1), ch: {'Fighter:opt:Fighting Style': [XSS]}}, name: XSS});
+    kclick('[data-tab="adat"]');
+    eq(K.document.querySelectorAll('main [onmouseover], main img[src="x"]').length, 0); ok(!K.__xss, 'lefutott a kód');
   });
   ktest('alapadatok: osztály, alosztály, faj legördülőből; választáskor hit die, mentők, jártasságok, slotok magától', () => {
     K.KApp.setRulebook({version: 'v1', rb: rb3()});
@@ -2563,12 +2651,12 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kset(kq('[data-act="equip"][data-i="2"]'), false); kset(kq('[data-act="equip"][data-i="1"]'), false);
     eq([lastUpdate().ac, K.eval('sheets.get("p1").attacks').map(a => a.name)], [13, ['Saját ütés']]);
   });
-  ktest('szabálymotoros lap: az Alapadatokon átírt osztályszint és faj a felépítésbe kerül, a motor újraszámol', () => {
+  ktest('szabálymotoros lap: a Felépítésben váltott faj és a DM által adott szint a felépítésbe kerül, a motor újraszámol', () => {
     K.KApp.setRulebook({version: 'v1', rb: rb3()});
-    openSheet({auto: true, build: {race: 'Dwarf|PHB', subrace: 'Hill|PHB', base: {str: 16, dex: 14, con: 14}, levels: [{c: 'Barbarian', hp: null}, {c: 'Barbarian', hp: 9}]}});
+    openSheet({auto: true, build: {race: 'Dwarf|PHB', subrace: 'Hill|PHB', base: {str: 16, dex: 14, con: 14}, levels: [{c: 'Barbarian', hp: null}, {c: 'Barbarian', hp: 9}]}}, 'dm@x.hu', true);
     kclick('[data-tab="adat"]');
-    kset(kq('#edForm').elements.cl_lvl_0, '3'); kset(kq('#edForm').elements.race, 'Human');
-    kclick('[data-act="edSave"]');
+    kclick('[data-act="lvAdd"]');
+    const sel = kq('[data-act="bRace"]'); kset(sel, [...sel.options].find(o => o.textContent === 'Human').value);
     const s = K.eval('sheets.get("p1")');
     eq([s.build.levels, s.build.race, s.build.subrace, s.classes[0].level, s.abilities.con, s.ov], [[{c: 'Barbarian', hp: null}, {c: 'Barbarian', hp: 9}, {c: 'Barbarian', hp: null}], 'Human|PHB', 'Human (alap)|PHB', 3, 15, {}]);
   });

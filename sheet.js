@@ -759,6 +759,70 @@ window.Sheet = (() => {
     const sub = Object.fromEntries(classes.map(c => { const n = findClass(c.name) || c.name; return [n, subclassRef(n, c.subclass, rb)]; }).filter(([, r]) => r));
     return normBuild({...b, levels, sub});
   }
+
+  // ---------- választó-modul (a Felépítés és a szintlépés-varázsló közös része): egy választási hely opciói és beírása ----------
+  // choiceOptions(c, calc-eredmény, rb) → {multi, n, free, opts: [{v, l, note, dis}]}; multi = jelölőnégyzetek, free = szabad szöveg
+  const ABIL_OPTS = ABIL.map(a => ({v: a, l: a.toUpperCase()}));
+  function choiceOptions(c, cr, rb) {
+    const others = kind => (cr?.choices || []).filter(x => x.kind === kind && x.key !== c.key).flatMap(x => x.ok);
+    const has = new Set(arr(c.value, 30).map(x => isObj(x) ? '' : String(x)));
+    // egy featet csak egyszer lehet felvenni (faj, ASI, más feat választása)
+    const featsTaken = new Set((cr?.choices || []).filter(x => x.key !== c.key).flatMap(x => x.kind === 'feat' ? x.ok : x.kind === 'asi' ? x.ok.map(v => v.feat).filter(Boolean) : []));
+    const refs = list => (list || []).map(x => { const v = x.n + '|' + x.s; return {v, l: x.n, note: x.pre || '', dis: featsTaken.has(v) && !has.has(v)}; });
+    let opts = [], multi = false, free = false;
+    if (c.kind === 'ability' || c.kind === 'saves') { multi = true; opts = ABIL_OPTS.filter(o => !Array.isArray(c.from) || c.from.includes(o.v)); }
+    else if (c.kind === 'skills') {
+      multi = true;
+      const from = Array.isArray(c.from) ? c.from.map(skillKey) : Object.keys(SKILLS);
+      opts = from.filter(k => SKILLS[k]).map(k => { const x = cr?.skills?.[k]; const other = x?.prof >= 1 && !has.has(k);
+        return {v: k, l: skillLabel(k), note: other ? 'már jártas' : '', dis: other}; });
+    } else if (c.kind === 'expertise') {
+      multi = true;
+      const taken = new Set(others('expertise'));
+      opts = Object.keys(SKILLS).filter(k => cr?.skills?.[k]?.prof >= 1).map(k => ({v: k, l: skillLabel(k), note: taken.has(k) ? 'már expertise' : '', dis: taken.has(k)}));
+    } else if (c.kind === 'lang' || c.kind === 'tool') {
+      if (Array.isArray(c.from) && c.from.length) opts = c.from.map(x => ({v: String(x), l: String(x)})); else free = true;
+    } else if (c.kind === 'feat') opts = refs(rb?.feats);
+    else if (c.kind === 'opt') {
+      const taken = new Set(others('opt'));
+      opts = (rb?.optfeatures || []).filter(o => (o.t || []).some(t => (c.from || []).includes(t)) && (!o.lv || o.lv <= (c.ctx?.lvl || 20)))
+        .map(o => { const v = o.n + '|' + o.s; return {v, l: o.n, note: o.pre || '', dis: taken.has(v) && !has.has(v)}; });
+    } else if (c.kind === 'subclass') opts = subclassesOf(c.key.replace(/:sub$/, ''), rb).map(x => ({v: x.n + '|' + x.s, l: x.n}));
+    else if (c.kind === 'subrace') {
+      const race = refName(c.src.replace(/^Faj: /, ''));
+      opts = (rb?.subraces || []).filter(x => x.race === race).map(x => ({v: x.n + '|' + x.s, l: /\(alap\)$/.test(x.n) ? race + ' (alap)' : x.n}));
+    } else if (c.kind === 'asi') opts = refs(rb?.feats);
+    return {multi, free, n: c.n, opts};
+  }
+  // a választás beírása a felépítésbe (alosztály → sub, alfaj → subrace, a többi → ch); üres érték = törlés
+  function setChoice(b, c, v) {
+    const n = {...b, sub: {...b.sub}, ch: {...b.ch}};
+    const empty = v == null || v === '' || (Array.isArray(v) && !v.length) || (isObj(v) && !Object.keys(v).length);
+    if (c.kind === 'subclass') { const cls = c.key.replace(/:sub$/, ''); if (empty) delete n.sub[cls]; else n.sub[cls] = String(v); }
+    else if (c.kind === 'subrace') n.subrace = empty ? '' : String(v);
+    else if (empty) delete n.ch[c.key];
+    else n.ch[c.key] = v;
+    return normBuild(n);
+  }
+  // kézi (1. fázisú) lap átállítása a szabálymotorra: a felépítés a lap mezőiből, és ahol a számolt érték eltér a régitől,
+  // ott a régi érték felülírásként (ov) megmarad – így az átállítás után semmi nem változik láthatóan
+  function toAuto(s, rb) {
+    const ra = findRace(s.race, rb), fixed = raceAb(s.race, rb).fixed;
+    const bg = (rb?.backgrounds || []).find(x => x.n.toLowerCase() === String(s.background || '').trim().toLowerCase());
+    const b = normBuild({...legacyBuild(s, rb, true), origin: null, background: bg ? bg.n + '|' + bg.s : '',
+      base: Object.fromEntries(ABIL.map(a => [a, Math.max(1, num(s.abilities[a], 10) - (fixed[a] || 0))]))});
+    const ov = {};
+    let c = calc({...s, auto: true, build: b, ov}, rb);
+    for (const a of ABIL) if (c.abilities[a].v !== s.abilities[a]) ov['ab:' + a] = s.abilities[a];
+    c = calc({...s, auto: true, build: b, ov}, rb);
+    for (const a of ABIL) if (!!c.saves[a].prof !== s.saveProf.includes(a)) ov['save:' + a] = s.saveProf.includes(a) ? 1 : 0;
+    for (const k of Object.keys(SKILLS)) { const p = s.skillProf[k] || (s.jack ? 0.5 : 0); if (c.skills[k].prof !== p) ov['skill:' + k] = p; }
+    if (c.hpMax.v !== s.hp.max) ov.hpMax = s.hp.max;
+    if (c.ac.v !== s.ac) ov.ac = s.ac;
+    if (c.speed.v !== s.speed) ov.speed = s.speed;
+    if (c.init.v !== initiative(s)) ov.init = initiative(s);
+    return {auto: true, build: b, ov: normOv(ov), todoDone: []};
+  }
   // ---------- faji és feat-képességbónusz a kézi lapon (a beírt értékekhez adva) ----------
   // fixed: azonnal hozzáadható; choose: a játékos választ (pl. Half-Elf 2× +1, Resilient)
   function abBonusOf(fx) {
@@ -1046,6 +1110,6 @@ window.Sheet = (() => {
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     ASI_LEVELS, FEATURE_FX, classInfo, buildClasses, calc, materialize, ovEdits, refName,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
-    classNames, subclassesOf, subclassRef, raceOptions, findRace, legacyCalc, derive, acItem, equipPatch, classesToBuild, skillKey,
+    classNames, subclassesOf, subclassRef, raceOptions, findRace, legacyCalc, derive, acItem, equipPatch, classesToBuild, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, emptyRulebook, joinChunks, splitChunks, loadRulebook, idb, variantFits, allItems, search, refOf, byRef, itemLine, spellLine};
 })();

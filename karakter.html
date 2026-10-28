@@ -134,6 +134,18 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 #lastRoll b{font:700 26px Georgia,serif;color:var(--accent)}
 #lastRoll.crit b{color:var(--green)} #lastRoll.fumble b{color:var(--red)}
 #lastRoll span{color:var(--muted);font-size:13px;flex:1;overflow-wrap:anywhere}
+/* szabálymotoros lap: teendők, választási helyek, számolt értékek */
+.todobar{display:block;width:100%;margin:6px 0;text-align:left;border-color:var(--orange);color:var(--orange);font-weight:700}
+.chbox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px}
+.chbox.need{border-color:var(--orange)}
+.chhead{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+.chbox select,.chbox input:not([type=checkbox]){width:100%;margin-top:4px}
+.chopts{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:4px 10px}
+.chopts label{display:flex;align-items:center;gap:6px;font-size:14px}
+.okk{color:var(--green);font-weight:700}
+.parts{margin:6px 0 0;padding-left:18px;font-size:13px;color:#d6d3cb}
+.lvrow{display:flex;gap:8px;align-items:center}
+.lvrow input{width:90px}
 </style>
 </head>
 <body>
@@ -291,6 +303,7 @@ function renderSheet(s) {
     <div class="hero">${avatar(s.portrait, s.name)}<div class="main"><div class="name">${esc(s.name)}</div>
       <div class="sub">${esc([s.race, H.classLabel(s) || 'Szint ' + L].filter(Boolean).join(' · '))}</div></div></div>
     <div class="hpline">${hpBar(s.hp, 'slim')}${s.hp.temp ? `<span class="tmp">+${esc(s.hp.temp)} temp</span>` : ''}${s.hp.cur === 0 ? '<span class="tmp" style="color:var(--red)">halálmentők a Harc fül alján</span>' : ''}</div>
+    ${ed && calcOf(s)?.todos.length ? `<button class="todobar" data-act="todoGo">📋 Teendők (${calcOf(s).todos.length})</button>` : ''}
     ${s.concentration ? `<div class="concbar">🌀 Koncentráció: <b>${esc(s.concentration)}</b><span class="grow"></span>${ed ? '<button class="small" data-act="concEnd">Megszakítás</button>' : ''}</div>` : ''}
     ${fxBar(s)}
     <nav class="tabs">${TABS.map(([k, l]) => `<button class="${view.tab === k ? 'on' : ''}" data-tab="${k}">${l}</button>`).join('')}</nav>
@@ -505,10 +518,13 @@ function formPicked(field) {
 const EDIT_KEYS = ['name', 'race', 'background', 'alignment', 'classes', 'abilities', 'saveProf', 'skillProf', 'jack', 'ac', 'acNote', 'speed', 'initBonus', 'spellcasting', 'attacks', 'resources', 'profs', 'senses', 'resist'];
 function tabAdat(s, ed) {
   if (!ed) return statChips(s);
+  if (s.auto) return tabBuild(s);
   if (!draft || draft.id !== view.id) draft = {id: view.id, s: structuredClone(s)};
   const d = draft.s, f = (n, l, v, cls = '', type = 'text') => `<label class="${cls}">${l}<input name="${n}" type="${type}" value="${esc(v)}"></label>`;
   const opt = (v, l, cur) => `<option value="${esc(v)}" ${String(cur) === String(v) ? 'selected' : ''}>${esc(l)}</option>`;
-  return `${statChips(s)}<p class="hint">A karakter alapadatai. A módosítás csak a <b>Mentés</b> gombbal kerül a lapra. A módosítókat, mentőket, skilleket, spell DC-t a program számolja.</p>
+  return `${statChips(s)}${RB()?.classes?.length ? `<div class="box"><b>⚙ Szabálymotor</b><p class="hint" style="margin:4px 0 8px">Átállítás után a program a fajból, az osztályokból és a választásokból számol mindent. Ami most eltér a számolttól, az felülírásként (✎) megmarad, a hiányzó választások a Teendők közé kerülnek.</p>
+    <button data-act="toAuto">⚙ Átállítás szabálymotorra</button></div>` : ''}
+  <p class="hint">A karakter alapadatai. A módosítás csak a <b>Mentés</b> gombbal kerül a lapra. A módosítókat, mentőket, skilleket, spell DC-t a program számolja.</p>
   <form id="edForm" class="form" onsubmit="return false">
     ${f('name', 'Név', d.name, 'w2')}${raceField(d.race)}${f('background', 'Háttér', d.background)}${f('alignment', 'Alignment', d.alignment, 'w2')}
     <h3>Osztályok</h3>
@@ -552,11 +568,143 @@ function tabAdat(s, ed) {
   </form>
   <div class="row" style="margin:14px 0"><button class="primary" data-act="edSave">Mentés</button><button data-act="edCancel">Elvetés</button></div>`;
 }
+// ---------- szabálymotoros lap: Felépítés (választások), Számolt értékek (ℹ bontás, ✎ felülírás), Teendők ----------
+let calcMemo = {sig: null, r: null};
+const asiMode = {};   // ASI-hely: 'asi' | 'feat', amíg még nincs választott érték
+function calcOf(s) {
+  if (!s?.auto || !RB()?.classes?.length) return null;
+  const sig = view.id + sigOf(s) + JSON.stringify(s.todoDone);
+  if (calcMemo.sig !== sig) calcMemo = {sig, r: H.calc(s, RB())};
+  return calcMemo.r;
+}
+const chId = k => 'ch-' + String(k).replace(/[^A-Za-z0-9_-]/g, '_');
+const optList = (opts, cur) => `<option value="">(válassz)</option>${cur && !opts.some(x => x.v === cur) ? `<option value="${esc(cur)}" selected>${esc(H.refName(cur))} (saját)</option>` : ''}`
+  + opts.map(x => `<option value="${esc(x.v)}" ${x.v === cur ? 'selected' : ''} ${x.dis && x.v !== cur ? 'disabled' : ''}>${esc(x.l)}${x.note ? ' – ' + esc(x.note) : ''}</option>`).join('');
+// egy választási hely szerkesztője (a 3. fázis szintlépés-varázslója is ezt használja)
+function choiceBox(c, cr) {
+  const o = H.choiceOptions(c, cr, RB()), K = esc(c.key);
+  const head = `<div class="chhead"><b>${esc(c.src)}</b><span class="hint">${esc(H.FX_LABEL[c.kind] || c.kind)}${c.n > 1 ? ` (${c.ok.length} / ${c.n})` : ''}</span><span class="grow"></span>${c.done ? '<span class="okk">✓</span>' : '<span class="warn">⚠</span>'}</div>`;
+  let body;
+  if (c.kind === 'asi') {
+    const v = isObj(c.value) ? c.value : {}, feat = typeof v.feat === 'string' && v.feat ? v.feat : '';
+    const mode = asiMode[c.key] || (feat ? 'feat' : 'asi');
+    const picks = H.ABIL.flatMap(a => Array(Math.max(0, Math.min(2, Math.floor(num(v[a]))))).fill(a));
+    body = `<select data-ch="${K}" data-asi="mode"><option value="asi" ${mode === 'asi' ? 'selected' : ''}>Képességnövelés (+2 egyre vagy +1 kettőre)</option><option value="feat" ${mode === 'feat' ? 'selected' : ''}>Feat</option></select>`
+      + (mode === 'feat' ? `<select data-ch="${K}" data-asi="feat">${optList(o.opts, feat)}</select>`
+        : [0, 1].map(j => `<select data-ch="${K}" data-asi="a${j}"><option value="">(+1: válassz képességet)</option>${H.ABIL.map(a => `<option value="${a}" ${picks[j] === a ? 'selected' : ''}>+1 ${a.toUpperCase()} (${esc(cr.abilities[a].v)})</option>`).join('')}</select>`).join('')
+          + (picks.length === 1 ? '<p class="hint" style="margin:4px 0 0">Még 1 pont kiosztható.</p>' : ''));
+  } else if (o.multi) {
+    const sel = new Set(c.ok.map(String)), full = sel.size >= c.n;
+    body = `<div class="chopts">${o.opts.map(x => `<label><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${!sel.has(x.v) && (full || x.dis) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`).join('')}</div>`
+      + (!o.opts.length ? '<p class="hint">Nincs választható (pl. expertise-hez előbb jártasság kell).</p>' : '');
+  } else {
+    const vals = Array.isArray(c.value) ? c.value.map(String) : c.value ? [String(c.value)] : [];
+    body = Array.from({length: c.n}, (_, j) => o.free ? `<input data-ch="${K}" value="${esc(vals[j] || '')}" placeholder="${esc(H.FX_LABEL[c.kind] || '')}">`
+      : `<select data-ch="${K}">${optList(o.opts, vals[j] || '')}</select>`).join('');
+  }
+  return `<div class="chbox ${c.done ? '' : 'need'}" id="${chId(c.key)}">${head}${body}</div>`;
+}
+function choicePicked(t) {
+  const s = cur(), key = t.dataset.ch, c = calcOf(s)?.choices.find(x => x.key === key);
+  if (!c) return;
+  const els = [...document.querySelectorAll('[data-ch]')].filter(e => e.dataset.ch === key);
+  let v;
+  if (c.kind === 'asi') {
+    if (t.dataset.asi === 'mode') { asiMode[key] = t.value; v = {}; }
+    else if (t.dataset.asi === 'feat') v = t.value ? {feat: t.value} : {};
+    else { v = {}; for (const e of els.filter(e => /^a\d$/.test(e.dataset.asi) && e.value)) v[e.value] = (v[e.value] || 0) + 1; }
+  } else if (H.choiceOptions(c, null, RB()).multi) v = els.filter(e => e.checked).map(e => e.value);
+  else if (c.kind === 'subclass' || c.kind === 'subrace') v = els[0].value;
+  else v = els.map(e => e.value.trim()).filter(Boolean);
+  patch({build: H.setChoice(s.build, c, v)});
+}
+// számolt érték sora: érték, ℹ bontás, ✎ felülírás (üres = a számolt érték), ↺ visszaállítás
+function ovRow(s, key, label, x, kind = 'num') {
+  const isOv = key in s.ov;
+  const shown = kind === 'save' ? (x.prof ? '● ' : '') + sgn(x.v) : kind === 'skill' ? PROF_MARK[x.prof] + ' ' + sgn(x.v) : x.v;
+  const parts = (x.parts || []).map(p => `<li>${esc(typeof p.v === 'number' ? sgn(p.v) : p.v)} – ${esc(p.src)}</li>`).join('');
+  const cur = isOv ? s.ov[key] : '';
+  const opt = (v, l) => `<option value="${v}" ${isOv && String(cur) === String(v) ? 'selected' : ''}>${l}</option>`;
+  const edit = kind === 'save' ? `<select data-ov="${esc(key)}">${opt('', '(számolt)')}${opt(0, 'nem jártas')}${opt(1, 'jártas')}</select>`
+    : kind === 'skill' ? `<select data-ov="${esc(key)}">${opt('', '(számolt)')}${opt(0, '–')}${opt(0.5, 'fél (½)')}${opt(1, 'jártas')}${opt(2, 'expertise')}</select>`
+    : `<input data-ov="${esc(key)}" ${kind === 'num' ? 'type="number" inputmode="numeric"' : ''} value="${esc(cur)}" placeholder="számolt: ${esc(x.calc ?? x.v)}">`;
+  return det('ov:' + key, `<span class="nm"><b>${esc(label)}</b>${isOv ? ` <span class="warn" title="kézzel felülírva">✎</span>${x.calc != null && x.calc !== x.v ? `<small>számolt: ${esc(x.calc)}</small>` : ''}` : ''}</span><b>${esc(shown)}</b>`,
+    `${parts ? `<div class="hint" style="margin-top:6px">ℹ Bontás</div><ul class="parts">${parts}</ul>` : ''}
+    <div class="row" style="margin-top:8px"><label class="hint grow">✎ Felülírás${edit}</label>${isOv ? `<button class="small" data-act="ovReset" data-key="${esc(key)}">↺ számolt</button>` : ''}</div>`);
+}
+function todoList(s, cr) {
+  const items = cr.todos.map(t => t.kind === 'manual' ? `<label class="li"><input type="checkbox" data-act="todoDone" data-key="${esc(t.key)}"><span class="nm">✋ ${esc(t.text)}</span></label>`
+    : t.kind === 'missing' ? `<div class="li"><span class="nm warn">${esc(t.text)}</span></div>`
+    : `<div class="li"><span class="nm">${esc(t.text)}</span><button class="small" data-act="chGo" data-key="${esc(t.key)}">→</button></div>`).join('');
+  return det('todos', `<b>📋 Teendők (${cr.todos.length})</b>`, `<div class="list" style="margin-top:8px">${items || '<p class="hint">Nincs nyitott teendő.</p>'}</div>
+    ${s.todoDone.length ? `<button class="small" data-act="todoReset" style="margin-top:8px">Kipipáltak visszaállítása (${s.todoDone.length})</button>` : ''}`);
+}
+function tabBuild(s) {
+  const cr = calcOf(s);
+  if (!cr) return `${statChips(s)}${rbNote() || '<p class="hint">A szabálykönyvben még nincsenek osztályok: a DM töltse fel újra (DM Screen → Menü → 📖 Szabálykönyv).</p>'}${autoForm(s)}`;
+  const b = s.build, rb = RB();
+  const races = H.raceOptions(rb), ri = races.findIndex(o => o.race === b.race && (o.subrace || '') === (b.subrace || ''));
+  const bgs = (rb.backgrounds || []).map(x => ({v: x.n + '|' + x.s, l: x.n}));
+  const lvls = b.levels.map((l, i) => {
+    const hd = H.classInfo(l.c, rb).hd;
+    return `<div class="li lvrow"><span class="nm"><b>${i + 1}. szint</b> · ${esc(l.c)}</span>${i === 0 ? `<span class="hint">HP: d${hd} maximum</span>`
+      : `<label class="hint">HP <input type="number" inputmode="numeric" min="1" max="${hd}" data-act="lvHp" data-i="${i}" value="${esc(l.hp ?? '')}" placeholder="átlag ${hd / 2 + 1}"></label>`}</div>`;
+  }).join('');
+  const chs = cr.choices.filter(c => c.kind !== 'subrace').map(c => choiceBox(c, cr)).join('');   // az alfaj a faj-listában van
+  const ab = H.ABIL.map(a => ovRow(s, 'ab:' + a, H.ABIL_FULL[a], cr.abilities[a])).join('');
+  const sv = H.ABIL.map(a => ovRow(s, 'save:' + a, H.ABIL_FULL[a] + ' mentő', cr.saves[a], 'save')).join('');
+  const sk = Object.keys(H.SKILLS).map(k => ovRow(s, 'skill:' + k, H.skillLabel(k), cr.skills[k], 'skill')).join('');
+  return `${statChips(s)}
+    ${cr.todos.length || s.todoDone.length ? todoList(s, cr) : ''}
+    <h3>Felépítés</h3>
+    <div class="form">
+      <label class="w2" id="${chId('race:subrace')}">Faj<select data-act="bRace"><option value="">(válassz fajt)</option>${ri < 0 && b.race ? `<option selected>${esc(H.refName(b.race))} (nincs a szabálykönyvben)</option>` : ''}${races.map((o, i) => `<option value="${i}" ${i === ri ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
+      <label class="w2">Háttér<select data-act="bBg">${optList(bgs, b.background)}</select></label>
+      <h3>Alapértékek <span class="hint">(faji bónusz nélkül)</span></h3>
+      <div class="g6">${H.ABIL.map(a => `<label>${a.toUpperCase()}<input type="number" inputmode="numeric" min="1" max="30" data-act="bBase" data-a="${a}" value="${esc(b.base[a])}"></label>`).join('')}</div>
+    </div>
+    <h3>Szintek</h3><div class="list">${lvls || '<p class="hint">Még nincs szint.</p>'}</div>
+    ${isDM ? `<div class="row" style="margin-top:6px"><select id="lvCls">${H.classNames(rb).map(n => `<option ${n === b.levels.at(-1)?.c ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select><button class="small" data-act="lvAdd">＋ Szint (DM)</button>${b.levels.length > 1 ? '<button class="small" data-act="lvRm">− Utolsó szint</button>' : ''}</div>`
+      : '<p class="hint">Új szintet a DM ad (szintlépés). A HP üresen hagyva az átlag; dobott értéket beírhatsz.</p>'}
+    <h3>Választások</h3>${chs || '<p class="hint">Nincs választási hely.</p>'}
+    <h3>Számolt értékek</h3>
+    <p class="hint">Koppints egy sorra: ℹ miből jön, ✎ kézi felülírás. A ✎ jel mutatja, hol tér el a lap a számolttól.</p>
+    <div class="list">${ovRow(s, 'ac', 'AC', cr.ac)}${ovRow(s, 'hpMax', 'Max HP', cr.hpMax)}${ovRow(s, 'speed', 'Speed', cr.speed, 'text')}${ovRow(s, 'init', 'Initiative', cr.init)}</div>
+    <h3 class="sub2">Képességértékek</h3><div class="list">${ab}</div>
+    <h3 class="sub2">Mentők</h3><div class="list">${sv}</div>
+    <h3 class="sub2">Skillek</h3><div class="list">${sk}</div>
+    ${autoForm(s)}`;
+}
+// szabálymotoros lapon a kézzel szerkeszthető rész: név, alignment, saját támadások és erőforrások (a számoltak mellé)
+function autoForm(s) {
+  if (!draft || draft.id !== view.id) draft = {id: view.id, s: structuredClone(s)};
+  const d = draft.s;
+  const atk = d.attacks.map((a, i) => a.auto ? '' : `<div class="rowedit"><input name="at_name_${i}" value="${esc(a.name)}" placeholder="Név"><input name="at_hit_${i}" value="${esc(a.hit)}" placeholder="+5" style="max-width:60px">
+      <input name="at_dmg_${i}" value="${esc(a.dmg)}" placeholder="1d8+3 slashing"><input name="at_note_${i}" value="${esc(a.note)}" placeholder="megjegyzés"><button class="small" data-act="rowRm" data-list="attacks" data-i="${i}">✕</button></div>`).join('');
+  const res = d.resources.map((r, i) => r.auto ? '' : `<div class="rowedit"><input name="rs_name_${i}" value="${esc(r.name)}" placeholder="Név"><input name="rs_max_${i}" type="number" min="0" max="99" value="${esc(r.max)}" style="max-width:64px" title="Max">
+      <select name="rs_reset_${i}">${H.RESETS.map(k => `<option value="${k}" ${r.reset === k ? 'selected' : ''}>${esc(RESET_HU[k])}</option>`).join('')}</select><button class="small" data-act="rowRm" data-list="resources" data-i="${i}">✕</button></div>`).join('');
+  return `<h3>Név és saját tételek</h3>
+  <form id="edForm" class="form" data-mode="auto" onsubmit="return false">
+    <label class="w2">Név<input name="name" value="${esc(d.name)}"></label><label class="w2">Alignment<input name="alignment" value="${esc(d.alignment)}"></label>
+    <h3>Saját támadások <span class="hint">(a felszerelt fegyverekből a program számol)</span></h3>${atk}
+    <div class="w2"><button class="small" data-act="rowAdd" data-list="attacks">＋ Támadás</button></div>
+    <h3>Saját erőforrások</h3>${res}
+    <div class="w2"><button class="small" data-act="rowAdd" data-list="resources">＋ Erőforrás</button></div>
+  </form>
+  <div class="row" style="margin:14px 0"><button class="primary" data-act="edSave">Mentés</button><button data-act="edCancel">Elvetés</button></div>`;
+}
+
 function readForm() {
   const fm = $('#edForm');
   if (!fm || !draft || draft.id !== view.id) return draft?.s;
   const v = n => fm.elements[n]?.value ?? '', ch = n => !!fm.elements[n]?.checked;
   const d = draft.s;
+  if (fm.dataset.mode === 'auto') {
+    Object.assign(d, {name: v('name'), alignment: v('alignment')});
+    d.attacks = d.attacks.map((a, i) => fm.elements['at_name_' + i] ? {...a, name: v('at_name_' + i), hit: v('at_hit_' + i), dmg: v('at_dmg_' + i), note: v('at_note_' + i)} : a);
+    d.resources = d.resources.map((r, i) => fm.elements['rs_name_' + i] ? {...r, name: v('rs_name_' + i), max: v('rs_max_' + i), reset: v('rs_reset_' + i)} : r);
+    return d;
+  }
   Object.assign(d, {name: v('name'), race: v('race'), background: v('background'), alignment: v('alignment'), ac: v('ac'), acNote: v('acNote'), speed: v('speed'),
     initBonus: v('initBonus').trim() === '' ? null : v('initBonus'), senses: v('senses'), resist: v('resist'), jack: ch('jack'),
     profs: {armor: v('pf_armor'), weapons: v('pf_weapons'), tools: v('pf_tools'), languages: v('pf_languages')}});
@@ -815,7 +963,23 @@ document.addEventListener('click', e => {
     case 'rowAdd': { const d = readForm(); d[el.dataset.list].push({name: '', subclass: '', level: 1, hitDie: 8, hit: '', dmg: '', note: '', max: 1, used: 0, reset: 'long'}); render(true); break; }
     case 'rowRm': { const d = readForm(); d[el.dataset.list].splice(i, 1); render(true); break; }
     case 'slotsAuto': { const d = readForm(), sl = H.slotsFor(H.norm(d).classes); d.spellcasting = {...d.spellcasting, slots: sl.slots, pact: {...d.spellcasting.pact, ...sl.pact}}; render(true); break; }
+    case 'toAuto':
+      if (confirm('Átállítod a lapot a szabálymotorra? A jelenlegi értékek megmaradnak (ahol eltérnek a számolttól, felülírásként), a hiányzó választások a Teendők közé kerülnek.')) { draft = null; patch(H.toAuto(s, RB())); }
+      break;
+    case 'todoGo': if (view.tab === 'adat') readForm(); view.tab = 'adat'; openKeys.add('todos'); render(true); $('details[data-key="todos"]')?.scrollIntoView({block: 'start'}); break;
+    case 'chGo': document.getElementById(chId(el.dataset.key))?.scrollIntoView({block: 'center'}); break;
+    case 'todoReset': patch({todoDone: []}); break;
+    case 'ovReset': { const ov = {...s.ov}; delete ov[el.dataset.key]; patch({ov}); break; }
+    case 'lvAdd': if (isDM) patch({build: {...s.build, levels: [...s.build.levels, {c: $('#lvCls').value, hp: null}]}}); break;
+    case 'lvRm': if (isDM && confirm('Leveszed az utolsó szintet?')) patch({build: {...s.build, levels: s.build.levels.slice(0, -1)}}); break;
     case 'edSave': {
+      if (s.auto) {
+        // a számolt tételek (auto) a lapról maradnak, a piszkozatból csak a sajátok jönnek
+        const d = readForm();
+        draft = null;
+        patch({name: d.name, alignment: d.alignment, attacks: [...s.attacks.filter(a => a.auto), ...d.attacks.filter(a => !a.auto)], resources: [...s.resources.filter(r => r.auto), ...d.resources.filter(r => !r.auto)]});
+        break;
+      }
       const d = H.norm(readForm()), p = {};
       for (const k of EDIT_KEYS) p[k] = d[k];
       p.hp = {...s.hp, max: d.hp.max};
@@ -834,7 +998,14 @@ document.addEventListener('change', e => {
   const t = e.target, s = cur(); if (!s) return;
   const i = +t.dataset.i, act = t.dataset.act;
   const setItem = f => patch(invPatch(s, s.inventory.map((it, k) => k === i ? {...it, ...f} : it), s.inventory[i]));
-  if (t.form?.id === 'edForm' && /^(cl_name_|cl_sub_|cl_lvl_|race$)/.test(t.name)) formPicked(t.name);
+  if (t.dataset.ch != null) choicePicked(t);
+  else if (t.dataset.ov != null) { const ov = {...s.ov}; if (t.value.trim() === '') delete ov[t.dataset.ov]; else ov[t.dataset.ov] = t.value.trim(); patch({ov}); }
+  else if (act === 'bRace') { const o = H.raceOptions(RB())[+t.value]; patch({build: {...s.build, race: o?.race || '', subrace: o?.subrace || ''}}); }
+  else if (act === 'bBg') patch({build: {...s.build, background: t.value}});
+  else if (act === 'bBase') patch({build: {...s.build, base: {...s.build.base, [t.dataset.a]: Math.max(1, Math.min(30, +t.value || 10))}}});
+  else if (act === 'lvHp') patch({build: {...s.build, levels: s.build.levels.map((l, k) => k === i ? {...l, hp: t.value === '' ? null : +t.value} : l)}});
+  else if (act === 'todoDone' && t.checked) patch({todoDone: [...s.todoDone, t.dataset.key]});
+  else if (t.form?.id === 'edForm' && /^(cl_name_|cl_sub_|cl_lvl_|race$)/.test(t.name)) formPicked(t.name);
   else if (t.id === 'condAdd' && t.value) {
     // aktív hatás: a Rage elhasznál egyet az erőforrásból; a koncentrációs spell átveszi a koncentrációt (rákérdez, ha már van)
     const n = t.value, fx = H.effectOf(n);
