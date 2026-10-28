@@ -505,6 +505,14 @@ function creatureToSheet(c) {
   if (!classes.length) classes.push({name: '', level: pcLevel(c) || 1});
   const skillProf = {}; let jack = false;
   for (const [k, v] of Object.entries(c.skillMods || {})) { if (v.p >= 1) skillProf[k] = v.p; if (v.p === 0.5) jack = true; }
+  // kézzel felvitt játékosnál a „Skills” szövegből (pl. „Stealth +7”): a bónusz és a képességmódosító különbsége adja a jártasságot
+  const pb = Math.floor(((pcLevel(c) || classes.reduce((t, x) => t + x.level, 0) || 1) - 1) / 4) + 2;
+  for (const m of c.skills.matchAll(/([A-Za-z][A-Za-z ]*?)\s*([+\-−]\s*\d+)/g)) {
+    const k = Object.keys(SKILLS).find(s => skillLabel(s).toLowerCase() === m[1].trim().toLowerCase());
+    if (!k || skillProf[k]) continue;
+    const d = parseInt(m[2].replace(/[−\s]/g, x => x === '−' ? '-' : '')) - mod(c.abilities[SKILLS[k]]);
+    if (d >= 2 * pb) skillProf[k] = 2; else if (d >= pb) skillProf[k] = 1;
+  }
   const attacks = [], features = [], spells = [];
   let ability = '';
   for (const k of SECTIONS) for (const e of c[k]) {

@@ -1759,6 +1759,9 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     eq([s.spellcasting.ability, s.spellcasting.slots.slice(0, 4)], ['cha', [4, 3, 2, 0]]);
     eq([s.hp, s.senses, s.notes], [{max: 38, cur: 30, temp: 0}, 'darkvision 60 ft.', ''], 'a DM jegyzete nem kerül a játékos lapjára');
     ok(s.features.some(f => f.name === 'Song of Rest'));
+    // kézzel felvitt játékos: jártasság / expertise a „Skills” szövegből (bónusz − képességmódosító)
+    const m = W.creatureToSheet(W.normCreature(pc('Kézi', 5, {abilities: {dex: 16, wis: 12, str: 10}, skills: 'Stealth +9, Perception +4, Athletics +0, Arcana +1, Nemlétező +5'})));
+    eq(m.skillProf, {perception: 1, stealth: 2},'Stealth: 3 + 2×3, Perception: 1 + 3');
     A(`S.library = [normCreature(${JSON.stringify(c)})]`); W.openLib('lib');
     click('[data-act="libSheet"]');
     ok(A('SHEETS.p9'), 'létrejött'); eq([A('S.library[0].owner'), A('SHEETS.p9.owner')], ['a@x.hu', 'a@x.hu']);
@@ -1832,9 +1835,34 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     eq(kq('.card.own').getAttribute('href'), '#lap/p1');
     K.location.hash = '#lap/p1'; K.route();
     const t = ktext();
-    has(t, 'Minta Tolvaj'); has(t, 'Rogue 3 (Thief)'); has(t, '24 / 24 HP'); has(t, 'Initiative'); has(t, 'Shortsword');
-    eq(kqa('nav.tabs button').map(b => b.dataset.tab), ['harc', 'kep', 'var', 'fel', 'jell', 'jegyz', 'adat']);
+    has(t, 'Minta Tolvaj'); has(t, 'Rogue 3 (Thief)'); has(t, '24 / 24 HP'); has(t, 'Shortsword');
+    eq(kqa('nav.tabs button').map(b => b.dataset.tab), ['harc', 'kep', 'var', 'fel', 'adat', 'jegyz'], 'a Jegyzet az utolsó, nincs külön Jellemzők fül');
     ok(!kq('#rollbar').hidden, 'a dobássáv látszik');
+  });
+  ktest('elrendezés: fent csak vékony HP-sáv; HP-kezelés a Harc fül alján; AC-sor az Alapadatokon; jellemzők a Képességek alján', () => {
+    openSheet({hp: {max: 24, cur: 20, temp: 3}});
+    const nav = kq('nav.tabs');
+    ok(kq('.hpline .bar.slim') && nav.compareDocumentPosition(kq('.hpline')) & K.Node.DOCUMENT_POSITION_PRECEDING, 'a HP-sáv a fülsáv fölött');
+    has(kq('.hpline').textContent, '+3 temp');
+    ok(!kq('.chips'), 'az AC-sor nincs a lap tetején');
+    ok(nav.compareDocumentPosition(kq('#hpIn')) & K.Node.DOCUMENT_POSITION_FOLLOWING, 'a HP-kezelés a fülek alatt');
+    const all = kqa('main h3').map(h => h.textContent);
+    eq(all.at(-1), 'HP', 'a Harc fül utolsó része a HP');
+    kclick('[data-tab="adat"]');
+    ok(kq('.chips') && kq('#edForm'), 'AC-sor és űrlap az Alapadatokon');
+    eq(kqa('.chips .chip small').map(x => x.textContent), ['AC', 'Initiative', 'Speed', 'Prof. bónusz', 'Passzív Perc.']);
+    eq(K.getComputedStyle(kq('.chips button.chip')).justifyContent, 'flex-start', 'az Initiative is felülre igazítva');
+    kclick('[data-tab="kep"]');
+    has(ktext(), 'Jellemzők'); has(ktext(), 'Sneak Attack'); ok(kq('#featNew'), 'jellemző felvétele is itt');
+  });
+  ktest('fülre kattintva a fülsáv vízszintes görgetése megmarad', () => {
+    openSheet();
+    const nav = kq('nav.tabs');
+    nav.scrollLeft = 60;  // a 420 px széles próbaablakban a fülek nem férnek ki
+    const got = nav.scrollLeft;
+    ok(got > 0, 'nem görgethető a próbában');
+    kclick('[data-tab="var"]');
+    eq(kq('nav.tabs').scrollLeft, got);
   });
   ktest('HP: sebzés, gyógyítás, temp; mezőnként menti, a csapat felé is; 0 HP-n halálmentők', () => {
     openSheet({hp: {max: 24, cur: 24, temp: 0}});
@@ -1923,7 +1951,8 @@ describe('Telefonos karakterlap (karakter.html)', () => {
   });
   ktest('más lapja csak olvasható; DM-ként minden lap látszik és írható', () => {
     openSheet({owner: 'b@x.hu'});
-    ok(!kq('#hpIn') && !kq('[data-tab="adat"]'), 'nem szerkeszthető'); has(ktext(), 'csak olvasható');
+    ok(!kq('#hpIn'), 'nem szerkeszthető'); has(ktext(), 'csak olvasható');
+    kclick('[data-tab="adat"]'); ok(kq('.chips') && !kq('#edForm'), 'az AC-sor látszik, az űrlap nem');
   });
   ktest('DM nézet: minden karakterlap a listában, és írható', () => {
     K.KApp.setAuth({status: 'signedIn', email: 'dm@x.hu', dm: true});
@@ -1939,7 +1968,7 @@ describe('Telefonos karakterlap (karakter.html)', () => {
       attacks: [{name: XSS, hit: XQ, dmg: XSS, note: XSS}], resources: [{name: XSS, max: 2}], features: [{name: XSS, text: XSS, src: XQ}],
       spells: [{name: XSS, level: 1, note: XSS, ref: XQ}], inventory: [{name: XSS, note: XQ, container: XSS, ref: XQ}], conditions: [XSS], notes: XSS,
       profs: {armor: XSS, tools: XQ}, senses: XSS});
-    for (const t of ['harc', 'kep', 'var', 'fel', 'jell', 'jegyz', 'adat']) {
+    for (const t of ['harc', 'kep', 'var', 'fel', 'adat', 'jegyz']) {
       kclick(`[data-tab="${t}"]`);
       eq(K.document.querySelectorAll('main [onmouseover], main img[src="x"]').length, 0, t + ' fül');
     }
