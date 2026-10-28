@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (lásd SHEET_V)
-  const VERSION = 3;
+  const VERSION = 4;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -765,6 +765,9 @@ window.Sheet = (() => {
   // ---------- választó-modul (a Felépítés és a szintlépés-varázsló közös része): egy választási hely opciói és beírása ----------
   // choiceOptions(c, calc-eredmény, rb) → {multi, n, free, opts: [{v, l, note, dis}]}; multi = jelölőnégyzetek, free = szabad szöveg
   const ABIL_OPTS = ABIL.map(a => ({v: a, l: a.toUpperCase()}));
+  // PHB 2014 nyelvei: [név, egzotikus]
+  const LANGS = [['Common', false], ['Dwarvish', false], ['Elvish', false], ['Giant', false], ['Gnomish', false], ['Goblin', false], ['Halfling', false], ['Orc', false],
+    ['Abyssal', true], ['Celestial', true], ['Draconic', true], ['Deep Speech', true], ['Infernal', true], ['Primordial', true], ['Sylvan', true], ['Undercommon', true]];
   function choiceOptions(c, cr, rb) {
     const others = kind => (cr?.choices || []).filter(x => x.kind === kind && x.key !== c.key).flatMap(x => x.ok);
     const has = new Set(arr(c.value, 30).map(x => isObj(x) ? '' : String(x)));
@@ -782,7 +785,13 @@ window.Sheet = (() => {
       multi = true;
       const taken = new Set(others('expertise'));
       opts = Object.keys(SKILLS).filter(k => cr?.skills?.[k]?.prof >= 1).map(k => ({v: k, l: skillLabel(k), note: taken.has(k) ? 'már expertise' : '', dis: taken.has(k)}));
-    } else if (c.kind === 'lang' || c.kind === 'tool') {
+    } else if (c.kind === 'lang') {
+      // a PHB nyelvei (vagy a forrás listája); ami máshonnan már megvan, az „már tudja” és nem választható
+      const own = new Set([...has].map(x => x.toLowerCase()));
+      const known = new Set(String(cr?.profs?.languages || '').split(',').map(x => x.trim().toLowerCase()).filter(x => x && !own.has(x)));
+      const list = Array.isArray(c.from) && c.from.length ? c.from.map(x => [String(x), false]) : LANGS;
+      opts = list.map(([l, ex]) => { const k = known.has(l.toLowerCase()); return {v: l, l, note: k ? 'már tudja' : ex ? 'egzotikus' : '', dis: k}; });
+    } else if (c.kind === 'tool') {
       if (Array.isArray(c.from) && c.from.length) opts = c.from.map(x => ({v: String(x), l: String(x)})); else free = true;
     } else if (c.kind === 'feat') opts = refs(rb?.feats);
     else if (c.kind === 'opt') {

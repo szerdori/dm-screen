@@ -1989,6 +1989,21 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     const bard = mkS({levels: lv('Bard', 3), ch: {'Bard:1:skills': ['stealth', 'arcana', 'history']}}), cb = H.calc(bard, rb);
     eq(H.choiceOptions(cb.choices.find(x => x.kind === 'expertise'), cb, rb).opts.map(x => x.v), ['arcana', 'history', 'stealth']);
   });
+  test('nyelvválasztás: a PHB nyelvei listából (egzotikus jelölve); ami máshonnan már megvan, az nem választható, a saját választás igen', () => {
+    const H = W.Sheet, rb = rb3();
+    rb.backgrounds = [{n: 'Acolyte', s: 'PHB', fx: [{langChoose: {n: 2}}]}];
+    const s = mkS({race: 'Dwarf|PHB', subrace: 'Hill|PHB', background: 'Acolyte|PHB', levels: lv('Fighter', 1)});
+    let c = H.calc(s, rb), ch = c.choices.find(x => x.kind === 'lang'), o = H.choiceOptions(ch, c, rb);
+    eq([ch.key, o.free, o.multi, o.n, o.opts.length], ['bg:lang', false, false, 2, 16]);
+    eq(o.opts.filter(x => x.dis).map(x => [x.v, x.note]), [['Common', 'már tudja'], ['Dwarvish', 'már tudja']], 'a faj nyelvei');
+    eq([o.opts.find(x => x.v === 'Draconic').note, o.opts.find(x => x.v === 'Elvish').note], ['egzotikus', '']);
+    const s2 = H.norm({...s, build: H.setChoice(s.build, ch, ['Elvish'])});
+    c = H.calc(s2, rb); ch = c.choices.find(x => x.kind === 'lang'); o = H.choiceOptions(ch, c, rb);
+    eq([o.opts.find(x => x.v === 'Elvish').dis, c.profs.languages], [false, 'Common, Dwarvish, Elvish'], 'a saját választás nem tiltott');
+    // eszköz-választás forráslista nélkül: szabad szöveg marad
+    const t = H.calc(mkS({levels: lv('Fighter', 3), sub: {Fighter: 'Champion|PHB'}, ch: {}}), rb);
+    ok(!t.choices.some(x => x.kind === 'lang'), 'nyelvválasztás csak ahol a forrás ad');
+  });
   test('átállítás szabálymotorra: a felépítés a lap mezőiből, az eltérő régi értékek felülírásként maradnak', () => {
     const H = W.Sheet, rb = rb3();
     const s = H.norm({race: 'Hill Dwarf', background: '', classes: [{name: 'Fighter', subclass: 'Champion', level: 3}], abilities: {str: 16, dex: 12, con: 16, int: 10, wis: 12, cha: 8},
@@ -2485,7 +2500,7 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-act="edSave"]');
     const u = lastUpdate();
     eq([u.classes[0].name, u.classes[0].level, u.spellcasting.slots.slice(0, 3), u.abilities.int, u.attacks.at(-1).name], ['Wizard', 5, [4, 3, 2], 16, 'Fire Bolt']);
-    eq(u.hp, {max: 24, cur: 24, temp: 0}, 'a jelenlegi HP nem változik');
+    ok(!('hp' in u), 'a változatlan HP nem íródik'); eq(K.eval('sheets.get("p1").hp'), {max: 24, cur: 24, temp: 0}, 'a jelenlegi HP nem változik');
     eq(klog.filter(l => l[0] === 'pub').at(-1)[2].level, 'Szint 5');
     has(ktext(), 'Wizard 5');
   });
@@ -2615,6 +2630,27 @@ describe('Telefonos karakterlap (karakter.html)', () => {
       eq(klog.filter(l => l[0] === 'update'), [], 'régi sheet.js mellett nem ír');
       has(alerts.at(-1), 'Ctrl + F5');
     } finally { K.alert = origAlert; K.Sheet.toAuto = origToAuto; K.eval('sheetStale = false'); }
+  });
+  ktest('Alapadatok Mentés: visszajelzés (Elmentve / nem volt változás), csak a változott mező íródik; motoros lapon nyelvválasztás legördülővel', () => {
+    openSheet();
+    kclick('[data-tab="adat"]');
+    kq('#edForm').elements.alignment.value = 'chaotic neutral'; kclick('[data-act="edSave"]');
+    ok(!kq('#toast').hidden, 'látszik'); has(kq('#toast').textContent, 'Elmentve');
+    eq(Object.keys(lastUpdate()).sort(), ['alignment', 'updatedAt', 'updatedBy'], 'csak a változott mező');
+    const n = klog.length;
+    kclick('[data-act="edSave"]');
+    has(kq('#toast').textContent, 'Nem volt változás'); ok(kq('#toast').classList.contains('info'));
+    eq(klog.length, n, 'változás nélkül nem ír');
+    const rb = rb3(); rb.backgrounds = [{n: 'Acolyte', s: 'PHB', fx: [{langChoose: {n: 2}}]}];
+    K.KApp.setRulebook({version: 'v1', rb});
+    openSheet({auto: true, build: {race: 'Dwarf|PHB', subrace: 'Hill|PHB', background: 'Acolyte|PHB', levels: lv('Fighter', 1)}});
+    kclick('[data-tab="adat"]');
+    const sels = () => kqa('select[data-ch="bg:lang"]');
+    eq(sels().length, 2, 'két nyelv választható');
+    ok([...sels()[0].options].find(o => o.value === 'Dwarvish').disabled, 'a már ismert nyelv nem választható');
+    kset(sels()[0], 'Elvish'); eq(lastUpdate().build.ch['bg:lang'], ['Elvish']);
+    ok([...sels()[1].options].find(o => o.value === 'Elvish').disabled, 'a másik helyen már nem választható');
+    kq('#edForm').elements.name.value = 'Új név'; kclick('[data-act="edSave"]'); has(kq('#toast').textContent, 'Elmentve');
   });
   ktest('Átállítás gomb kézi lapon; ✋ teendő kipipálása; befecskendezett választás-érték nem fut le', () => {
     K.KApp.setRulebook({version: 'v1', rb: rb3()});

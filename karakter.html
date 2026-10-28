@@ -134,6 +134,10 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 #lastRoll b{font:700 26px Georgia,serif;color:var(--accent)}
 #lastRoll.crit b{color:var(--green)} #lastRoll.fumble b{color:var(--red)}
 #lastRoll span{color:var(--muted);font-size:13px;flex:1;overflow-wrap:anywhere}
+/* rövid visszajelzés (pl. mentés után), magától eltűnik */
+#toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:40;background:var(--green);color:#08130b;font-weight:700;padding:8px 16px;border-radius:999px;box-shadow:0 4px 14px #0008;max-width:calc(100% - 32px);text-align:center}
+#toast.info{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+#toast[hidden]{display:none}
 /* szabálymotoros lap: teendők, választási helyek, számolt értékek */
 .todobar{display:block;width:100%;margin:6px 0;text-align:left;border-color:var(--orange);color:var(--orange);font-weight:700}
 .chbox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px}
@@ -157,8 +161,9 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
   </div>
   <div id="lastRoll"><span>Koppints egy értékre a dobáshoz.</span></div>
 </div></div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
-<script src="sheet.js?v=3"></script>
+<script src="sheet.js?v=4"></script>
 <script>
 'use strict';
 // Játékos app: belépés Google-fiókkal; a saját karakter teljes telefonos lapja (sheets/{id}) és a csapat nyilvános lapjai (characters/{id}).
@@ -166,7 +171,7 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a betöltött sheet.js változata egyezik-e ezzel az oldallal (a böngésző gyorsítótárából régi is jöhet); ha nem, a lap nem írható
-const SHEET_V = 3;
+const SHEET_V = 4;
 let sheetStale = H.VERSION !== SHEET_V;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -603,7 +608,8 @@ function choiceBox(c, cr) {
   } else {
     const vals = Array.isArray(c.value) ? c.value.map(String) : c.value ? [String(c.value)] : [];
     body = Array.from({length: c.n}, (_, j) => o.free ? `<input data-ch="${K}" value="${esc(vals[j] || '')}" placeholder="${esc(H.FX_LABEL[c.kind] || '')}">`
-      : `<select data-ch="${K}">${optList(o.opts, vals[j] || '')}</select>`).join('');
+      // ugyanazon választás másik legördülőjében már kiválasztott érték itt nem választható
+      : `<select data-ch="${K}">${optList(o.opts.map(x => vals.includes(x.v) && vals[j] !== x.v ? {...x, dis: true} : x), vals[j] || '')}</select>`).join('');
   }
   return `<div class="chbox ${c.done ? '' : 'need'}" id="${chId(c.key)}">${head}${body}</div>`;
 }
@@ -772,7 +778,21 @@ function write(id, p) {
   }
   return true;
 }
-function patch(p) { if (write(view.id, p)) render(true); }
+// true, ha volt mit írni
+function patch(p) { const ok = write(view.id, p); if (ok) render(true); return ok; }
+// rövid visszajelzés a képernyő tetején (2,5 mp)
+let toastTimer = null;
+function toast(text, info = false) {
+  const t = $('#toast'); t.textContent = text; t.className = info ? 'info' : ''; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2500);
+}
+// a Mentés csak a ténylegesen megváltozott mezőket küldi (a tisztítás utáni értékeket hasonlítja)
+function changedOnly(s, p) {
+  const n = H.norm({...s, ...p});
+  return Object.fromEntries(Object.keys(p).filter(k => JSON.stringify(n[k]) !== JSON.stringify(s[k])).map(k => [k, p[k]]));
+}
+// a Mentés gomb visszajelzése (régi sheet.js mellett a write már szólt)
+const savedToast = ok => { if (!sheetStale) toast(ok ? '✓ Elmentve' : 'Nem volt változás, nem kellett menteni.', !ok); };
 // új koncentráció: ha már másra koncentrál, rákérdez (a régi spell nevével); a régi koncentrációs hatás lekerül. null = mégse
 function concTo(s, name, p = {}) {
   const old = s.concentration, same = old && old.toLowerCase() === name.toLowerCase();
@@ -987,18 +1007,13 @@ document.addEventListener('click', e => {
         // a számolt tételek (auto) a lapról maradnak, a piszkozatból csak a sajátok jönnek
         const d = readForm();
         draft = null;
-        patch({name: d.name, alignment: d.alignment, attacks: [...s.attacks.filter(a => a.auto), ...d.attacks.filter(a => !a.auto)], resources: [...s.resources.filter(r => r.auto), ...d.resources.filter(r => !r.auto)]});
+        savedToast(patch(changedOnly(s, {name: d.name, alignment: d.alignment, attacks: [...s.attacks.filter(a => a.auto), ...d.attacks.filter(a => !a.auto)], resources: [...s.resources.filter(r => r.auto), ...d.resources.filter(r => !r.auto)]})));
         break;
       }
       const d = H.norm(readForm()), p = {};
       for (const k of EDIT_KEYS) p[k] = d[k];
       p.hp = {...s.hp, max: d.hp.max};
-      // szabálymotoros lap: az osztályok és a faj a felépítésbe kerülnek (a számolt mezőket a motor írja újra)
-      if (s.auto) {
-        const ra = H.findRace(d.race, RB());
-        p.build = {...H.classesToBuild(s.build, d.classes, RB()), ...(ra ? {race: ra.race, subrace: ra.subrace} : {})};
-      }
-      draft = null; patch(p); break;
+      draft = null; savedToast(patch(changedOnly(s, p))); break;
     }
     case 'edCancel': draft = null; render(true); break;
   }
