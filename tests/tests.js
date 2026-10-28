@@ -870,6 +870,31 @@ describe('Online (csak  .\\teszt.ps1 -Online  esetén)', () => {
     const g = W.convert5e(mm.find(m => m.name === 'Goblin'));
     eq([g.ac, g.hp.max, W.atkInfo(g.actions.find(a => a.name === 'Scimitar').text).hit], [15, 7, '+4']);
   }, {online: true});
+  test('szabálykönyv a valódi tükörből (2. fázis): 13 osztály, csak 2014-es alosztályok, fajok, hátterek, méret', async () => {
+    const rb = await (ORIG.buildRulebook || W.buildRulebook)(), H = W.Sheet;
+    eq(rb.classes.map(c => c.n).sort(), Object.keys(H.CLASSES).sort());
+    for (const c of rb.classes) {
+      eq([c.hd, c.saves], [H.CLASSES[c.n].hd, H.CLASSES[c.n].saves], c.n + ': hit die és mentők a beépített táblával egyeznek');
+      eq(c.subLvl, H.CLASSES[c.n].subLvl, c.n + ': alosztály szintje');
+      ok(c.feats.length >= 10 && c.asi.includes(4) && c.asi.includes(19), c.n + ': feature-ök / ASI');
+    }
+    eq(rb.classes.find(c => c.n === 'Fighter').asi, [4, 6, 8, 12, 14, 16, 19]);
+    ok(rb.classes.find(c => c.n === 'Monk').cols.some(c => /Martial Arts/.test(c.l)), 'Monk: Martial Arts oszlop');
+    ok(rb.classes.find(c => c.n === 'Warlock').opt.some(o => o.t.includes('EI')), 'Warlock: Invocations');
+    const srcs = [...new Set([...rb.subclasses, ...rb.races, ...rb.subraces, ...rb.backgrounds, ...rb.optfeatures, ...rb.features].map(x => x.s))].sort();
+    const bad = Object.entries({subclasses: rb.subclasses, races: rb.races, subraces: rb.subraces, backgrounds: rb.backgrounds, optfeatures: rb.optfeatures, features: rb.features}).flatMap(([k, l]) => l.filter(x => !['PHB', 'XGE', 'TCE'].includes(x.s)).map(x => k + ':' + x.n + '/' + (x.cls || '') + '/' + (x.sub || '') + '/' + x.s));
+    eq(bad, [], 'forrás: ' + srcs.join(', '));
+    const keys = rb.subclasses.map(s => s.cls + ':' + s.short);
+    eq(keys.length, new Set(keys).size, 'egy alosztály csak egyszer (a 2024-es osztályhoz kötött példány nélkül)');
+    ok(rb.subclasses.length >= 90 && rb.subclasses.length <= 130, 'alosztályok: ' + rb.subclasses.length);
+    eq(rb.races.map(r => r.n).sort(), ['Custom Lineage', 'Dragonborn', 'Dwarf', 'Elf', 'Gnome', 'Half-Elf', 'Half-Orc', 'Halfling', 'Human', 'Tiefling']);
+    ok(rb.subraces.some(s => s.n === 'Variant' && s.race === 'Human') && rb.subraces.some(s => s.n === 'Hill'), 'alfajok');
+    ok(rb.backgrounds.length >= 14 && rb.backgrounds.every(b => b.fx?.length || b.n === 'Custom Background'), 'hátterek');
+    ok(rb.optfeatures.length >= 100, 'optional feature-ök: ' + rb.optfeatures.length);
+    const chunks = H.splitChunks(rb), total = chunks.reduce((t, c) => t + new TextEncoder().encode(c.data).length, 0);
+    ok(chunks.every(c => new TextEncoder().encode(c.data).length < 950000), 'túl nagy darab');
+    ok(total < 6e6, 'túl nagy szabálykönyv: ' + total);
+  }, {online: true});
   test('a tokenkép elérhető', async () => {
     const mm = await ORIG.loadFiveSource('MM');
     const r = await fetch(W.convert5e(mm.find(m => m.name === 'Goblin')).portrait);
@@ -1544,6 +1569,71 @@ const FAKE5E = {
     {name: 'Grappler', source: 'PHB', prerequisite: [{ability: [{str: 13}]}], ability: [{str: 1}], entries: ['Grapple.']}, {name: 'Alert', source: 'XPHB', entries: ['2024']}]},
   'conditionsdiseases.json': {condition: [{name: 'Prone', source: 'PHB', entries: ['On the ground.']}, {name: 'Prone', source: 'XPHB', entries: ['2024']}]}
 };
+// 2. fázis: osztály, faj, háttér, optional feature (kitalált szövegek; a szerkezet és a szűrési csapdák az 5e.tools szerint)
+FAKE5E['items.json'].item[1].bonusAc = '+1'; FAKE5E['items.json'].item[1].bonusSavingThrow = '+1';
+FAKE5E['items.json'].item.push({name: 'Próbakesztyű', source: 'DMG', rarity: 'uncommon', reqAttune: true, ability: {static: {str: 19}}, entries: ['Erős.']});
+FAKE5E['feats.json'].feat.push({name: 'Próbafeat', source: 'TCE', ability: [{choose: {from: ['str', 'dex'], amount: 1}}], savingThrowProficiencies: [{choose: {from: ['str', 'dex']}}],
+  skillProficiencies: [{choose: {from: ['sleight of hand', 'stealth']}}], expertise: [{anyProficientSkill: 1}], armorProficiencies: [{light: true}], entries: ['Próba.']});
+Object.assign(FAKE5E, {
+  'class/index.json': {fighter: 'class-fighter.json', mystic: 'class-mystic.json'},
+  'class/class-fighter.json': {
+    class: [{name: 'Fighter', source: 'PHB', edition: 'classic', hd: {number: 1, faces: 10}, proficiency: ['str', 'con'], subclassTitle: 'Martial Archetype',
+      startingProficiencies: {armor: ['light', '{@item shield|phb|shields}'], weapons: ['simple', 'martial'], skills: [{choose: {from: ['acrobatics', 'animal handling', 'athletics'], count: 2}}]},
+      multiclassing: {requirements: {or: [{str: 13, dex: 13}]}, proficienciesGained: {armor: ['light']}},
+      classTableGroups: [{colLabels: ['{@filter Próbaoszlop|optionalfeatures|feature type=x}', 'Mozgás'], rows: [[{type: 'dice', toRoll: [{number: 1, faces: 6}]}, 0], [{type: 'dice', toRoll: [{number: 2, faces: 6}]}, {type: 'bonusSpeed', value: 10}]]},
+        {title: 'Spell Slots', colLabels: ['1st'], rowsSpellProgression: [[0], [2]]}],
+      classFeatures: ['Fighting Style|Fighter||1', {classFeature: 'Martial Archetype|Fighter||3', gainSubclassFeature: true}, 'Ability Score Improvement|Fighter||4',
+        'Martial Versatility|Fighter||4|TCE', 'Ability Score Improvement|Fighter||6', 'Új dolog|Fighter||5|XPHB'],
+      optionalfeatureProgression: [{name: 'Fighting Style', featureType: ['FS:F'], progression: {1: 1, 10: 1}}]},
+      {name: 'Fighter', source: 'XPHB', edition: 'one', hd: {faces: 10}, classFeatures: []}],
+    classFeature: [
+      {name: 'Fighting Style', source: 'PHB', className: 'Fighter', classSource: 'PHB', level: 1, entries: ['Válassz stílust.', {type: 'options', entries: [{type: 'refOptionalfeature', optionalfeature: 'Archery'}]}]},
+      {name: 'Fighting Style', source: 'XPHB', className: 'Fighter', classSource: 'XPHB', level: 1, entries: ['2024']},
+      {name: 'Martial Archetype', source: 'PHB', className: 'Fighter', classSource: 'PHB', level: 3, entries: ['Alosztály.']},
+      {name: 'Ability Score Improvement', source: 'PHB', className: 'Fighter', classSource: 'PHB', level: 4, entries: ['ASI.']},
+      {name: 'Ability Score Improvement', source: 'PHB', className: 'Fighter', classSource: 'PHB', level: 6, entries: ['ASI.']},
+      {name: 'Martial Versatility', source: 'TCE', className: 'Fighter', classSource: 'PHB', level: 4, isClassFeatureVariant: true, entries: ['Csere.']},
+      {name: 'Új dolog', source: 'XPHB', className: 'Fighter', classSource: 'PHB', level: 5, entries: ['2024']}],
+    subclass: [
+      {name: 'Champion', shortName: 'Champion', source: 'PHB', className: 'Fighter', classSource: 'PHB', subclassFeatures: ['Champion|Fighter||Champion||3', 'Remarkable Athlete|Fighter||Champion||7']},
+      {name: 'Champion', shortName: 'Champion', source: 'PHB', className: 'Fighter', classSource: 'XPHB', subclassFeatures: ['Champion|Fighter|XPHB|Champion||3']},
+      {name: 'Samurai', shortName: 'Samurai', source: 'XGE', className: 'Fighter', classSource: 'PHB', subclassFeatures: ['Samurai|Fighter||Samurai|XGE|3'],
+        additionalSpells: [{prepared: {1: ['bless', 'cure wounds|phb']}, known: {3: {_: [{choose: 'level=0|class=Wizard'}]}}, ability: 'wis'}]},
+      {name: 'Echo Knight', shortName: 'Echo Knight', source: 'EGW', className: 'Fighter', classSource: 'PHB', subclassFeatures: []},
+      {name: 'Eldritch Knight', shortName: 'Eldritch Knight', source: 'PHB', className: 'Fighter', classSource: 'PHB', casterProgression: '1/3', spellcastingAbility: 'int',
+        cantripProgression: [0, 0, 2], additionalSpells: [{expanded: {3: ' '}}], subclassFeatures: []}],
+    subclassFeature: [
+      {name: 'Champion', source: 'PHB', className: 'Fighter', classSource: 'PHB', subclassShortName: 'Champion', subclassSource: 'PHB', level: 3,
+        entries: ['Bajnok.', {type: 'refSubclassFeature', subclassFeature: 'Improved Critical|Fighter||Champion||3'}]},
+      {name: 'Improved Critical', source: 'PHB', className: 'Fighter', classSource: 'PHB', subclassShortName: 'Champion', subclassSource: 'PHB', level: 3, entries: ['19–20.']},
+      {name: 'Remarkable Athlete', source: 'PHB', className: 'Fighter', classSource: 'PHB', subclassShortName: 'Champion', subclassSource: 'PHB', level: 7, entries: ['Fél PB.']},
+      {name: 'Champion', source: 'PHB', className: 'Fighter', classSource: 'XPHB', subclassShortName: 'Champion', subclassSource: 'PHB', level: 3, entries: ['2024']},
+      {name: 'Samurai', source: 'XGE', className: 'Fighter', classSource: 'PHB', subclassShortName: 'Samurai', subclassSource: 'XGE', level: 3, entries: ['Szamuráj.']}]
+  },
+  'races.json': {
+    race: [
+      {name: 'Dwarf', source: 'PHB', size: ['M'], speed: 25, ability: [{con: 2}], darkvision: 60, resist: ['poison'], weaponProficiencies: [{'battleaxe|phb': true}],
+        toolProficiencies: [{choose: {from: ["smith's tools", "brewer's supplies"]}}], languageProficiencies: [{common: true, dwarvish: true}],
+        entries: [{type: 'entries', name: 'Age', entries: ['x']}, {type: 'entries', name: 'Stonecunning', entries: ['Kő.']}]},
+      {name: 'Human', source: 'PHB', size: ['M'], speed: 30, languageProficiencies: [{common: true, anyStandard: 1}], entries: []},
+      {name: 'Custom Lineage', source: 'TCE', size: ['S', 'M'], speed: 30, ability: [{choose: {from: ['str', 'dex', 'con', 'int', 'wis', 'cha'], amount: 2}}], feats: [{any: 1}], skillProficiencies: [{any: 1}], darkvision: 60, entries: []},
+      {name: 'Dwarf', source: 'XPHB', size: ['M'], speed: 30, entries: []}, {name: 'Kenku', source: 'VGM', speed: 30, entries: []}],
+    subrace: [
+      {name: 'Hill', source: 'PHB', raceName: 'Dwarf', raceSource: 'PHB', ability: [{wis: 1}], entries: [{type: 'entries', name: 'Dwarven Toughness', entries: ['HP.']}]},
+      {source: 'PHB', raceName: 'Human', raceSource: 'PHB', ability: [{str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1}]},
+      {name: 'Variant', source: 'PHB', raceName: 'Human', raceSource: 'PHB', ability: [{choose: {from: ['str', 'dex', 'con', 'int', 'wis', 'cha'], count: 2}}], feats: [{any: 1}], skillProficiencies: [{any: 1}], overwrite: {ability: true}},
+      {name: 'Mark of Próba', source: 'ERLW', raceName: 'Human', raceSource: 'PHB'}, {name: 'Hill', source: 'XPHB', raceName: 'Dwarf', raceSource: 'XPHB'}]
+  },
+  'backgrounds.json': {background: [
+    {name: 'Acolyte', source: 'PHB', skillProficiencies: [{insight: true, religion: true}], languageProficiencies: [{anyStandard: 2}],
+      entries: [{type: 'list', items: [{type: 'item', name: 'Skill Proficiencies:', entry: '{@skill Insight}, {@skill Religion}'}]}, {type: 'entries', name: 'Feature: Shelter', entries: ['Menedék.']}]},
+    {name: 'Variant Acolyte (Próba)', source: 'PHB', _copy: {name: 'Acolyte', source: 'PHB'}},
+    {name: 'Acolyte', source: 'XPHB', entries: ['2024']}]},
+  'optionalfeatures.json': {optionalfeature: [
+    {name: 'Archery', source: 'PHB', featureType: ['FS:F', 'FS:R'], entries: ['+2.']},
+    {name: 'Thirsting Blade', source: 'XGE', featureType: ['EI'], prerequisite: [{pact: 'Blade', level: {level: 5, class: {name: 'Warlock'}}}], entries: ['Két.']},
+    {name: 'Archery', source: 'XPHB', featureType: ['FS:F'], entries: ['2024']}]}
+});
 const fake5eGet = async p => { if (!FAKE5E[p]) throw new Error('nincs: ' + p); return structuredClone(FAKE5E[p]); };
 const fakeRb = () => W.buildRulebook(fake5eGet);
 const sheetDoc = (extra = {}) => ({...structuredClone(W.Sheet.TEMPLATE), owner: 'a@x.hu', ...extra});
@@ -1702,7 +1792,7 @@ describe('Szabálykönyv és tárgy-import', () => {
     has(sp.Fireball.tx, '8d6 fire'); has(sp.Fireball.tx, '+1d6 per slot');
     eq([sp.Bless.k, sp.Bless.d, sp.Bless.c, sp['Burning Hands'].r, sp['Toll the Dead'].cl, sp['Toll the Dead'].l], [true, 'Concentration, up to 1 minute', 'V, S, M (a sprinkling of holy water)', 'Self (15-foot cone)', ['Cleric', 'Warlock', 'Wizard'], undefined]);
     const it = Object.fromEntries(rb.items.map(i => [i.n, i]));
-    eq(Object.keys(it).sort(), ['Absorbing Tattoo', 'Bag of Holding', 'Cloak of Protection', 'Copy Sword', "Explorer's Pack"]);
+    eq(Object.keys(it).sort(), ['Absorbing Tattoo', 'Bag of Holding', 'Cloak of Protection', 'Copy Sword', "Explorer's Pack", 'Próbakesztyű']);
     eq([it['Cloak of Protection'].att, it['Bag of Holding'].ty, it['Copy Sword'].dmg, it['Copy Sword'].rar], ['requires attunement', 'Wondrous item', '1d8 slashing', 'rare']);
     has(it["Explorer's Pack"].tx, 'Tartalom: backpack, 10× torch'); has(it['Absorbing Tattoo'].tx, 'Acid Absorbing Tattoo');
     eq(rb.baseItems.map(b => b.n), ['Longsword', 'Net', 'Chain Mail']);
@@ -1711,9 +1801,50 @@ describe('Szabálykönyv és tárgy-import', () => {
     eq([rb.baseItems[2].ac, rb.baseItems[2].str, rb.baseItems[2].st], [16, '13', true]);
     eq(rb.variants.map(v => v.n), ['+1 Weapon', 'Flame Tongue', 'Armor of Resistance']);
     eq(rb.variants[0].tx, 'You have a +1 bonus to attack and damage rolls.');
-    eq(rb.feats.map(f => [f.n, f.pre || '']), [['Alert', ''], ['Elven Accuracy', 'Elf or Half-Elf'], ['Grappler', 'STR 13']]);
-    eq(rb.feats.map(f => f.tx), ['+5 initiative.', 'Ability Score Increase: DEX, INT, WIS, CHA +1 (1 választható).\nAccuracy.', 'Ability Score Increase: STR +1.\nGrapple.'], 'a képességnövelés is a leírásba kerül');
+    eq(rb.feats.map(f => [f.n, f.pre || '']), [['Alert', ''], ['Elven Accuracy', 'Elf or Half-Elf'], ['Grappler', 'STR 13'], ['Próbafeat', '']]);
+    eq(rb.feats.map(f => f.tx), ['+5 initiative.', 'Ability Score Increase: DEX, INT, WIS, CHA +1 (1 választható).\nAccuracy.', 'Ability Score Increase: STR +1.\nGrapple.', 'Ability Score Increase: STR, DEX +1 (1 választható).\nPróba.'], 'a képességnövelés is a leírásba kerül');
     eq(rb.conditions, [{n: 'Prone', s: 'PHB', tx: 'On the ground.'}]);
+  });
+  test('2. fázis: osztály, alosztály, feature-ök (csak a 2014-es osztályhoz kötött alosztályok), faj, alfaj, háttér, optional feature', async () => {
+    const rb = await fakeRb();
+    const P20 = [1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2];
+    eq(rb.classes, [{n: 'Fighter', s: 'PHB', hd: 10, saves: ['str', 'con'],
+      fx: [{armor: ['light', 'shields']}, {weapon: ['simple', 'martial']}, {skillChoose: {from: ['acrobatics', 'animal-handling', 'athletics'], n: 2}}],
+      mc: {req: {or: [{str: 13, dex: 13}]}, fx: [{armor: ['light']}]}, cols: [{l: 'Próbaoszlop', v: ['1d6', '2d6']}, {l: 'Mozgás', v: [0, 10]}],
+      feats: [{n: 'Fighting Style', lvl: 1}, {n: 'Martial Archetype', lvl: 3, sub: true}, {n: 'Ability Score Improvement', lvl: 4}, {n: 'Martial Versatility', lvl: 4, opt: true}, {n: 'Ability Score Improvement', lvl: 6}],
+      subLvl: 3, asi: [4, 6], subTitle: 'Martial Archetype', opt: [{n: 'Fighting Style', t: ['FS:F'], p: P20}]}], 'a 2024-es (XPHB) osztály és feature kimarad, a Mystic nincs letöltve');
+    eq(rb.subclasses.map(s => s.short), ['Champion', 'Samurai', 'Eldritch Knight'], 'csak PHB / XGE / TCE, és csak a 2014-es Fighterhez kötött');
+    eq(rb.subclasses[0], {n: 'Champion', short: 'Champion', cls: 'Fighter', s: 'PHB', feats: [{n: 'Champion', lvl: 3}, {n: 'Remarkable Athlete', lvl: 7}]});
+    eq(rb.subclasses[1].fx, [{spells: [{t: 'prepared', lvl: 1, sp: ['bless', 'cure wounds']}], ab: 'wis'}, {todo: 'known varázslat választása (3. szinttől)'}]);
+    eq(rb.subclasses[2], {n: 'Eldritch Knight', short: 'Eldritch Knight', cls: 'Fighter', s: 'PHB', caster: 'third', ab: 'int', cantrips: [0, 0, 2]});
+    eq(rb.features.map(f => [f.n, f.lvl, f.sub || '']), [['Fighting Style', 1, ''], ['Martial Archetype', 3, ''], ['Ability Score Improvement', 4, ''], ['Martial Versatility', 4, ''],
+      ['Ability Score Improvement', 6, ''], ['Champion', 3, 'Champion'], ['Improved Critical', 3, 'Champion'], ['Remarkable Athlete', 7, 'Champion'], ['Samurai', 3, 'Samurai']]);
+    eq([rb.features[0].tx, rb.features[3].opt, rb.features[6].tx, rb.features[6].ss], ['Válassz stílust.', true, '19–20.', 'PHB']);
+    eq(rb.races.map(r => r.n), ['Dwarf', 'Human', 'Custom Lineage']);
+    eq(rb.races[0], {n: 'Dwarf', s: 'PHB', size: 'M', sp: {walk: 25}, fx: [{ab: {con: 2}}, {lang: ['Common', 'Dwarvish']}, {toolChoose: {from: ["smith's tools", "brewer's supplies"], n: 1}},
+      {weapon: ['battleaxe']}, {dv: 60}, {resist: ['poison']}], traits: [{n: 'Stonecunning', tx: 'Kő.'}], subs: 1});
+    eq([rb.races[1].fx, rb.races[1].subs, rb.races[2].fx], [[{lang: ['Common']}, {langChoose: {n: 1}}], 2,
+      [{abChoose: {from: ['str', 'dex', 'con', 'int', 'wis', 'cha'], n: 1, amt: 2}}, {skillChoose: {from: 'any', n: 1}}, {feat: {n: 1}}, {dv: 60}]]);
+    eq(rb.subraces, [{n: 'Hill', race: 'Dwarf', s: 'PHB', fx: [{ab: {wis: 1}}], traits: [{n: 'Dwarven Toughness', tx: 'HP.'}]},
+      {n: 'Human (alap)', race: 'Human', s: 'PHB', fx: [{ab: {str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1}}]},
+      {n: 'Variant', race: 'Human', s: 'PHB', fx: [{abChoose: {from: ['str', 'dex', 'con', 'int', 'wis', 'cha'], n: 2, amt: 1}}, {skillChoose: {from: 'any', n: 1}}, {feat: {n: 1}}], ow: ['ab', 'abChoose']}]);
+    eq(rb.backgrounds.map(b => b.n), ['Acolyte', 'Variant Acolyte (Próba)'], '_copy feloldva, XPHB nélkül');
+    eq(rb.backgrounds[1], {n: 'Variant Acolyte (Próba)', s: 'PHB', fx: [{skill: {insight: 1, religion: 1}}, {langChoose: {n: 2}}], feature: {n: 'Shelter', tx: 'Menedék.'}, tx: '• Skill Proficiencies: Insight, Religion'});
+    eq(rb.optfeatures, [{n: 'Archery', s: 'PHB', t: ['FS:F', 'FS:R'], tx: '+2.'}, {n: 'Thirsting Blade', s: 'XGE', t: ['EI'], pre: 'Pact of the Blade, Warlock 5. szint', lv: 5, pact: 'Blade', tx: 'Két.'}]);
+  });
+  test('2. fázis: hatáslisták featekben és tárgyakban; a motor a valódi formátumú szabálykönyvvel számol', async () => {
+    const H = W.Sheet, rb = await fakeRb(), ft = Object.fromEntries(rb.feats.map(f => [f.n, f.fx]));
+    eq([ft.Alert, ft['Elven Accuracy'], ft.Grappler], [undefined, [{abChoose: {from: ['dex', 'int', 'wis', 'cha'], n: 1, amt: 1}}], [{ab: {str: 1}}]]);
+    eq(ft['Próbafeat'], [{abChoose: {from: ['str', 'dex'], n: 1, amt: 1}}, {skillChoose: {from: ['sleight-of-hand', 'stealth'], n: 1}}, {armor: ['light']}, {saveChoose: {from: ['str', 'dex'], n: 1}}, {expertise: {n: 1}}]);
+    const it = Object.fromEntries(H.allItems(rb).map(i => [i.n, i]));
+    eq([it['Cloak of Protection'].bAc, it['Cloak of Protection'].bS, it['Próbakesztyű'].abS, it['Chain Mail'].tc, it.Longsword.tc, it.Longsword.wc],
+      [1, 1, {str: 19}, 'HA', 'M', 'martial']);
+    eq([it['+1 Longsword'].bW, it['+1 Longsword'].tc, it['+1 Longsword'].wc, it['+1 Chain Mail'], it['Longsword of Flame'].bW], [1, 'M', 'martial', undefined, undefined]);
+    const s = H.norm({auto: true, build: {race: 'Dwarf|PHB', subrace: 'Hill|PHB', base: {con: 14, dex: 12}, levels: [{c: 'Fighter'}, {c: 'Fighter'}, {c: 'Fighter'}, {c: 'Fighter'}],
+      ch: {'Fighter:4:asi': {feat: 'Próbafeat|TCE'}, 'feat:Próbafeat|TCE:ability': ['dex'], 'feat:Próbafeat|TCE:saves': ['dex'], 'feat:Próbafeat|TCE:skills': ['stealth'], 'feat:Próbafeat|TCE:expertise': ['stealth']}}});
+    const c = H.calc(s, rb);
+    eq([c.abilities.con.v, c.abilities.wis.v, c.abilities.dex.v, c.saves.dex.prof, c.saves.str.prof, c.skills.stealth.prof], [16, 11, 13, 1, 1, 2]);
+    eq(c.todos.map(t => t.key), ['race:tool', 'Fighter:sub']);
   });
   test('variánsok kibontása az alaptárgyakra (feltétel, kizárás, név) és keresés', async () => {
     const H = W.Sheet, all = H.allItems(await fakeRb()), names = all.map(i => i.n);
@@ -1737,14 +1868,14 @@ describe('Szabálykönyv és tárgy-import', () => {
     W.__fdb = f.db; A('DB = window.__fdb');
     const meta = await W.uploadRulebook(rb);
     eq(f.log.at(-1), 'set rules/meta'); ok(f.log.includes('del rules/old-0'));
-    eq([meta.counts.spells, meta.counts.items, meta.counts.variants], [4, 5, 3]);
+    eq([meta.counts.spells, meta.counts.items, meta.counts.variants, meta.counts.classes, meta.counts.races, meta.format], [4, 6, 3, 1, 3, 2]);
     const cache = {}, c = {get: async k => cache[k], set: async (k, v) => { cache[k] = v; }};
     let gets = 0; const db2 = {get: p => { gets++; return f.db.get(p); }};
     const r1 = await H.loadRulebook(db2, c);
-    eq([r1.rb.spells.length, gets], [4, 1 + meta.chunks.length]);
+    eq([r1.rb.spells.length, r1.format, gets], [4, 2, 1 + meta.chunks.length]);
     gets = 0; await H.loadRulebook(db2, c); eq(gets, 1, 'változatlan verziónál csak a metát nézi');
     const r3 = await H.loadRulebook({get: async () => { throw new Error('offline'); }}, c);
-    ok(r3.offline && r3.rb.items.length === 5, 'internet nélkül a tárolt példány');
+    ok(r3.offline && r3.rb.items.length === 6 && r3.rb.classes.length === 1, 'internet nélkül a tárolt példány');
     eq(await H.loadRulebook({get: async () => null}, null), null, 'még nincs feltöltve');
   });
   test('Menü → Szabálykönyv: frissítés gomb letölt és feltölt', async () => {

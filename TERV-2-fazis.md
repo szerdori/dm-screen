@@ -183,7 +183,7 @@ Becsült méret: +2–3 MB (főleg a feature-szövegek), összesen kb. 3–4 MB,
 ## Lépések (mindegyik után működő, tesztelt állapot)
 
 1. **Hatásformátum és motor-mag** (`sheet.js`): `norm` az új mezőkre (`build`, `ov`, `auto`, `todoDone`, tisztítással), `Sheet.calc` a szabálykönyv nélkül is számolható részekre (képességek, PB, mentők, skillek, HP, initiative, Hit Dice, slotok), forrásbontással és felülírással. Tesztek kézzel kiszámolt példákkal. *(Kész 2026-10-28: `Sheet.calc`, `Sheet.materialize`, `CLASSES` kiegészítve mentőkkel, alosztály-szinttel, extra ASI-szintekkel; 6 új teszt. A választási kulcsokban ékezetes betű is lehet.)*
-2. **Szabálykönyv v2:** `buildRulebook` új fajtái, fx-kinyerés a faj/háttér/feat/tárgy mezőkből, `RB_FORMAT = 2`, visszafelé kompatibilis betöltés. Tesztek **kitalált** 5e.tools-alakú mintákkal (valódi szöveg nélkül), plusz `-Online` teszt a valódi tükörre (darabszámok, méret).
+2. **Szabálykönyv v2:** `buildRulebook` új fajtái, fx-kinyerés a faj/háttér/feat/tárgy mezőkből, `RB_FORMAT = 2`, visszafelé kompatibilis betöltés. Tesztek **kitalált** 5e.tools-alakú mintákkal (valódi szöveg nélkül), plusz `-Online` teszt a valódi tükörre (darabszámok, méret). *(Kész 2026-10-28: a valódi tükörrel ≈1,8 MB, 13 darab; a SCAG-hivatkozások és a 2024-es alosztálypéldányok kiszűrve; online teszt ellenőrzi.)*
 3. **Motor teljes:** faj/háttér/osztály/alosztály/feat/tárgy hatások, AC, speed, támadások, erőforrások, jellemzők, varázslás osztályonként, választási helyek, teendők. **`FEATURE_FX` tábla** a 13 osztályra. Tesztesetek (mind szintetikus karakter):
    - Thief Rogue 3 (expertise, Sneak Attack oszlop);
    - Hill Dwarf Cleric 5 (HP-bónusz, domain spellek, Channel Divinity);

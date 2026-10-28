@@ -213,8 +213,9 @@ window.Sheet = (() => {
     }
     return out;
   }
-  const CHOICE_KIND = {abChoose: 'ability', skillChoose: 'skills', expertise: 'expertise', feat: 'feat'};
-  const FX_LABEL = {ability: 'képességérték-növelés', skills: 'skill-jártasság', expertise: 'expertise', feat: 'feat', asi: 'ASI vagy feat', subclass: 'alosztály'};
+  const CHOICE_KIND = {abChoose: 'ability', skillChoose: 'skills', expertise: 'expertise', feat: 'feat', saveChoose: 'saves', langChoose: 'lang', toolChoose: 'tool'};
+  const FX_LABEL = {ability: 'képességérték-növelés', skills: 'skill-jártasság', expertise: 'expertise', feat: 'feat', asi: 'ASI vagy feat', subclass: 'alosztály',
+    saves: 'mentő-jártasság', lang: 'nyelv', tool: 'eszköz-jártasság'};
 
   function calc(s, rb = null) {
     const b = s.build || normBuild({}), ov = s.ov || {};
@@ -275,6 +276,11 @@ window.Sheet = (() => {
       else if (c.kind === 'asi') ok = isObj(c.value) && ((typeof c.value.feat === 'string' && c.value.feat) || asiInc(c.value)) ? [c.value] : [];
       else if (c.kind === 'subclass') ok = c.value ? [c.value] : [];
       else if (c.kind === 'expertise') ok = arr(c.value, 18).map(skillKey);   // a jártasság-feltételt lent nézzük
+      else if (c.kind === 'saves') ok = arr(c.value, 6).filter(a => (Array.isArray(c.from) ? c.from : ABIL).includes(a));
+      else if (c.kind === 'lang' || c.kind === 'tool') {
+        const from = Array.isArray(c.from) ? c.from.map(x => String(x).toLowerCase()) : null;
+        ok = arr(c.value, 10).filter(x => typeof x === 'string' && x.trim() && (!from || from.includes(x.trim().toLowerCase())));
+      }
       c.ok = [...new Set(ok.map(x => isObj(x) ? JSON.stringify(x) : x))].slice(0, c.n).map(x => typeof x === 'string' && x[0] === '{' ? JSON.parse(x) : x);
       valid[c.key] = c;
     }
@@ -288,6 +294,7 @@ window.Sheet = (() => {
       if (fx.abChoose) { const c = choices.find(x => x.src === src && x.kind === 'ability' && !x.used); if (c) { c.used = true; for (const a of c.ok) abil[a].parts.push({v: c.amt, src}); } }
       if (isObj(fx.abSet)) for (const a of ABIL) if (num(fx.abSet[a]) && num(fx.abSet[a]) > (abil[a].set?.v || 0)) abil[a].set = {v: num(fx.abSet[a]), src};
       for (const a of arr(fx.save, 6)) if (ABIL.includes(a) && !saveSet[a]) saveSet[a] = src;
+      if (fx.saveChoose) { const c = choices.find(x => x.src === src && x.kind === 'saves' && !x.used); if (c) { c.used = true; for (const a of c.ok) if (!saveSet[a]) saveSet[a] = src; } }
       if (isObj(fx.skill)) for (const [k, p] of Object.entries(fx.skill)) { const kk = skillKey(k); if (SKILLS[kk] && !skillSet[kk]) skillSet[kk] = {p: p === 2 ? 2 : 1, src}; }
       if (fx.skillChoose) { const c = choices.find(x => x.src === src && x.kind === 'skills' && !x.used); if (c) { c.used = true; for (const k of c.ok) if (!skillSet[k]) skillSet[k] = {p: 1, src}; } }
       if (fx.expertise) { const c = choices.find(x => x.src === src && x.kind === 'expertise' && !x.used); if (c) { c.used = true; expert.push(c); } }
@@ -403,7 +410,8 @@ window.Sheet = (() => {
 
   // ---------- szabálykönyv (rules/meta + rules/{darab}); a DM Screen tölti fel, a telefon egyszer letölti ----------
   // darab: {data: '{"k":"spells","a":[...]}'}; a meta: {version, format, chunks: [...], counts}
-  const RB_FORMAT = 1, RB_KINDS = ['spells', 'items', 'baseItems', 'variants', 'feats', 'conditions'];
+  // 2-es formátum (2. fázis): osztályok, alosztályok, feature-szövegek, fajok, alfajok, hátterek, optional feature-ök, és hatáslisták (fx)
+  const RB_FORMAT = 2, RB_KINDS = ['spells', 'items', 'baseItems', 'variants', 'feats', 'conditions', 'classes', 'subclasses', 'features', 'races', 'subraces', 'backgrounds', 'optfeatures'];
   const emptyRulebook = () => Object.fromEntries(RB_KINDS.map(k => [k, []]));
   function joinChunks(chunks) {
     const rb = emptyRulebook();
@@ -437,7 +445,7 @@ window.Sheet = (() => {
     if (!meta || !Array.isArray(meta.chunks)) return null;
     if (cached?.version === meta.version && cached.rb) return cached;
     const chunks = await Promise.all(meta.chunks.map(id => db.get('rules/' + id)));
-    const out = {version: meta.version, counts: meta.counts || {}, rb: joinChunks(chunks)};
+    const out = {version: meta.version, format: meta.format || 1, counts: meta.counts || {}, rb: joinChunks(chunks)};
     try { cache && await cache.set('rulebook', out); } catch {}
     return out;
   }
@@ -475,7 +483,8 @@ window.Sheet = (() => {
     const out = [...rb.baseItems.map(b => ({...b, base: true})), ...rb.items];
     for (const v of rb.variants) for (const b of rb.baseItems) if (variantFits(v, b)) {
       out.push({n: v.pre || v.suf ? `${v.pre || ''}${b.n}${v.suf || ''}` : `${v.n} (${b.n})`, s: v.s, ty: b.ty, rar: v.rar, att: v.att, mag: true,
-        w: b.w, dmg: b.dmg, d2: b.d2, pr: b.pr, rg: b.rg, ac: b.ac, str: b.str, st: b.st, tx: [v.tx, b.tx].filter(Boolean).join('\n\n'), from: v.n});
+        w: b.w, dmg: b.dmg, d2: b.d2, pr: b.pr, rg: b.rg, ac: b.ac, str: b.str, st: b.st, tx: [v.tx, b.tx].filter(Boolean).join('\n\n'), from: v.n,
+        tc: b.tc, wc: b.wc, bAc: v.bAc, bW: v.bW, bS: v.bS});
     }
     const seen = new Set(), list = out.filter(x => { const k = x.n.toLowerCase() + '|' + x.s; if (seen.has(k)) return false; seen.add(k); return true; });
     cache.set(rb, list);
