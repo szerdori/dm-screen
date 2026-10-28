@@ -2,10 +2,10 @@
 // Ezek az értékek nem titkosak: azt, hogy ki férhet hozzá az adatokhoz, a firestore.rules szabályai döntik el.
 // Amíg az apiKey üres, az app a „még nincs összekötve” üzenetet mutatja.
 window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyAwXtsCfMoIHYAf3o5-VqtDuVce0RCZb2M",
-  authDomain: "hazi-naplo.firebaseapp.com",
-  projectId: "hazi-naplo",
-  storageBucket: "hazi-naplo.firebasestorage.app",
-  messagingSenderId: "1078907751316",
-  appId: "1:1078907751316:web:1052c7329bd7a09ac95d81",
+  apiKey: "AIzaSyDFgBZ9xbufzcD3nbVlp32OYzV_G35M54c",
+  authDomain: "dm-screen-afc89.firebaseapp.com",
+  projectId: "dm-screen-afc89",
+  storageBucket: "dm-screen-afc89.firebasestorage.app",
+  messagingSenderId: "556412924806",
+  appId: "1:556412924806:web:1a3c17a1ff03f65a1cf207",
 };

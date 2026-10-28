@@ -25,7 +25,7 @@ async function until(fn, ms = 4000, what = 'feltétel') {
 }
 
 // ---------- az app betöltése ----------
-let W, P, A, appErrors = [];
+let W, P, K, A, appErrors = [];
 const frame = (id, src, w, h) => { const f = document.createElement('iframe'); f.id = id; f.src = src; f.width = w; f.height = h; $frames.appendChild(f); return f; };
 const $frames = document.getElementById('frames');
 try { localStorage.removeItem('dmscreen'); } catch {}
@@ -48,7 +48,7 @@ function fresh() {
   W.confirm = () => true; W.alert = () => {}; W.prompt = () => null;
   A(`DB = null; authInfo = {status: 'unconfigured'}; clearTimeout(saveTimer); saveTimer = null;
      S = {library: [], enc: {list: [], round: 1, active: null}, saved: [], settings: {groupInit: true, rollHp: false, sources: ['MM']}};
-     selected = null; logLines = []; libTab = 'lib'; lastSaved = {state: '', lib: {}, saved: {}};
+     selected = null; logLines = []; libTab = 'lib'; lastSaved = emptySaved();
      fiveIndex = null; fiveData = {}; fiveResults = []; backupWarn = ''; lootData = null; lootResult = null;
      partySort = {p: {col: null, dir: 1}, s: {col: null, dir: 1}};
      closeModal(); renderGate(null); render();`);
@@ -1372,6 +1372,110 @@ describe('Csapat: tagok és rendezés', () => {
 });
 
 // ======================================================================
+describe('Játékos app: láthatóság és közzététel', () => {
+  const npc = (name, share, extra = {}) => ({name, kind: 'npc', ac: 13, hp: {max: 20, cur: 8}, share, ...extra});
+  test('tisztítás: gazda csak játékosnál, kisbetűvel; hibás e-mail kimarad; alapértékek típusonként', () => {
+    const p = W.normCreature(pc('Rella', 3, {owner: '  Jatekos@Example.COM '}));
+    eq([p.owner, p.share], ['jatekos@example.com', {vis: 'party', hp: 'exact', ac: true}]);
+    eq(W.normCreature(pc('X', 1, {owner: 'nem email'})).owner, undefined);
+    eq(W.normCreature(pc('X', 1, {owner: '<b>@x.hu'})).owner, undefined);
+    const n = W.normCreature(npc('Bob', null, {owner: 'a@b.hu'}));
+    eq([n.owner, n.share], [undefined, {vis: 'dm', hp: 'label', ac: false}]);
+    eq(W.normCreature(npc('Bob', {vis: 'xx', hp: 'yy', ac: 'igen'})).share, {vis: 'dm', hp: 'label', ac: false});
+    const m = W.normCreature(mk('Goblin', {owner: 'a@b.hu', share: {vis: 'party'}}));
+    eq([m.owner, m.share], [undefined, undefined]);
+  });
+  test('közzétett adatok: játékos pontosan, NPC címkével / pontosan, rejtett NPC és szörny nem', () => {
+    A(`S.library = ${JSON.stringify([pc('Rella', 3, {id: 'p1', owner: 'a@b.hu', hp: {max: 30, cur: 12}}), pc('Senkié', 2, {id: 'p2', share: {vis: 'dm'}}),
+      npc('Titkos', {vis: 'dm'}, {id: 'n1'}), npc('Kalauz', {vis: 'party', hp: 'label', ac: false}, {id: 'n2'}),
+      npc('Barát', {vis: 'party', hp: 'exact', ac: true}, {id: 'n3', hp: {max: 20}}), mk('Goblin', {id: 'm1'})])}.map(normCreature)`);
+    const pub = Object.fromEntries(W.publicChars().map(p => [p.id, p]));
+    eq(Object.keys(pub).sort(), ['n2', 'n3', 'p1']);
+    eq(pub.p1, {id: 'p1', kind: 'pc', owner: 'a@b.hu', visibility: 'party', name: 'Rella', portrait: '', level: 'Szint 3', ac: 16, hp: {cur: 12, max: 30}, status: null});
+    eq([pub.n2.hp, pub.n2.status, pub.n2.ac, pub.n2.owner], [null, 'bloodied', null, '']);
+    eq([pub.n3.hp, pub.n3.status, pub.n3.ac], [{cur: 20, max: 20}, null, 13]);
+    hasNot(JSON.stringify(pub), 'actions'); hasNot(JSON.stringify(pub), 'abilities');
+    eq([W.hpStatus(0, 10), W.hpStatus(5, 10), W.hpStatus(9, 10), W.hpStatus(10, 10)], ['down', 'bloodied', 'hurt', 'healthy']);
+  });
+  test('felhő: characters és access/players íródik, utána csak a változás; rejtéskor törlődik', async () => {
+    const f = makeFakeDb({'dmscreen/state': {enc: {list: [], round: 1, active: null}, settings: {}},
+      'dmscreen_library/p1': pc('Rella', 3, {owner: 'b@x.hu'}), 'dmscreen_library/p2': pc('Bori', 2, {owner: 'a@x.hu'}),
+      'dmscreen_library/n1': npc('Kalauz', {vis: 'party'})});
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(600);
+    eq(f.log.splice(0).filter(l => !l.includes('backup')).sort(), ['set access/players', 'set characters/n1', 'set characters/p1', 'set characters/p2'], 'első betöltéskor közzéteszi');
+    eq(f.store['access/players'], {emails: ['a@x.hu', 'b@x.hu']});
+    A('S.library.find(c => c.id === "p1").notes = "titok"; save()'); await wait(500);
+    eq(f.log.splice(0), ['set dmscreen_library/p1'], 'a titkos rész változása nem írja a nyilvánost');
+    A('S.library.find(c => c.id === "n1").share.vis = "dm"; save()'); await wait(500);
+    eq(f.log.splice(0).sort(), ['del characters/n1', 'set dmscreen_library/n1']);
+    A('S.library.find(c => c.id === "p2").owner = "c@x.hu"; save()'); await wait(500);
+    eq(f.log.splice(0).sort(), ['set access/players', 'set characters/p2', 'set dmscreen_library/p2']);
+    eq(f.store['access/players'], {emails: ['b@x.hu', 'c@x.hu']});
+  });
+  test('újratöltéskor a más mezősorrendben tárolt közzétett adat nem íródik újra', async () => {
+    const f = makeFakeDb({'dmscreen/state': {enc: {list: [], round: 1, active: null}, settings: {}}, 'dmscreen_library/p1': pc('Rella', 3, {owner: 'a@x.hu'})});
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(500);
+    ok(f.store['characters/p1'], 'közzétette');
+    f.store['characters/p1'] = Object.fromEntries(Object.entries(f.store['characters/p1']).reverse());
+    fresh(); f.log.splice(0);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(500);
+    eq(f.log.filter(l => !l.includes('backup')), []);
+    ok(!W.sharingDirty());
+  });
+  test('szerkesztő: játékos app mezők típustól függően; mentés; hibás e-mail nem menthető', () => {
+    W.openLib('lib'); click('[data-act="newCreature"]');
+    const fm = $('#edForm');
+    ok($('#shareBox').hidden, 'szörnynél rejtve');
+    setVal(fm.elements.kind, 'pc');
+    ok(!$('#shareBox').hidden); ok(!fm.elements.owner.closest('label').hidden); ok(fm.elements.shareHp.closest('label').hidden, 'HP-választó csak NPC-nél');
+    fm.elements.name.value = 'Rella'; fm.elements.owner.value = 'rossz cím';
+    let msg = ''; W.alert = m => msg = m;
+    click('[data-act="edSave"]');
+    has(msg, 'nem érvényes'); ok($('#edForm'), 'nyitva maradt');
+    fm.elements.owner.value = 'Rella@Example.com'; fm.elements.shareVis.value = 'dm';
+    click('[data-act="edSave"]');
+    const c = A('S.library').find(x => x.name === 'Rella');
+    eq([c.owner, c.share.vis], ['rella@example.com', 'dm']);
+    W.openLib('lib'); has($('#libRows').textContent, 'csak DM'); has($('#libRows').textContent, 'rella@example.com');
+    click('[data-act="libEdit"]');
+    setVal($('#edForm').elements.kind, 'npc');
+    ok($('#edForm').elements.owner.closest('label').hidden); ok(!$('#edForm').elements.shareAc.closest('label').hidden);
+  });
+  test('harcbeli szerkesztőben nincs játékos app rész; újraimport / visszamentés megtartja a beállítást', () => {
+    A(`S.library = [normCreature(${JSON.stringify(pc('Rella', 3, {id: 'p1', owner: 'a@x.hu', share: {vis: 'dm'}}))})]`);
+    W.addToEncounter(A('S.library[0]'), 1);
+    A(`openEditor(S.enc.list[0].c, null, 'harc')`); ok(!$('#shareBox'), 'harcban nem kell'); W.closeModal();
+    A(`upsertLibrary(${JSON.stringify(pc('Rella', 4, {id: 'p1', owner: 'masik@x.hu', share: {vis: 'party'}}))})`);
+    eq([A('S.library[0].owner'), A('S.library[0].share.vis'), A('S.library[0].cr')], ['a@x.hu', 'dm', 'Szint 4']);
+    A(`upsertLibrary(${JSON.stringify(pc('Rella', 4, {id: 'p1', owner: 'masik@x.hu', share: {vis: 'party'}}))}, false)`);
+    eq([A('S.library[0].owner'), A('S.library[0].share.vis')], ['masik@x.hu', 'party'], 'a szerkesztő viszont átírja');
+  });
+  test('karakter.html: saját karakter és a csapat; rejtett lap nem; adatok tisztítva', () => {
+    K.KApp.setAuth({status: 'signedIn', email: 'A@x.hu'});
+    K.KApp.setChars([
+      {id: 'p1', kind: 'pc', owner: 'a@x.hu', visibility: 'dm', name: 'Rella', level: 'Szint 3', ac: 16, hp: {cur: 12, max: 30}},
+      {id: 'p2', kind: 'pc', owner: 'b@x.hu', visibility: 'party', name: 'Bori', ac: 14, hp: {cur: 20, max: 20}},
+      {id: 'n1', kind: 'npc', owner: '', visibility: 'party', name: 'Kalauz', ac: null, hp: null, status: 'bloodied'},
+      {id: 'n2', kind: 'npc', owner: '', visibility: 'dm', name: 'Titkos', hp: null, status: 'hurt'}]);
+    const t = K.document.querySelector('main').textContent;
+    eq([...K.document.querySelectorAll('.card.own')].map(e => e.dataset.char), ['p1']);
+    has(t, '12 / 30 HP'); has(t, 'csak te és a DM'); has(t, 'Bori'); has(t, 'Súlyosan sérült'); hasNot(t, 'Titkos');
+    ok(K.document.querySelector('#gate').hidden);
+    K.__xss = 0;
+    K.KApp.setChars([{id: XQ, kind: XQ, owner: 'a@x.hu', visibility: XQ, name: XSS, level: XSS, portrait: 'javascript:window.__xss=1', ac: XSS, hp: {cur: XQ, max: XSS}, status: XSS}]);
+    ok(!K.__xss && !K.document.querySelector('main img[onerror], main [onmouseover]'), 'kód futhatna');
+    has(K.document.querySelector('main').textContent, '<img');
+  });
+  test('karakter.html: belépő és „nincs a játékosok között” képernyő', () => {
+    K.KApp.setAuth({status: 'signedOut'});
+    ok(K.document.querySelector('#gate [data-act="signIn"]'));
+    K.KApp.setAuth({status: 'denied', email: 'idegen@x.hu'});
+    has(K.document.querySelector('#gate').textContent, 'nincs a játékosok között');
+    K.KApp.setAuth({status: 'unconfigured'}); ok(K.document.querySelector('#gate').hidden);
+  });
+});
+
+// ======================================================================
 describe('Általános', () => {
   test('nem volt JavaScript-hiba az app futása közben', () => eq(appErrors, []));
 });
@@ -1389,9 +1493,13 @@ async function run() {
   const plF = frame('player', '../player.html', 1000, 600);
   await new Promise(r => plF.onload = r);
   P = plF.contentWindow;
+  const kF = frame('karakter', '../karakter.html?test=1', 420, 700);
+  await new Promise(r => kF.onload = r);
+  K = kF.contentWindow;
+  K.addEventListener('error', e => appErrors.push('karakter.html: ' + e.message));
   for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'loadLoot', 'confirm', 'alert', 'download']) ORIG[k] = W[k];
   // a „const f = ...” segédfüggvények nem window-tulajdonságok, ezért elérhetővé tesszük őket W.f néven
-  for (const k of ['sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp']) W[k] = A(k);
+  for (const k of ['sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp', 'hpStatus', 'playerEmails', 'stableJson', 'sharingDirty']) W[k] = A(k);
   for (const t of TESTS) {
     if (t.online && !ONLINE) { skip++; continue; }
     try {

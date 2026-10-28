@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e1013">
+<title>Karakterlap</title>
+<link rel="icon" href="favicon.ico">
+<style>
+:root{--bg:#0e1013;--panel:#1a1d23;--line:#2f3440;--text:#eceae4;--muted:#8e95a1;--accent:#e2a63b;--red:#d9534f;--orange:#e08a2e;--green:#4caf6a;--pc:#4a8fe0;--npc:#4caf6a}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 "Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+header h1{margin:0;font:700 22px Georgia,serif;color:var(--accent);flex:1}
+header small{color:var(--muted);font-size:12px;text-align:right;overflow-wrap:anywhere}
+button{font:inherit;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
+button.primary{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:700}
+main{padding:12px 16px 32px;max-width:720px;margin:0 auto}
+h2{font:700 15px "Segoe UI",sans-serif;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:20px 0 8px}
+.card{display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--pc);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.card.npc{border-left-color:var(--npc)}
+.card.own{padding:14px}
+.av{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;background:#252a33;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:24px;border:2px solid var(--line)}
+.own .av{width:72px;height:72px}
+.main{flex:1;min-width:0}
+.name{font:700 18px Georgia,serif;overflow-wrap:anywhere}
+.sub{color:var(--muted);font-size:13px}
+.stats{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.ac{border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-weight:700}
+.bar{flex:1;min-width:120px;height:22px;background:#08090b;border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative}
+.bar .fill{position:absolute;inset:0 auto 0 0;background:var(--green)}
+.bar.mid .fill{background:var(--orange)} .bar.low .fill{background:var(--red)}
+.bar span{position:relative;display:block;text-align:center;font:700 14px/20px "Segoe UI",sans-serif;text-shadow:0 1px 2px #000}
+.st{font-weight:600;font-size:13px;padding:2px 10px;border-radius:12px}
+.st.healthy{color:var(--green);border:1px solid var(--green)}
+.st.hurt{color:#e8d34a;border:1px solid #e8d34a}
+.st.bloodied{color:#fff;background:#8a2a1c}
+.st.down{color:#fff;background:#6b2a8a}
+.muted{color:var(--muted)}
+#gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
+#gate[hidden]{display:none}
+#gate>div{max-width:420px;display:flex;flex-direction:column;gap:14px;align-items:center}
+#gate b.logo{font-size:44px;color:var(--accent)}
+</style>
+</head>
+<body>
+<header><h1>⚔ Karakterlap</h1><small id="who"></small></header>
+<main id="main"></main>
+<div id="gate"><div class="muted">Betöltés…</div></div>
+<script>
+'use strict';
+// Játékos app (0. fázis): belépés Google-fiókkal, a saját karakter és a csapat által látható lapok.
+// Az adatokat a DM Screen teszi közzé a characters gyűjteménybe; ki mit lát, azt a firestore.rules dönti el.
+// Minden bejövő adatot tisztítunk és escape-elünk: egy játékos a saját lapját írhatja, és azt a többiek is látják.
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const num = (v, def = 0) => { if (v === null || v === '' || typeof v === 'boolean') return def; const n = Number(v); return Number.isFinite(n) ? n : def; };
+const str = v => v == null || typeof v === 'object' ? '' : String(v);
+const safeUrl = v => typeof v === 'string' && /^(https?:\/\/|data:image\/)/i.test(v.trim()) ? v.trim() : '';
+const ST = {healthy: 'Sértetlen', hurt: 'Sérült', bloodied: 'Súlyosan sérült', down: 'Eszméletlen'};
+
+let me = '', chars = [];
+function normChar(d) {
+  d = isObj(d) ? d : {};
+  const hp = isObj(d.hp) ? {max: Math.max(1, num(d.hp.max, 1)), cur: Math.max(0, num(d.hp.cur, 0))} : null;
+  return {
+    id: str(d.id), kind: d.kind === 'npc' ? 'npc' : 'pc', owner: str(d.owner).toLowerCase(), visibility: d.visibility === 'party' ? 'party' : 'dm',
+    name: str(d.name) || '(névtelen)', portrait: safeUrl(d.portrait), level: str(d.level),
+    ac: d.ac == null ? null : num(d.ac, null), hp, status: hp ? null : ST[d.status] ? d.status : null
+  };
+}
+function hpBar(hp) {
+  const p = Math.max(0, Math.min(1, hp.cur / hp.max));
+  return `<div class="bar ${p <= .25 ? 'low' : p <= .5 ? 'mid' : ''}"><div class="fill" style="width:${(p * 100).toFixed(1)}%"></div><span>${esc(hp.cur)} / ${esc(hp.max)} HP</span></div>`;
+}
+function card(c, own) {
+  const av = c.portrait ? `<img class="av" src="${esc(c.portrait)}" alt="">` : `<div class="av">${esc(c.name.charAt(0).toUpperCase())}</div>`;
+  return `<div class="card ${c.kind} ${own ? 'own' : ''}" data-char="${esc(c.id)}">${av}
+    <div class="main"><div class="name">${esc(c.name)}</div>
+      <div class="sub">${c.kind === 'npc' ? 'NPC' : 'Játékos'}${c.level ? ' · ' + esc(c.level) : ''}${own && c.visibility === 'dm' ? ' · 🔒 csak te és a DM látjátok' : ''}</div>
+      <div class="stats">${c.ac != null ? `<span class="ac" title="Armor Class">🛡 ${esc(c.ac)}</span>` : ''}${c.hp ? hpBar(c.hp) : ''}${c.status ? `<span class="st ${c.status}">${esc(ST[c.status])}</span>` : ''}</div>
+    </div></div>`;
+}
+function render() {
+  $('#who').innerHTML = me ? `${esc(me)}<br><a href="#" data-act="signOut" style="color:var(--muted)">kilépés</a>` : '';
+  const byName = (a, b) => (a.kind === 'pc' ? 0 : 1) - (b.kind === 'pc' ? 0 : 1) || a.name.localeCompare(b.name, 'hu');
+  const own = chars.filter(c => c.owner && c.owner === me).sort(byName);
+  const party = chars.filter(c => !(c.owner && c.owner === me) && c.visibility === 'party').sort(byName);
+  $('#main').innerHTML = `
+    <h2>Az én karakterem</h2>${own.length ? own.map(c => card(c, true)).join('') : '<p class="muted">Még nincs hozzád rendelt karakter. Szólj a DM-nek, hogy állítsa be a Google-fiókodat a karakterednél.</p>'}
+    <h2>A csapat</h2>${party.length ? party.map(c => card(c, false)).join('') : '<p class="muted">Most nem látsz senkit a csapatból.</p>'}`;
+}
+function gate(html) { const g = $('#gate'); g.hidden = !html; if (html) g.innerHTML = `<div>${html}</div>`; }
+
+// a Firebase-modul (lent) hívja; a tesztek közvetlenül is
+window.KApp = {
+  setAuth(a) {
+    me = a.status === 'signedIn' ? String(a.email || '').toLowerCase() : '';
+    if (a.status === 'signedOut') {
+      chars = []; render();
+      gate(`<b class="logo">⚔</b><div>Lépj be a Google-fiókoddal, hogy lásd a karakteredet.</div>
+        <button class="primary" data-act="signIn">Belépés Google-fiókkal</button>${a.error ? `<p style="color:var(--red)">${esc(a.error)}</p>` : ''}`);
+    } else if (a.status === 'denied') {
+      chars = []; render();
+      gate(`<b class="logo">🔒</b><div>Ez a Google-fiók (<b>${esc(a.email)}</b>) nincs a játékosok között.<br>Kérd meg a DM-et, hogy írja be a karakterednél.</div>
+        <button data-act="signOut">Másik fiókkal</button>`);
+    } else if (a.status === 'error') gate(`<div>Nem sikerült betölteni az adatokat (${esc(a.message)}).</div><button data-act="reload">Újra</button>`);
+    else if (a.status === 'unconfigured') { render(); gate(null); }
+    else { render(); gate(a.status === 'signedIn' ? null : '<div class="muted">Betöltés…</div>'); }
+  },
+  setChars(list) { chars = (Array.isArray(list) ? list : []).map(normChar); render(); }
+};
+document.addEventListener('click', e => {
+  const act = e.target.closest('[data-act]')?.dataset.act; if (!act) return;
+  e.preventDefault();
+  if (act === 'signIn') window.KAuth?.signIn();
+  if (act === 'signOut') window.KAuth?.signOut();
+  if (act === 'reload') location.reload();
+});
+render();
+</script>
+<script src="firebase-config.js"></script>
+<script type="module">
+const V = '10.12.2';
+const cfg = window.FIREBASE_CONFIG;
+// ?test = automata tesztek: a felhőhöz nem nyúl
+if (!cfg || !cfg.apiKey || location.protocol === 'file:' || new URLSearchParams(location.search).has('test')) {
+  window.KApp.setAuth({status: 'unconfigured'});
+} else {
+  try {
+    const {initializeApp} = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+    const A = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-auth.js`);
+    const F = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`);
+    const app = initializeApp(cfg);
+    const auth = A.getAuth(app);
+    const fs = F.initializeFirestore(app, {localCache: F.persistentLocalCache({tabManager: F.persistentMultipleTabManager()})});
+    const provider = new A.GoogleAuthProvider();
+    provider.setCustomParameters({prompt: 'select_account'});
+    window.KAuth = {
+      async signIn() {
+        try { await A.signInWithPopup(auth, provider); }
+        catch (e) {
+          if (e.code === 'auth/popup-blocked') return A.signInWithRedirect(auth, provider);
+          if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request')
+            window.KApp.setAuth({status: 'signedOut', error: 'A belépés nem sikerült (' + e.code + ').'});
+        }
+      },
+      signOut: () => A.signOut(auth),
+    };
+    // két élő lekérdezés: a saját karakter(ek) és a csapat által látható lapok (a szabályok csak így engedik)
+    let unsub = [];
+    A.onAuthStateChanged(auth, u => {
+      unsub.forEach(f => f()); unsub = [];
+      if (!u) { window.KApp.setAuth({status: 'signedOut'}); return; }
+      const email = (u.email || '').toLowerCase();
+      window.KApp.setAuth({status: 'signedIn', email});
+      const parts = {own: new Map(), party: new Map()};
+      let denied = 0;
+      const push = () => window.KApp.setChars([...new Map([...parts.party, ...parts.own]).values()]);
+      const col = F.collection(fs, 'characters');
+      for (const [key, q] of [['own', F.query(col, F.where('owner', '==', email))], ['party', F.query(col, F.where('visibility', '==', 'party'))]]) {
+        unsub.push(F.onSnapshot(q, snap => {
+          parts[key] = new Map(snap.docs.map(d => [d.id, {...d.data(), id: d.id}]));
+          push();
+        }, e => {
+          if (e.code === 'permission-denied') { if (++denied === 2) window.KApp.setAuth({status: 'denied', email}); }
+          else window.KApp.setAuth({status: 'error', message: e.code || e.message});
+        }));
+      }
+    });
+  } catch (e) {
+    window.KApp.setAuth({status: 'error', message: 'nincs internet'});
+  }
+}
+</script>
+</body>
+</html>

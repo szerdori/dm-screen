@@ -14,12 +14,15 @@ Harckezelő és csapatnyilvántartó webapp D&D 5e mesélőnek. A felhasználó 
 
 ## Felépítés
 - **Élő app:** https://szerdori.github.io/dm-screen/ (GitHub Pages, `main` ág gyökere). Tároló: https://github.com/szerdori/dm-screen. Asztali ikon: Chrome `--app=` módban nyitja a webes címet (ikon: `favicon.ico`).
-- **Fájlok:** `index.html` (az egész DM app, vanilla JS, nincs build), `player.html` (játékos képernyő), `firebase-config.js` (nyilvános webes konfig, a Házi Naplóéval azonos), `tests/index.html` + `tests/tests.js` (tesztek), `teszt.ps1` / `teszt.cmd` (futtató), `feltoltes.ps1` / `.cmd` (feltöltő), `README.md`.
-- **Adatok:** a **Házi Napló Firebase-projektjében** (`hazi-naplo`) – Google-belépés, a konzolban beállított e-mail-listás szabályok (`match /{document=**}`, tehát a listán szereplő minden fiók hozzáfér; a szűkítést a játékos app 0. fázisa hozza). Gyűjtemények:
+- **Fájlok:** `index.html` (az egész DM app, vanilla JS, nincs build), `player.html` (játékos képernyő a második monitorra), `karakter.html` (játékos app telefonra), `firebase-config.js` (nyilvános webes konfig), `firestore.rules` (a konzolba másolandó szabályok – ez az élő változat, nem minta), `tests/index.html` + `tests/tests.js` (tesztek), `teszt.ps1` / `teszt.cmd` (futtató), `feltoltes.ps1` / `.cmd` (feltöltő), `README.md`.
+- **Adatok:** saját Firebase-projekt (0. fázis, 2026-10-27; korábban a Házi Napló `hazi-naplo` projektjében volt). Google-belépés; jogosultság a `firestore.rules` szerint, e-mail nélkül: a DM-ek listája az `access/dms` dokumentumban (`emails` tömb, **csak a konzolból írható**), a játékosoké az `access/players`-ben (a DM Screen írja: a játékos karakterek gazdáinak e-mailjei). Gyűjtemények:
   - `dmscreen/state` – `{enc, settings}`; `settings`: `groupInit`, `rollHp`, `sources`, `lastExport`, `partyIds` (null = minden játékos)
-  - `dmscreen_library/{id}` – lények (szörny / NPC / játékos)
+  - `dmscreen_library/{id}` – lények (szörny / NPC / játékos); pc/npc-nél `share: {vis: dm|party, hp: exact|label, ac: bool}`, pc-nél `owner` (a játékos e-mailje, kisbetűvel)
   - `dmscreen_saved/{id}` – mentett encounterek
   - `dmscreen_backup/{nap}` + `dmscreen/backups` (tartalomjegyzék) – napi felhős mentések, utolsó 14
+  - `characters/{könyvtár-id}` – a karakter **nyilvános része** a játékos appnak (`publicChars()`): `kind, owner, visibility, name, portrait, level, ac|null, hp{cur,max}|null, status|null`. A DM Screen mentéskor szinkronizálja (`syncSharing`, kulcssorrend-független összehasonlítás). Közzétéve: minden pc, aminek van gazdája vagy `party`; npc csak `party`-nál. A titkos rész a `dmscreen_library`-ben marad (csak DM).
+- **Szabályok röviden:** `dmscreen*` és `access/players`: csak DM. `characters`: DM mindent; játékos olvassa a sajátját (`owner`) és a `party` láthatóságúakat; a sajátját írhatja, de `owner`/`visibility`/`kind` nem változhat. A játékos app ezért két külön lekérdezéssel olvas (`owner ==` és `visibility == 'party'`).
+- **Költözés az új projektbe:** ha az új felhő üres, a DM Screen a böngészőben tárolt másolatot tölti fel (`loadFromDb`); tartaléknak Menü → Exportálás a régi appból, Importálás az újban. A régi `dmscreen*` gyűjtemények a `hazi-naplo` projektben maradnak, amíg a felhasználó ki nem törli őket.
 - **Mentés:** `doSave()` csak a megváltozott dokumentumokat írja (`lastSaved` összehasonlítás), plusz másolat `localStorage`-ban. Firestore persistent cache → internet nélkül is megy.
 - **Minden bejövő adat tisztítva van** (`normCreature`, `normCombatant`, `sanitizeState`, `normInventory`): számok számok, `kind` ∈ monster/npc/pc, `side` ∈ enemy/ally, azonosító csak `[A-Za-z0-9_-]`, portré csak `https://` vagy `data:image/`. Kiíráskor minden `esc()`-pel megy. Új mezőnél mindkettőt meg kell csinálni (XSS-tesztek ellenőrzik).
 
@@ -42,7 +45,7 @@ Harckezelő és csapatnyilvántartó webapp D&D 5e mesélőnek. A felhasználó 
 - `teszt.ps1`: saját kis webszerver a 8767-es porton + `chrome --headless --dump-dom`; az app `index.html?test=1`-gyel töltődik iframe-be. Tesztsegédek a `tests.js` elején (`A()`, `W`, `mk()`, `pc()`, `stubRnd()`, `makeFakeDb()`, `assertNoXss()`); a `const`-tal deklarált app-függvényeket a futtató `W.név` alá másolja – új ilyen segédnél add a listához.
 - Böngészős előnézethez a `.claude\launch.json`-ba (git-ignorált) egy statikus szerver kell; a régi PowerShell-szerver (`server.ps1`) már nincs meg.
 
-## Terv: játékos app telefonra (elfogadva 2026-10-19, még nincs elkezdve)
+## Terv: játékos app telefonra (elfogadva 2026-10-19; 0. fázis kódja kész 2026-10-27)
 A játékosok (Google-fiókkal) a telefonjukon kezelik a saját karakterüket (D&D Beyond-szerűen), szintlépés-varázslóval. **Az új app lesz az egyetlen karakterlap.** A D&D Beyond import megmarad (később is kellhet), de nem bővítjük.
 
 **Döntések**
@@ -59,7 +62,7 @@ A játékosok (Google-fiókkal) a telefonjukon kezelik a saját karakterüket (D
 - **Ami nem automatizálható** (csak szöveges hatás, vagy géppel nem olvasható választás, pl. Land druid tereptípus, Totem, Magical Secrets): ✋ ikon a feature-nél + „Teendők (n)” lista a lap tetején, egyenként kipipálható. Minden számolt érték kézzel felülírható.
 
 **Fázisok** (mindegyik után használható állapot)
-0. Saját Firebase-projekt, játékos-belépés, jogosultsági szabályok, láthatóság.
+0. Saját Firebase-projekt, játékos-belépés, jogosultsági szabályok, láthatóság. *(Kód kész: szerkesztőben „📱 Játékos app” rész – gazda e-mail, láthatóság, NPC-nél HP-mód és AC; `karakter.html` = belépés + saját lap + csapat, élő `onSnapshot`. A karakterlap-adatokat még a DM írja; az 1. fázisban a játékos lesz a gazdája a `characters` dokumentumnak, ekkor a DM-oldali szinkront át kell gondolni, hogy ne írja felül a játékos módosításait.)*
 1. Telefonos karakterlap + élő szinkron, szabálykönyv-letöltő (Firebase-be), tárgy-import, JSON-import.
 2. Szabálymotor: értékek számítása a rögzített választásokból, kézi felülírás, homebrew.
 3. Szintlépés-varázsló egy osztályra, majd az összesre; mentés szintlépés előtt.
@@ -68,8 +71,8 @@ A játékosok (Google-fiókkal) a telefonjukon kezelik a saját karakterüket (D
 
 **Modellajánlás:** alap az Opus 5.5; a szabálymotor adatmodelljének tervezéséhez és a trükkös multiclass-esetekhez Fable 5.1; gépies részekhez (űrlapok, apró UI, tesztbővítés) Sonnet 5.5. Minden fázis új beszélgetésben induljon.
 
-## Nyitott / félretett ügyek (2026-10-19)
-- Firestore-szabály szűkítése – a játékos app 0. fázisa (saját Firebase-projekt) váltja ki.
+## Nyitott / félretett ügyek (2026-10-27)
+- **0. fázis élesítése:** a felhasználó létrehozza az új Firebase-projektet (Google-belépés + `szerdori.github.io` engedélyezett domain, Firestore, a `firestore.rules` bemásolása, `access/dms` dokumentum), elküldi a webes konfigot → `firebase-config.js` csere, teszt, feltöltés (jóváhagyással). Előtte Menü → Exportálás a régi appból. Utána: játékosok e-mailjei a szerkesztőben, majd a régi `dmscreen*` gyűjtemények törlése a `hazi-naplo` projektből (a felhasználó végzi a konzolban).
 - Kilépéskor a helyi másolat törlése – nem kérte.
 - Kampánnyal kapcsolatos függő ügyek: `CLAUDE.local.md`.
 - Feltöltés után a felhasználónak újra kell importálnia a játékosokat a könyvjelzővel, ha az import új mezőt kap.

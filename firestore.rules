@@ -1,0 +1,41 @@
+rules_version = '2';
+// DM Screen + játékos app – Firestore jogosultsági szabályok.
+// Ezt a fájlt teljes egészében kell bemásolni a Firebase konzolba (Firestore → Rules → Publish).
+// Személyes adat (e-mail) nincs benne: a DM-ek listája az access/dms dokumentumban van (csak a konzolból írható),
+// a játékosoké az access/players-ben (a DM Screen tölti ki a karakterek gazdáiból).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function email() { return request.auth.token.email.lower(); }
+    function listed(doc) {
+      let p = /databases/$(database)/documents/access/$(doc);
+      return exists(p) && email() in get(p).data.emails;
+    }
+    function isDM() { return signedIn() && listed('dms'); }
+    function isPlayer() { return signedIn() && listed('players'); }
+
+    // ki a DM: csak olvasható, írni csak a konzolból lehet (így a DM sem zárhatja ki magát véletlenül)
+    match /access/dms { allow read: if isDM(); }
+    // a játékosok listája: a DM Screen írja
+    match /access/players { allow read, write: if isDM(); }
+
+    // a DM Screen saját adatai (könyvtár, encounter, mentések): csak a DM
+    match /{col}/{docId} {
+      allow read, write: if col.matches('dmscreen.*') && isDM();
+    }
+
+    // karakterek nyilvános része: a gazdája mindig látja, „party” láthatóságnál a többi játékos is
+    match /characters/{id} {
+      allow read: if isDM()
+        || (isPlayer() && (resource.data.owner == email() || resource.data.visibility == 'party'));
+      allow create, delete: if isDM();
+      // a játékos a saját karakterét írhatja, de a gazdáját, láthatóságát és típusát nem változtathatja meg
+      allow update: if isDM()
+        || (isPlayer() && resource.data.owner == email()
+            && request.resource.data.owner == resource.data.owner
+            && request.resource.data.visibility == resource.data.visibility
+            && request.resource.data.kind == resource.data.kind);
+    }
+    // minden más: tilos (nincs szabály = nincs hozzáférés)
+  }
+}

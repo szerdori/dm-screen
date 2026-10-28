@@ -141,7 +141,7 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 .form{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .form label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:2px}
 .form label input,.form label select{width:100%}
-.form .w2{grid-column:span 2} .form .w4{grid-column:1/-1}
+.form .w2{grid-column:span 2} .form .w4{grid-column:1/-1} .form [hidden]{display:none}
 .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .hint{font-size:12px;color:var(--muted)}
 @media (max-width:1200px){#side{width:340px;min-width:300px}}
@@ -250,7 +250,8 @@ function blankCreature() {
 // Minden betöltött adat (import, felhő, böngésző-tároló, mentésfájl) ezeken megy át, hogy egy
 // rosszindulatú fájl se tudjon kódot becsempészni: a számok számok, a típusok csak megengedett
 // értékek, az azonosítók csak biztonságos karakterek, a portré csak kép-link lehet.
-const KINDS = ['monster', 'npc', 'pc'], SIDES = ['enemy', 'ally'];
+const KINDS = ['monster', 'npc', 'pc'], SIDES = ['enemy', 'ally'], VIS = ['dm', 'party'];
+const EMAIL_RE = /^[^\s@<>"'`]{1,100}@[^\s@<>"'`]{1,100}\.[^\s@<>"'`]{2,30}$/;
 const num = (v, def = 0) => { if (v === null || v === '' || typeof v === 'boolean') return def; const n = Number(v); return Number.isFinite(n) ? n : def; };
 const str = v => v == null ? '' : typeof v === 'object' ? '' : String(v);
 const safeId = v => { const s = typeof v === 'number' ? String(v) : v; return typeof s === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(s) ? s : uid(); };
@@ -298,6 +299,14 @@ function normCreature(c) {
   o.passiveBonus = {perception: num(pbo.perception, 0), investigation: num(pbo.investigation, 0), insight: num(pbo.insight, 0)};
   o.tools = str(o.tools);
   o.importedAt = typeof c.importedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c.importedAt) ? c.importedAt : '';
+  // játékos app: kié a karakter (Google-fiók), ki láthatja, és NPC-nél mennyi látszik belőle
+  const owner = str(c.owner).trim().toLowerCase();
+  if (o.kind === 'pc' && EMAIL_RE.test(owner)) o.owner = owner; else delete o.owner;
+  if (o.kind === 'monster') delete o.share;
+  else {
+    const sh = isObj(c.share) ? c.share : {}, npc = o.kind === 'npc';
+    o.share = {vis: VIS.includes(sh.vis) ? sh.vis : npc ? 'dm' : 'party', hp: ['exact', 'label'].includes(sh.hp) ? sh.hp : npc ? 'label' : 'exact', ac: typeof sh.ac === 'boolean' ? sh.ac : !npc};
+  }
   return o;
 }
 function normCombatant(x) {
@@ -342,21 +351,46 @@ const byId = id => S.enc.list.find(x => x.cid === id);
 
 // ---------- mentés: Firebase (Firestore), plusz másolat a böngészőben ----------
 // Firestore-ban: dmscreen/state (encounter + beállítások), dmscreen_library/{id}, dmscreen_saved/{id}.
+// A játékos appnak: characters/{könyvtár-id} (a karakter nyilvános része) és access/players (a játékosok e-mailjei).
 // Mindig csak a megváltozott dokumentumokat írjuk.
 let DB = null, saveTimer = null, authInfo = {status: 'loading'};
-let lastSaved = {state: '', lib: {}, saved: {}};
+const emptySaved = () => ({state: '', lib: {}, saved: {}, pub: {}, players: '[]'});
+let lastSaved = emptySaved();
 const setSaveState = t => $('#saveState').textContent = t;
 function save() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 400); }
 function ensureIds() { S.saved.forEach(e => { if (!e.id) e.id = uid(); }); }
-function syncCol(col, arr, key, ops) {
-  const seen = {};
+// kulcssorrendtől független JSON (a Firestore más sorrendben adja vissza a mezőket)
+const stableJson = v => JSON.stringify(v, (k, x) => isObj(x) ? Object.fromEntries(Object.keys(x).sort().map(n => [n, x[n]])) : x);
+function syncCol(col, arr, key, ops, ser = JSON.stringify) {
+  const seen = {}, prev = lastSaved[key] || {};
   for (const it of arr) {
-    const j = JSON.stringify(it); seen[it.id] = j;
-    if (lastSaved[key][it.id] !== j) ops.push(DB.set(col + '/' + it.id, JSON.parse(j)));
+    const j = ser(it); seen[it.id] = j;
+    if (prev[it.id] !== j) ops.push(DB.set(col + '/' + it.id, JSON.parse(j)));
   }
-  for (const id of Object.keys(lastSaved[key])) if (!(id in seen)) ops.push(DB.del(col + '/' + id));
+  for (const id of Object.keys(prev)) if (!(id in seen)) ops.push(DB.del(col + '/' + id));
   lastSaved[key] = seen;
 }
+// ---------- játékos app: ami a játékosok telefonján látszik ----------
+// Játékos karakter: a gazdája mindig látja; „csapat” láthatóságnál a többi játékos is.
+// NPC: csak „csapat” láthatóságnál jelenik meg, a HP pontosan vagy csak állapotként, az AC ki-be kapcsolható.
+// A titkos rész (statok, jegyzetek, akciók) a dmscreen_library-ben marad, azt csak a DM olvashatja.
+const hpStatus = (cur, max) => cur <= 0 ? 'down' : cur <= max / 2 ? 'bloodied' : cur < max ? 'hurt' : 'healthy';
+function publicChars() {
+  return S.library.filter(c => c.kind === 'pc' ? c.owner || c.share.vis === 'party' : c.kind === 'npc' && c.share.vis === 'party').map(c => {
+    const pc = c.kind === 'pc', cur = c.hp.cur ?? c.hp.max, exact = pc || c.share.hp === 'exact';
+    return {id: c.id, kind: c.kind, owner: c.owner || '', visibility: c.share.vis, name: c.name, portrait: c.portrait || '',
+      level: pc ? c.cr : '', ac: pc || c.share.ac ? c.ac : null,
+      hp: exact ? {cur, max: c.hp.max} : null, status: exact ? null : hpStatus(cur, c.hp.max)};
+  });
+}
+const playerEmails = () => [...new Set(S.library.filter(c => c.owner).map(c => c.owner))].sort();
+function syncSharing(ops) {
+  syncCol('characters', publicChars(), 'pub', ops, stableJson);
+  const pl = JSON.stringify(playerEmails());
+  if (pl !== lastSaved.players) { ops.push(DB.set('access/players', {emails: JSON.parse(pl)})); lastSaved.players = pl; }
+}
+const sharingDirty = () => { const now = publicChars(), prev = lastSaved.pub || {};
+  return JSON.stringify(playerEmails()) !== lastSaved.players || now.length !== Object.keys(prev).length || now.some(p => prev[p.id] !== stableJson(p)); };
 async function doSave() {
   saveTimer = null;
   ensureIds();
@@ -368,12 +402,13 @@ async function doSave() {
     if (state !== lastSaved.state) { ops.push(DB.set('dmscreen/state', JSON.parse(state))); lastSaved.state = state; }
     syncCol('dmscreen_library', S.library, 'lib', ops);
     syncCol('dmscreen_saved', S.saved, 'saved', ops);
+    syncSharing(ops);
     if (!ops.length) return;
     setSaveState(navigator.onLine ? 'mentés…' : '⚠ nincs internet – a változások később töltődnek fel');
     await Promise.all(ops);
     setSaveState('✓ mentve');
   } catch (e) {
-    lastSaved = {state: '', lib: {}, saved: {}};  // legközelebb mindent újraírunk
+    lastSaved = {...emptySaved(), players: ''};  // legközelebb mindent újraírunk
     setSaveState('⚠ mentés sikertelen' + (e.code ? ' (' + e.code + ')' : ''));
   }
 }
@@ -392,14 +427,20 @@ function loadLocal() {
   try { const t = localStorage.getItem('dmscreen'); if (t) applyLoaded(JSON.parse(t)); } catch {}
 }
 async function loadFromDb() {
-  const [st, lib, saved] = await Promise.all([DB.get('dmscreen/state'), DB.list('dmscreen_library'), DB.list('dmscreen_saved')]);
+  const [st, lib, saved, pub, players] = await Promise.all([DB.get('dmscreen/state'), DB.list('dmscreen_library'), DB.list('dmscreen_saved'),
+    DB.list('characters'), DB.get('access/players')]);
+  lastSaved = emptySaved();
+  pub.forEach(p => lastSaved.pub[p.id] = stableJson(p));
+  if (Array.isArray(players?.emails)) lastSaved.players = JSON.stringify(players.emails);
   if (st || lib.length || saved.length) {
     applyLoaded({...(st || {}), library: lib, saved});
-    lastSaved = {state: JSON.stringify({enc: S.enc, settings: S.settings}), lib: {}, saved: {}};
+    lastSaved.state = JSON.stringify({enc: S.enc, settings: S.settings});
     S.library.forEach(c => lastSaved.lib[c.id] = JSON.stringify(c));
     S.saved.forEach(e => lastSaved.saved[e.id] = JSON.stringify(e));
+    if (sharingDirty()) save();  // pl. az első indításkor még nincs közzétéve semmi a játékosoknak
   } else {
     // üres a felhő: ha ebben a böngészőben van korábbi adat, azt töltjük fel
+    // (így költözik át az adat az új Firebase-projektbe is)
     loadLocal();
     if (S.library.length || S.enc.list.length || S.saved.length) save();
   }
@@ -1214,7 +1255,7 @@ function filterLib() {
     .sort((a, b) => (a.kind === 'pc' ? 0 : 1) - (b.kind === 'pc' ? 0 : 1) || a.name.localeCompare(b.name, 'hu'));
   const party = new Set(partyMembers().map(c => c.id));
   $('#libRows').innerHTML = items.length ? items.map(c => `<div class="lrow" data-lib="${esc(c.id)}">
-      <span class="nm"><b>${esc(c.name)}</b><small>${KIND_HU[c.kind]} · ${esc(crLabel(c))} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)} · ${esc(c.source || '')}</small></span>
+      <span class="nm"><b>${esc(c.name)}</b><small>${KIND_HU[c.kind]} · ${esc(crLabel(c))} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)} · ${esc(c.source || '')}${c.share ? ` · <span title="Játékos app">📱 ${c.share.vis === 'party' ? 'csapat látja' : 'csak DM'}${c.owner ? ' · ' + esc(c.owner) : ''}</span>` : ''}</small></span>
       <input type="number" min="1" value="1" class="cnt" title="Darabszám">
       <button class="primary" data-act="libAdd">＋ Encounterbe</button>
       <button class="small ${party.has(c.id) ? 'on' : ''}" data-act="libParty" title="${party.has(c.id) ? 'A csapatban van – kattints a kivételhez' : 'Betétel a csapatba (👥 Csapat nézet)'}">👥</button>
@@ -1223,10 +1264,16 @@ function filterLib() {
       <button class="small" data-act="libDel" title="Törlés">🗑</button>
     </div>`).join('') : `<p class="muted">A könyvtár üres${q ? ' erre a keresésre' : ''}. Importálj az 5e.tools / D&D Beyond / JSON füleken, vagy hozz létre új lényt.</p>`;
 }
-function upsertLibrary(c) {
+// keepShare: újraimportálás / harcból visszamentés nem írja felül a játékos app beállításait (csak a szerkesztő)
+function upsertLibrary(c, keepShare = true) {
   c = normCreature(c);
   const i = S.library.findIndex(x => x.id === c.id || (c.ddbId && x.ddbId === c.ddbId));
-  if (i >= 0) { c.id = S.library[i].id; S.library[i] = c; } else S.library.push(c);
+  if (i >= 0) {
+    const old = S.library[i];
+    c.id = old.id;
+    if (keepShare) c = normCreature({...c, owner: old.owner || c.owner, share: old.share || c.share});
+    S.library[i] = c;
+  } else S.library.push(c);
   save();
   return c;
 }
@@ -1666,7 +1713,28 @@ function summarize(list) {
 let editCb = null;
 function sectionToText(arr) { return arr.map(e => (e.name ? e.name + '. ' : '') + e.text).join('\n\n'); }
 function textToSection(t) { return t.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean).map(splitEntry); }
-function openEditor(creature, cb, title = 'Lény szerkesztése') {
+// a játékos app beállításai csak könyvtárbeli lénynél (share: true) látszanak; a típustól függ, mi jelenik meg
+function shareFieldsHtml(c) {
+  const sh = c.share || {vis: 'dm', hp: 'label', ac: false};
+  const opt = (v, l, cur) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`;
+  return `<div class="w4 form" id="shareBox" style="border:1px solid var(--line);border-radius:6px;padding:8px">
+      <div class="w4"><b>📱 Játékos app</b> <span class="hint">– mi látszik a játékosok telefonján</span></div>
+      <label class="w2" data-for="pc">A játékos Google-fiókja (e-mail)<input type="email" name="owner" value="${esc(c.owner || '')}" placeholder="pl. jatekos@gmail.com"></label>
+      <label>Ki láthatja<select name="shareVis">${opt('party', 'az egész csapat', sh.vis)}${opt('dm', 'csak a DM', sh.vis)}</select></label>
+      <label data-for="npc">HP a játékosoknak<select name="shareHp">${opt('exact', 'pontos érték', sh.hp)}${opt('label', 'csak állapot (Sérült…)', sh.hp)}</select></label>
+      <label data-for="npc">AC a játékosoknak<select name="shareAc">${opt('1', 'látszik', sh.ac ? '1' : '0')}${opt('0', 'rejtve', sh.ac ? '1' : '0')}</select></label>
+      <p class="hint w4" data-for="pc">A játékos a saját karakterét mindig látja. „Csak a DM” esetén a többi játékos nem látja.</p>
+      <p class="hint w4" data-for="npc">„Csak a DM” esetén a játékosok egyáltalán nem látják ezt az NPC-t. A statok, akciók és jegyzetek sosem látszanak.</p>
+    </div>`;
+}
+function syncShareBox() {
+  const fm = $('#edForm'), box = fm && fm.querySelector('#shareBox'); if (!box) return;
+  const k = fm.elements.kind.value;
+  box.hidden = k === 'monster';
+  box.querySelectorAll('[data-for]').forEach(el => el.hidden = el.dataset.for !== k);
+}
+document.addEventListener('change', e => { if (e.target.name === 'kind' && e.target.closest('#edForm')) syncShareBox(); });
+function openEditor(creature, cb, title = 'Lény szerkesztése', opts = {}) {
   const c = normCreature(structuredClone(creature));
   editCb = cb;
   const f = (k, l, cls = '', type = 'text') => `<label class="${cls}">${l}<input type="${type}" name="${k}" value="${esc(c[k] ?? '')}"></label>`;
@@ -1700,9 +1768,11 @@ function openEditor(creature, cb, title = 'Lény szerkesztése') {
       <label class="w4">Felszerelés <span class="hint">– soronként egy tárgy, pl. „3× Fáklya” vagy „Kötél [Backpack]”${c.importedAt ? '; D&D Beyond-os játékosnál az újraimportálás felülírja' : ''}</span><textarea name="inventory" rows="4">${esc(inventoryToText(c.inventory))}</textarea></label>
       <div class="w4" style="display:grid;grid-template-columns:repeat(5,1fr) 3fr;gap:8px">${['pp', 'gp', 'ep', 'sp', 'cp'].map(k => `<label>${k}<input type="number" min="0" name="cur_${k}" value="${esc(c.currency[k])}"></label>`).join('')}
         <label>Eszköz-, hangszer-jártasságok<input name="tools" value="${esc(c.tools)}"></label></div>
+      ${opts.share ? shareFieldsHtml(c) : ''}
     </form>
     <div class="toolbar" style="margin-top:12px"><button class="primary" data-act="edSave">Mentés</button><button data-act="edCancel">Mégse</button></div>`);
   $('#edForm')._base = c;
+  syncShareBox();
 }
 function readEditor() {
   const fm = $('#edForm'), c = fm._base, v = n => fm.elements[n].value;
@@ -1719,6 +1789,10 @@ function readEditor() {
   c.saves = {};
   for (const m of v('saves').matchAll(/(str|dex|con|int|wis|cha)\w*\s*([+\-−]?\s*\d+)/gi)) c.saves[m[1].toLowerCase()] = parseInt(m[2].replace(/[−\s]/g, s => s === '−' ? '-' : ''));
   SECTIONS.forEach(k => c[k] = textToSection(v('sec_' + k)));
+  if (fm.elements.shareVis) {
+    c.owner = v('owner');
+    c.share = {vis: v('shareVis'), hp: v('shareHp'), ac: v('shareAc') === '1'};
+  }
   return normCreature(c);
 }
 
@@ -1798,7 +1872,7 @@ document.addEventListener('click', async e => {
     case 'partyGroup': partyRoll(partyMembers().map(c => c.id), el.dataset.sk, e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : ''); break;
     case 'partyEdit': {
       const pcLib = S.library.find(c => c.id === el.dataset.pc);
-      if (pcLib) openEditor(pcLib, c => { c.id = pcLib.id; upsertLibrary(c); setTimeout(openParty); });
+      if (pcLib) openEditor(pcLib, c => { c.id = pcLib.id; upsertLibrary(c, false); setTimeout(openParty); }, undefined, {share: true});
       break;
     }
     case 'lootRoll': rollLootUi(); break;
@@ -1841,13 +1915,16 @@ document.addEventListener('click', async e => {
       log(`📚 ${esc(saved.name)} elmentve a könyvtárba`); save();
       break;
     }
-    case 'newCreature': openEditor(blankCreature(), c => { upsertLibrary(c); log(`📚 ${esc(c.name)} létrehozva`); }, 'Új lény'); break;
-    case 'edSave': { const c = readEditor(); const cb = editCb; closeModal(); cb && cb(c); save(); render(); break; }
+    case 'newCreature': openEditor(blankCreature(), c => { upsertLibrary(c, false); log(`📚 ${esc(c.name)} létrehozva`); }, 'Új lény', {share: true}); break;
+    case 'edSave': {
+      const ow = $('#edForm').elements.owner?.value.trim();
+      if (ow && $('#edForm').elements.kind.value === 'pc' && !EMAIL_RE.test(ow.toLowerCase())) { alert('A játékos Google-fiókja nem érvényes e-mail-cím.'); break; }
+      const c = readEditor(); const cb = editCb; closeModal(); cb && cb(c); save(); render(); break; }
     case 'edCancel': closeModal(); break;
 
     // könyvtár
     case 'libAdd': addToEncounter(lib, cnt()); log(`＋ ${cnt()}× ${esc(lib.name)}`); break;
-    case 'libEdit': openEditor(lib, c => { c.id = lib.id; upsertLibrary(c); setTimeout(() => openLib('lib')); }); break;
+    case 'libEdit': openEditor(lib, c => { c.id = lib.id; upsertLibrary(c, false); setTimeout(() => openLib('lib')); }, undefined, {share: true}); break;
     case 'libExport': download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', lib); break;
     case 'libDel': if (confirm(`Törlöd a könyvtárból: ${lib.name}?`)) { S.library = S.library.filter(c => c !== lib); save(); filterLib(); } break;
     case 'addAllPcs': {
@@ -1985,7 +2062,7 @@ render();
 
 <script src="firebase-config.js"></script>
 <script type="module">
-// Firebase: Google-belépés + Firestore (ugyanaz a projekt, mint a Házi Naplóé, külön gyűjteményekben)
+// Firebase: Google-belépés + Firestore (saját projekt; ki mit érhet el: firestore.rules)
 const V = '10.12.2';
 const cfg = window.FIREBASE_CONFIG;
 // ?test = automata tesztek (tests/): helyi mód, a felhőhöz nem nyúl
