@@ -199,41 +199,15 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 <script src="sheet.js?v=6"></script>
 <script src="szerzodes.js?v=1"></script>
 <script src="js/adat/tar.js?v=1"></script>
+<script src="js/logika/alap.js?v=1"></script>
 <script>
 'use strict';
-// ---------- alapok ----------
-// a sheet.js közös segédei (a karakter.html is ezeket használja)
-const {ABIL, ABIL_FULL, SKILLS, skillLabel, EMAIL_RE, num, isObj, safeUrl, sgn, propOf} = Sheet;
-// a szerződés (szerzodes.js): útvonalak, a lények formátuma és a bejövő adatok tisztítói
-const {HELYI, CSATORNA, SECTIONS, TEMPLATE, KINDS, str, safeId, blankCreature, splitEntry, normInventory, normCreature, normCombatant, sanitizeState} = Szerzodes;
 // a közös fájlok várt változata (= a <script src> ?v= száma; régi, gyorsítótárazott példánynál a lapokra nem írunk – syncSheets)
-const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1, tar: 1};
-// igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
-const regiFajl = () => typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0;
-const CONDITIONS = ['Blinded','Charmed','Deafened','Exhaustion','Frightened','Grappled','Incapacitated','Invisible','Paralyzed','Petrified','Poisoned','Prone','Restrained','Stunned','Unconscious'];
-const SECTION_HU = {traits:'Tulajdonságok', actions:'Akciók', bonusActions:'Bónusz akciók', reactions:'Reakciók', legendary:'Legendás akciók'};
-const KIND_HU = {monster:'Szörny', npc:'NPC', pc:'Játékos'};
-const sideOf = x => x.side === 'enemy' || x.side === 'ally' ? x.side : (x.c.kind === 'monster' ? 'enemy' : 'ally');
-const SIDE_HU = {enemy: 'Ellenfél', ally: 'Csapattárs'};
-const mod = s => Math.floor(((+s || 10) - 10) / 2);
-const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
-
-// ---------- állapot ----------
-let S = {
-  library: [],
-  enc: {list: [], round: 1, active: null},
-  saved: [],
-  settings: structuredClone(Szerzodes.ALAP_BEALLITASOK)
-};
-let selected = null;
-let logLines = [];
+const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1, tar: 1, alap: 1};
 let libTab = 'lib';
 
 // D&D Beyond import: fegyver- és páncéljártasság (nem eszköz)
 const WEAPON_ARMOR_PROF = /^(simple|martial)-weapons$|-armor$|^shields$|^(club|dagger|greatclub|handaxe|javelin|light-hammer|mace|quarterstaff|sickle|spear|crossbow-light|crossbow-heavy|crossbow-hand|dart|shortbow|sling|battleaxe|flail|glaive|greataxe|greatsword|halberd|lance|longsword|maul|morningstar|pike|rapier|scimitar|shortsword|trident|war-pick|warhammer|whip|blowgun|longbow|net|firearms)$/;
-const initBonusOf = c => c.initBonus ?? mod(c.abilities.dex);
-const nameOf = x => x.c.name + (x.num ? ' ' + x.num : '');
-const byId = id => S.enc.list.find(x => x.cid === id);
 
 // ---------- mentés: Firebase (Firestore), plusz másolat a böngészőben ----------
 // A felhőbe a Tar (js/adat/tar.js) ír: állapot (encounter + beállítások), könyvtár, mentett encounterek, és a játékos appnak
