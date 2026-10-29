@@ -3109,6 +3109,25 @@ describe('Szerződés (szerzodes.js)', () => {
     }
     has(await szoveg('js/adat/tar.js'), 'db.set(', 'a Tar ír');
   });
+  test('rétegek: az index.html-ben csak a várt változatok (VART_MODULOK) maradtak, a kód a js/ fájlokban; az indulas.js töltődik utoljára', async () => {
+    const html = await (await fetch('../index.html', {cache: 'no-store'})).text();
+    const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1].replace(/^\s*\/\/.*$/gm, '').trim());
+    eq(inline.length, 1, 'egy sima <script> blokk');
+    ok(/^const VART_MODULOK = \{[^}]*\};$/.test(inline[0]), 'csak a VART_MODULOK: ' + inline[0].slice(0, 80));
+    ok(html.indexOf('const VART_MODULOK') < html.indexOf('<script src="kozos.js'), 'a VART_MODULOK a fájlok előtt áll');
+    const srcek = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => s !== 'firebase-config.js');
+    ok(srcek.at(-1).startsWith('js/indulas.js?'), 'az utolsó: ' + srcek.at(-1));
+  });
+  test('a felület segédei a Tar helyett: felhoben() és szabalyMeta()', async () => {
+    try {
+      A('Tar.kapcsol(null)');
+      eq([A('felhoben()'), await W.szabalyMeta()], [false, null], 'felhő nélkül');
+      const f = makeFakeDb(); W.__fdb = f.db; A('Tar.kapcsol(window.__fdb)');
+      eq(A('felhoben()'), true, 'belépve');
+      await W.Tar.szabalyok.metaIr({version: 'v1', chunks: []});
+      eq((await W.szabalyMeta())?.version, 'v1', 'a felhőben lévő meta');
+    } finally { A('Tar.kapcsol(null)'); delete W.__fdb; }
+  });
   test('minden felhős írás átmegy a szerződés tisztítóján (mentés, lap, nyilvános rész, napi mentés)', async () => {
     const {normCreature, sanitizeState, normPublicChar} = W.Szerzodes, sj = W.stableJson, hibak = [], irt = new Set();
     const idoNelkul = d => { const o = structuredClone(d); delete o.updatedAt; delete o.updatedBy; return o; };
