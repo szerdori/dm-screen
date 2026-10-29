@@ -47,10 +47,9 @@ header .next{font-size:20px;color:var(--muted)}
 <div id="list"></div>
 <div id="wait"><b>⚔</b>Várakozás a DM képernyőre…<small>A DM Screen ablakának nyitva kell lennie ugyanebben a böngészőben.</small></div>
 <div id="fs">F11: teljes képernyő</div>
+<script src="kozos.js?v=1"></script>
 <script>
 'use strict';
-const $ = s => document.querySelector(s);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ST = {healthy: 'Sértetlen', hurt: 'Sérült', bloodied: 'Súlyosan sérült', dying: 'Haldoklik', dead: 'Halott'};
 let view = null;
 

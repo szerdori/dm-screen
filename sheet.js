@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (lásd SHEET_V)
-  const VERSION = 4;
+  const VERSION = 5;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -1103,10 +1103,10 @@ window.Sheet = (() => {
   };
 
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
-    num, str, isObj, mod, sgn, norm, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
+    num, str, isObj, mod, sgn, safeUrl, propOf, norm, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    ASI_LEVELS, FEATURE_FX, classInfo, buildClasses, calc, materialize, ovEdits, refName,
+    FEATURE_FX, classInfo, calc, materialize, ovEdits, refName,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
-    classNames, subclassesOf, subclassRef, raceOptions, findRace, legacyCalc, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
-    RB_FORMAT, RB_KINDS, emptyRulebook, joinChunks, splitChunks, loadRulebook, idb, variantFits, allItems, search, refOf, byRef, itemLine, spellLine};
+    classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
+    RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine};
 })();

@@ -163,7 +163,8 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 </div></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
-<script src="sheet.js?v=4"></script>
+<script src="kozos.js?v=1"></script>
+<script src="sheet.js?v=5"></script>
 <script>
 'use strict';
 // Játékos app: belépés Google-fiókkal; a saját karakter teljes telefonos lapja (sheets/{id}) és a csapat nyilvános lapjai (characters/{id}).
@@ -171,12 +172,9 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a betöltött sheet.js változata egyezik-e ezzel az oldallal (a böngésző gyorsítótárából régi is jöhet); ha nem, a lap nem írható
-const SHEET_V = 4;
+const SHEET_V = 5;
 let sheetStale = H.VERSION !== SHEET_V;
-const $ = s => document.querySelector(s);
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const {isObj, num, str, mod, sgn} = H;
-const safeUrl = v => typeof v === 'string' && /^(https?:\/\/|data:image\/)/i.test(v.trim()) ? v.trim() : '';
+const {isObj, num, str, mod, sgn, safeUrl} = H;
 const ST = {healthy: 'Sértetlen', hurt: 'Sérült', bloodied: 'Súlyosan sérült', down: 'Eszméletlen'};
 const RESET_HU = {short: 'short rest', long: 'long rest', none: 'nem töltődik'};
 const PROF_MARK = {2: '◆', 1: '●', 0.5: '½', 0: '○'};
@@ -229,12 +227,7 @@ function renderList() {
     ${sheetErr ? `<p class="warn">⚠ A karakterlapok most nem érhetők el (${esc(sheetErr)}).</p>` : ''}`;
 }
 
-// ---------- kocka (kriptográfiai véletlen, elutasításos mintavétellel) ----------
-function rnd(d) {
-  const lim = Math.floor(0x100000000 / d) * d, a = new Uint32Array(1);
-  do crypto.getRandomValues(a); while (a[0] >= lim);
-  return (a[0] % d) + 1;
-}
+// ---------- kocka (az rnd a kozos.js-ben: kriptográfiai véletlen) ----------
 function rollExpr(expr, crit = false) {
   let total = 0; const parts = [];
   for (const m of String(expr).replace(/−/g, '-').replace(/\s+/g, '').matchAll(/([+-]?)(?:(\d*)d(\d+)|(\d+))/gi)) {

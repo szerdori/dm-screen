@@ -83,7 +83,7 @@ try {
       } while ($kesz -ne '1' -and ((Get-Date) - $t0).TotalMinutes -lt 6)
       if ($kesz -ne '1') { Write-Host 'A tesztek nem fejeződtek be 6 percen belül.' -ForegroundColor Red; exit 2 }
       $riport = $cdp.Eval("document.getElementById('report').textContent")
-      $fajlok = [string[]]@('index.html', 'sheet.js', 'karakter.html', 'player.html')
+      $fajlok = [string[]]@('index.html', 'sheet.js', 'karakter.html', 'player.html', 'kozos.js')
       $eredm = [Coverage]::Build($root, $fajlok, $cdp, $cdp.Call('Profiler.takePreciseCoverage', '{}'))
     } finally { if (-not $proc.HasExited) { $proc.Kill() } }
 
@@ -105,6 +105,8 @@ try {
     [Coverage]::Html($eredm, $html)
     [IO.File]::WriteAllText($txt, [Coverage]::Missed($eredm), [Text.Encoding]::UTF8)
     Write-Host "`nRészletes riport: $html`nLe nem futott függvények: $txt"
+    # hibás teszt mellett a lefedettségmérés se jelezzen sikert
+    if ($riport -notmatch 'ÖSSZESEN: \d+ sikeres, 0 hibás') { Write-Host "`nNEM MINDEN TESZT SIKERES." -ForegroundColor Red; exit 1 }
     exit 0
   }
 

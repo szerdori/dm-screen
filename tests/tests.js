@@ -3080,6 +3080,19 @@ describe('Telefonos karakterlap (karakter.html)', () => {
 
 // ======================================================================
 describe('Általános', () => {
+  test('közös kód: a három oldal a kozos.js $ / esc / rnd függvényét használja', () => {
+    const src = w => ['$', 'esc', 'rnd'].map(n => w.eval(n).toString());
+    eq(src(P), src(W), 'player.html'); eq(src(K), src(W), 'karakter.html');
+    for (const w of [W, P, K]) {
+      eq(w.eval(`esc('<a href="x">\\'&')`), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;');
+      ok(w.document.querySelector('script[src^="kozos.js"]'), 'kozos.js betöltve');
+    }
+  });
+  test('közös kód: az index.html és a karakter.html a sheet.js segédeit használja, nem saját másolatot', () => {
+    for (const n of ['ABIL', 'ABIL_FULL', 'SKILLS', 'skillLabel', 'EMAIL_RE', 'num', 'isObj', 'safeUrl', 'sgn', 'propOf']) ok(A(n) === W.Sheet[n], 'index.html: ' + n);
+    for (const n of ['isObj', 'num', 'str', 'mod', 'sgn', 'safeUrl']) ok(K.eval(n) === K.Sheet[n], 'karakter.html: ' + n);
+    eq([A(`propOf('finesse|PHB')`), A(`propOf({uid: 'light|PHB'})`), A('propOf(null)')], ['finesse', 'light', '']);
+  });
   test('nem volt JavaScript-hiba az app futása közben', () => eq(appErrors, []));
 });
 
