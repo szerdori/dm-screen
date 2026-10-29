@@ -213,10 +213,11 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 <script src="js/logika/konyvtar.js?v=1"></script>
 <script src="js/felulet/harcter.js?v=1"></script>
 <script src="js/felulet/jatekos-kepernyo.js?v=1"></script>
+<script src="js/felulet/modal.js?v=1"></script>
 <script>
 'use strict';
 // a közös fájlok várt változata (= a <script src> ?v= száma; régi, gyorsítótárazott példánynál a lapokra nem írunk – syncSheets)
-const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1, tar: 1, alap: 1, harc: 1, nehezseg: 1, loot: 1, csapat: 1, 'import-5etools': 1, 'import-ddb': 1, 'import-json': 1, szabalykonyv: 1, lapszinkron: 1, mentes: 1, konyvtar: 1, harcter: 1, 'jatekos-kepernyo': 1};
+const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1, tar: 1, alap: 1, harc: 1, nehezseg: 1, loot: 1, csapat: 1, 'import-5etools': 1, 'import-ddb': 1, 'import-json': 1, szabalykonyv: 1, lapszinkron: 1, mentes: 1, konyvtar: 1, harcter: 1, 'jatekos-kepernyo': 1, modal: 1};
 let libTab = 'lib';
 
 // ---------- mentés és biztonsági mentések (megjelenítés) ----------
@@ -224,18 +225,6 @@ window.addEventListener('beforeunload', e => {
   try { localStorage.setItem(HELYI.allapot, JSON.stringify(S)); } catch {}
   if (saveTimer) { doSave(); e.preventDefault(); }
 });
-async function openBackups() {
-  openModal('<h2>Biztonsági mentések</h2><p class="muted">Betöltés…</p>');
-  let idx = [];
-  try { idx = await backupIndex(); } catch (e) { $('#modalBox').innerHTML = `<h2>Biztonsági mentések</h2><p style="color:var(--red)">Nem sikerült betölteni (${esc(e.code || e.message)}).</p>`; return; }
-  const when = b => { const d = new Date(b.createdAt); return isNaN(d) ? '' : d.toLocaleString('hu-HU', {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'}); };
-  $('#modalBox').innerHTML = `<h2>Biztonsági mentések</h2>
-    <p class="hint">Naponta az első megnyitáskor automatikusan készül egy mentés a felhőbe, az utolsó ${BACKUP_KEEP} marad meg. Visszaállítás előtt a mostani állapotról is készül egy mentés, így az is visszahozható.</p>
-    ${backupWarn ? `<p style="color:var(--orange)">⚠ ${esc(backupWarn)}</p>` : ''}
-    <div class="toolbar"><button data-act="backupNow">Mentés most</button><button data-act="exportAll">💾 Mentés fájlba</button></div>
-    <div class="rows">${idx.length ? idx.map(b => `<div class="lrow" data-backup="${esc(b.id)}"><span class="nm"><b>${esc(when(b))}</b><small>${esc(b.note || '')} · ${esc(num(b.library))} lény · ${esc(num(b.saved))} mentett encounter</small></span>
-      <button data-act="backupRestore">Visszaállítás</button></div>`).join('') : '<p class="muted">Még nincs felhős mentés.</p>'}</div>`;
-}
 
 // a Firebase-modul hívja (lent), amikor kiderül, be vagy-e lépve
 window.DMApp = {
@@ -426,32 +415,8 @@ document.addEventListener('change', e => {
 document.addEventListener('input', e => { if (e.target.id === 'portraitUrl') setPortrait(e.target.value.trim()); });
 
 
-// ---------- modal ----------
-function openModal(html, wide = false) { $('#modalBox').innerHTML = html; $('#modalBox').classList.toggle('wide', wide); $('#modal').hidden = false; }
-function closeModal() { $('#modal').hidden = true; $('#modalBox').innerHTML = ''; }
 $('#modal').addEventListener('mousedown', e => { if (e.target.id === 'modal') closeModal(); });
 
-function openMenu() {
-  openModal(`<h2>Menü</h2><div class="rows">
-    <div class="lrow"><span class="nm">Új harc: ellenfelek törlése, a játékosok maradnak, initiative és kör nullázása</span><button data-act="newFight">Új harc</button></div>
-    <div class="lrow"><span class="nm">Mindenki eltávolítása az encounterből</span><button data-act="clearAll">Ürítés</button></div>
-    <div class="lrow"><span class="nm">Teljes mentés letöltése fájlba (könyvtár + encounter)</span><button data-act="exportAll">Exportálás</button></div>
-    <div class="lrow"><span class="nm">Teljes mentés visszatöltése fájlból (felülírja a mostanit)</span><button data-act="importAll">Importálás</button></div>
-    ${Tar.kapcsolva() ? `<div class="lrow"><span class="nm">Felhős biztonsági mentések (naponta automatikusan, az utolsó ${BACKUP_KEEP} megmarad) – visszaállítás${backupWarn ? ` <span style="color:var(--orange)">⚠ ${esc(backupWarn)}</span>` : ''}</span><button data-act="openBackups">Megnyitás</button></div>` : ''}
-    <div class="lrow"><span class="nm">Kitölthető sablon letöltése saját lényhez</span><button data-act="downloadTemplate">Sablon letöltése</button></div>
-    <div class="lrow"><span class="nm">📖 Szabálykönyv a játékos appnak (varázslatok, tárgyak, featek) – frissítés az 5e.tools-ról${sheetsWarn ? ` <span style="color:var(--orange)">⚠ A telefonos karakterlapok nem olvashatók (${esc(sheetsWarn)}) – a Firebase konzolba be kell másolni a firestore.rules új változatát.</span>` : ''}</span><button data-act="rulebook">Megnyitás</button></div>
-  ${Tar.kapcsolva() ? `<div class="lrow"><span class="nm">Belépve: <b>${esc(authInfo.email || '')}</b></span><button data-act="signOut">Kilépés</button></div>` : ''}
-  </div>
-  <p class="hint">${Tar.kapcsolva() ? 'Az adatok automatikusan mentődnek a felhőbe (Firebase), így bármelyik gépről elérheted őket belépés után. Ha játék közben elmegy az internet, a program tovább működik, és később feltölti a változásokat.' : 'Az adatok csak ebben a böngészőben vannak elmentve.'}</p>`);
-}
-function openInitMenu() {
-  openModal(`<h2>Initiative dobás</h2><div class="rows">
-    <div class="lrow"><span class="nm">Ellenfelek és NPC-k dobása (a játékosokét te írod be)</span><button class="primary" data-act="init" data-mode="monsters">Dobás</button></div>
-    <div class="lrow"><span class="nm">Csak akinek még nincs</span><button data-act="init" data-mode="missing">Dobás</button></div>
-    <div class="lrow"><span class="nm">Mindenki, a játékosok is</span><button data-act="init" data-mode="all">Dobás</button></div>
-  </div>
-  <p><label><input type="checkbox" data-setting="groupInit" ${S.settings.groupInit ? 'checked' : ''}> Az egyszerre hozzáadott azonos lények közös initiative-et kapnak</label></p>`);
-}
 
 // ---------- könyvtár ----------
 function openLib(tab) { if (tab) libTab = tab; openModal('<div id="libRoot"></div>'); renderLib(); }
@@ -578,30 +543,6 @@ function ddbDone(c) {
     <input type="number" class="cnt" value="1" hidden><button class="primary" data-act="libAdd">＋ Encounterbe</button><button data-act="libEdit">✎ Ellenőrzés</button></div>`;
 }
 
-// ---------- szabálykönyv (megjelenítés: Menü → Szabálykönyv) ----------
-async function openRulebook() {
-  openModal('<h2>📖 Szabálykönyv a játékos appnak</h2><p class="muted">Betöltés…</p>');
-  let meta = null;
-  try { meta = await szabalyMeta(); } catch (e) { meta = {error: e.code || e.message}; }
-  $('#modalBox').innerHTML = `<h2>📖 Szabálykönyv a játékos appnak</h2>
-    <p>A telefonos karakterlap ebből keresi a varázslatokat, tárgyakat és featek leírását. Források: <b>PHB, XGE, TCE</b> (tárgyaknál a <b>DMG 2014</b> is), a 2024-es könyvek nélkül.
-    A frissítés letölti az 5e.tools-tükörből, és a privát felhődbe menti; a játékosok telefonja a következő megnyitáskor egyszer letölti, utána internet nélkül is megvan.</p>
-    ${!Tar.kapcsolva() ? '<p style="color:var(--orange)">Feltöltéshez be kell lépni (felhő nélkül csak a Tárgyak fül tudja közvetlenül használni).</p>'
-      : meta?.error ? `<p style="color:var(--red)">⚠ Nem olvasható a felhőből (${esc(meta.error)}). Ha ez „permission-denied”, a konzolban még a régi szabályok vannak – másold be a firestore.rules új változatát.</p>`
-      : meta ? `<p>Jelenlegi változat: <b>${esc(new Date(meta.version).toLocaleString('hu-HU'))}</b> – ${esc(rbCounts(meta.counts || {}))}.</p>` : '<p class="muted">Még nincs feltöltve.</p>'}
-    <div class="toolbar"><button class="primary" data-act="rbUpdate" ${Tar.kapcsolva() ? '' : 'disabled'}>⟳ Letöltés és feltöltés most</button><span id="rbMsg" class="hint"></span></div>`;
-}
-async function rulebookUpdate() {
-  const msg = t => { const el = $('#rbMsg'); if (el) el.textContent = t; };
-  try {
-    msg('Letöltés az 5e.tools-tükörből…');
-    const rb = await buildRulebook();
-    const meta = await uploadRulebook(rb, msg);
-    rulebook = {version: meta.version, counts: meta.counts, rb};
-    msg('✓ Kész: ' + rbCounts(meta.counts));
-    log('📖 Szabálykönyv frissítve: ' + esc(rbCounts(meta.counts)));
-  } catch (e) { msg('⚠ Nem sikerült: ' + (e.code || e.message)); }
-}
 
 // ---------- tárgyak a szabálykönyvből a játékosok felszereléséhez ----------
 function itemsTabHtml() {
@@ -631,12 +572,6 @@ function jsonTabHtml() {
     <div class="toolbar"><button data-act="downloadSheetTemplate">⬇ Karakterlap-sablon letöltése</button><button data-act="showSheetTemplate">Karakterlap-sablon betöltése ide</button></div>
     <textarea id="jsonIn" rows="16" placeholder='{ "name": "...", "ac": 13, "hp": {"max": 22}, ... }'></textarea>
     <div class="toolbar"><button class="primary" data-act="jsonImport">Importálás a könyvtárba</button><span id="jsonMsg" class="hint"></span></div>`;
-}
-function download(name, obj) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], {type: 'application/json'}));
-  a.download = name; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 let fileMode = 'creatures';
 $('#fileIn').addEventListener('change', async e => {
