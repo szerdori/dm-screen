@@ -203,10 +203,11 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 <script src="js/logika/harc.js?v=1"></script>
 <script src="js/logika/nehezseg.js?v=1"></script>
 <script src="js/logika/loot.js?v=1"></script>
+<script src="js/logika/csapat.js?v=1"></script>
 <script>
 'use strict';
 // a közös fájlok várt változata (= a <script src> ?v= száma; régi, gyorsítótárazott példánynál a lapokra nem írunk – syncSheets)
-const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1, tar: 1, alap: 1, harc: 1, nehezseg: 1, loot: 1};
+const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1, tar: 1, alap: 1, harc: 1, nehezseg: 1, loot: 1, csapat: 1};
 let libTab = 'lib';
 
 // D&D Beyond import: fegyver- és páncéljártasság (nem eszköz)
@@ -663,23 +664,9 @@ async function rollLootUi() {
     <div class="toolbar"><button data-act="lootRoll">🎲 Újradobás</button><button data-act="lootCopy">📋 Másolás</button><button data-act="lootLog">Naplóba</button></div>`;
 }
 
-// ---------- Csapat nézet (harcon kívül): passzív értékek, skillek, felszerelés ----------
-const PASSIVES = [['perception', 'Perception'], ['investigation', 'Investigation'], ['insight', 'Insight']];
+// ---------- Csapat nézet (megjelenítés) ----------
 const PROF_MARK = {2: '◆', 1: '●', 0.5: '½', 0: ''};
 const PROF_HU = {2: 'expertise', 1: 'jártas', 0.5: 'fél jártasság (Jack of All Trades)', 0: ''};
-// csapattagok: amíg nincs beállítva (partyIds = null), az összes játékos; utána a kiválasztottak
-const byName = (a, b) => a.name.localeCompare(b.name, 'hu');
-function partyMembers() {
-  const ids = S.settings.partyIds;
-  if (!Array.isArray(ids)) return S.library.filter(c => c.kind === 'pc').sort(byName);
-  return ids.map(id => S.library.find(c => c.id === id)).filter(Boolean).sort(byName);
-}
-function setPartyMember(id, on) {
-  const ids = new Set(partyMembers().map(c => c.id));
-  on ? ids.add(id) : ids.delete(id);
-  S.settings.partyIds = [...ids];
-  save();
-}
 // oszlop szerinti rendezés: p = passzív táblázat (sorok = játékosok), s = skill-táblázat (sorok = skillek)
 let partySort = {p: {col: null, dir: 1}, s: {col: null, dir: 1}};
 const sortArrow = (t, col) => partySort[t].col === col ? (partySort[t].dir > 0 ? ' ▲' : ' ▼') : '';
@@ -687,25 +674,6 @@ function setPartySort(t, col) {
   const s = partySort[t];
   if (s.col === col) s.dir = -s.dir;
   else { s.col = col; s.dir = col === 'name' || col === 'skill' ? 1 : -1; }  // számoknál először a legnagyobb
-}
-// skill-bónusz: D&D Beyondról pontosan; kézzel felvitt játékosnál a „Skills” mezőből, különben a képességmódosító
-function partySkill(c, k) {
-  if (c.skillMods?.[k]) return c.skillMods[k];
-  const base = mod(c.abilities[SKILLS[k]]);
-  const m = c.skills.match(new RegExp(skillLabel(k).replace(/ /g, '\\s*') + '\\s*([+\\-−]\\s*\\d+)', 'i'));
-  if (m) { const b = parseInt(m[1].replace(/\s/g, '').replace('−', '-')); return {b, p: b > base ? 1 : 0}; }
-  return {b: base, p: 0};
-}
-const passiveScore = (c, k) => 10 + partySkill(c, k).b + (c.passiveBonus?.[k] || 0);
-const coinsGp = cur => Math.round(COINS.reduce((s, k) => s + (cur?.[k] || 0) * COIN_GP[k], 0) * 100) / 100;
-function inventoryToText(list) { return list.map(i => (i.qty !== 1 ? i.qty + '× ' : '') + i.name + (i.container ? ` [${i.container}]` : '')).join('\n'); }
-function textToInventory(text, old = []) {
-  return String(text).split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-    const m = l.match(/^(?:(\d+)\s*[×x*]\s*)?(.+?)(?:\s*\[([^\]]+)\])?$/i);
-    const name = m[2].trim(), container = (m[3] || '').trim();
-    const prev = old.find(o => o.name === name && o.container === container) || old.find(o => o.name === name) || {};
-    return {...prev, name, container, qty: m[1] ? +m[1] : 1};
-  });
 }
 function openParty() { openModal(partyHtml(), true); }
 // újrarajzolás úgy, hogy a keresés és az utolsó dobás eredménye megmaradjon
