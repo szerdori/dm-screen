@@ -206,10 +206,11 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 <script src="js/logika/csapat.js?v=1"></script>
 <script src="js/logika/import-5etools.js?v=1"></script>
 <script src="js/logika/import-ddb.js?v=1"></script>
+<script src="js/logika/import-json.js?v=1"></script>
 <script>
 'use strict';
 // a közös fájlok várt változata (= a <script src> ?v= száma; régi, gyorsítótárazott példánynál a lapokra nem írunk – syncSheets)
-const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1, tar: 1, alap: 1, harc: 1, nehezseg: 1, loot: 1, csapat: 1, 'import-5etools': 1, 'import-ddb': 1};
+const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1, tar: 1, alap: 1, harc: 1, nehezseg: 1, loot: 1, csapat: 1, 'import-5etools': 1, 'import-ddb': 1, 'import-json': 1};
 let libTab = 'lib';
 
 // ---------- mentés: Firebase (Firestore), plusz másolat a böngészőben ----------
@@ -1469,26 +1470,13 @@ function addItemTo(pcId, it, qty) {
   return c;
 }
 
-// ---------- JSON / sablon ----------
+// ---------- JSON / sablon (megjelenítés: fül, fájl) ----------
 function jsonTabHtml() {
   return `<p>Illessz be JSON-t: a saját sablon szerinti lényt (egyet vagy tömböt), 5e.tools szörny JSON-t, D&D Beyond karakter JSON-t vagy <b>telefonos karakterlapot</b> (karakterlap-sablon) – a program felismeri.</p>
     <div class="toolbar"><button data-act="downloadTemplate">⬇ Sablon letöltése</button><button data-act="showTemplate">Sablon betöltése ide</button><button data-act="importFile">Fájl megnyitása…</button><button data-act="newCreature">✎ Új lény űrlappal</button></div>
     <div class="toolbar"><button data-act="downloadSheetTemplate">⬇ Karakterlap-sablon letöltése</button><button data-act="showSheetTemplate">Karakterlap-sablon betöltése ide</button></div>
     <textarea id="jsonIn" rows="16" placeholder='{ "name": "...", "ac": 13, "hp": {"max": 22}, ... }'></textarea>
     <div class="toolbar"><button class="primary" data-act="jsonImport">Importálás a könyvtárba</button><span id="jsonMsg" class="hint"></span></div>`;
-}
-const is5e = o => o.hp?.average != null || Array.isArray(o.ac) || Array.isArray(o.size) || !!o._copy || (Array.isArray(o.action) && o.action[0]?.entries);
-const isDDB = o => (o.data && Array.isArray(o.data.stats)) || (Array.isArray(o.stats) && o.stats[0]?.id != null);
-async function importAny(obj) {
-  const arr = Array.isArray(obj) ? obj : obj.monster || obj.creatures || (obj.library && !obj.enc ? obj.library : null) || [obj];
-  const out = [], sheets = [];
-  for (const o of arr) {
-    if (o?.format === Sheet.FORMAT) sheets.push(importSheet(o));
-    else if (isDDB(o)) out.push(convertDDB(o));
-    else if (is5e(o)) out.push(convert5e(await resolveCopy(o)));
-    else out.push(normCreature({...o, id: uid()}));
-  }
-  return [...sheets, ...out.map(c => upsertLibrary(c))];
 }
 function download(name, obj) {
   const a = document.createElement('a');
