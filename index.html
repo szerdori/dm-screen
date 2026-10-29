@@ -195,20 +195,21 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 <div id="gate"><div>Betöltés…</div></div>
 <input type="file" id="fileIn" accept=".json,application/json" hidden>
 
-<script src="kozos.js?v=2"></script>
+<script src="kozos.js?v=3"></script>
 <script src="sheet.js?v=6"></script>
+<script src="szerzodes.js?v=1"></script>
 <script>
 'use strict';
 // ---------- alapok ----------
-const uid = () => Math.random().toString(36).slice(2, 10);
 // a sheet.js közös segédei (a karakter.html is ezeket használja)
 const {ABIL, ABIL_FULL, SKILLS, skillLabel, EMAIL_RE, num, isObj, safeUrl, sgn, propOf} = Sheet;
+// a szerződés (szerzodes.js): útvonalak, a lények formátuma és a bejövő adatok tisztítói
+const {UT, HELYI, CSATORNA, SECTIONS, TEMPLATE, KINDS, str, safeId, blankCreature, splitEntry, normInventory, normCreature, normCombatant, sanitizeState} = Szerzodes;
 // a közös fájlok várt változata (= a <script src> ?v= száma; régi, gyorsítótárazott példánynál a lapokra nem írunk – syncSheets)
-const VART_MODULOK = {kozos: 2, sheet: 6};
+const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 const regiFajl = () => typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0;
 const CONDITIONS = ['Blinded','Charmed','Deafened','Exhaustion','Frightened','Grappled','Incapacitated','Invisible','Paralyzed','Petrified','Poisoned','Prone','Restrained','Stunned','Unconscious'];
-const SECTIONS = ['traits','actions','bonusActions','reactions','legendary'];
 const SECTION_HU = {traits:'Tulajdonságok', actions:'Akciók', bonusActions:'Bónusz akciók', reactions:'Reakciók', legendary:'Legendás akciók'};
 const KIND_HU = {monster:'Szörny', npc:'NPC', pc:'Játékos'};
 const sideOf = x => x.side === 'enemy' || x.side === 'ally' ? x.side : (x.c.kind === 'monster' ? 'enemy' : 'ally');
@@ -216,133 +217,19 @@ const SIDE_HU = {enemy: 'Ellenfél', ally: 'Csapattárs'};
 const mod = s => Math.floor(((+s || 10) - 10) / 2);
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
-const TEMPLATE = {
-  "_leiras": "DM Screen sablon. Töltsd ki, és importáld: Könyvtár → JSON / Sablon fül. kind: monster | npc | pc. A szekciókban (traits, actions, bonusActions, reactions, legendary) minden elem {name, text}. A szövegben lévő dobásokat (pl. 1d6+2, +5 to hit, Recharge 5–6) a program kattinthatóvá teszi. initBonus: null = DEX módosító. Több lényt is megadhatsz egy tömbben: [ {...}, {...} ].",
-  "name": "Ködvadász", "kind": "monster", "size": "Medium", "type": "aberration", "alignment": "neutral evil", "cr": "3",
-  "ac": 14, "acNote": "natural armor", "hp": {"max": 52, "formula": "8d8+16"}, "speed": "30 ft., climb 30 ft.",
-  "abilities": {"str": 14, "dex": 16, "con": 14, "int": 8, "wis": 12, "cha": 6},
-  "saves": {"dex": 5}, "skills": "Stealth +7, Perception +3", "senses": "darkvision 60 ft., passive Perception 13",
-  "languages": "Deep Speech", "initBonus": null, "resist": "", "immune": "poison", "vuln": "", "condImmune": "poisoned",
-  "traits": [{"name": "Ködben járás", "text": "Sűrű ködben a ködvadász láthatatlan."}],
-  "actions": [
-    {"name": "Multiattack", "text": "Két Karom támadás."},
-    {"name": "Karom", "text": "Melee Weapon Attack: +5 to hit, reach 5 ft. Hit: 1d8+3 slashing damage."},
-    {"name": "Ködlehelet (Recharge 5–6)", "text": "15 ft. cone, DC 12 Constitution saving throw. 3d6 poison damage on a failed save, half as much on a success."}
-  ],
-  "bonusActions": [], "reactions": [], "legendary": [], "legendaryCount": 0, "notes": ""
-};
-
 // ---------- állapot ----------
 let S = {
   library: [],
   enc: {list: [], round: 1, active: null},
   saved: [],
-  settings: {groupInit: true, rollHp: false, sources: ['MM','VGM','MTF','MPMM']}
+  settings: structuredClone(Szerzodes.ALAP_BEALLITASOK)
 };
 let selected = null;
 let logLines = [];
 let libTab = 'lib';
 
-function blankCreature() {
-  return {id: uid(), name: 'Új lény', kind: 'monster', source: 'saját', size: '', type: '', alignment: '', cr: '',
-    ac: 10, acNote: '', hp: {max: 10, formula: ''}, speed: '30 ft.',
-    abilities: {str:10,dex:10,con:10,int:10,wis:10,cha:10}, saves: {}, skills: '', senses: '', languages: '',
-    initBonus: null, resist: '', immune: '', vuln: '', condImmune: '',
-    traits: [], actions: [], bonusActions: [], reactions: [], legendary: [], legendaryCount: 0, notes: ''};
-}
-// ---------- bejövő adatok tisztítása ----------
-// Minden betöltött adat (import, felhő, böngésző-tároló, mentésfájl) ezeken megy át, hogy egy
-// rosszindulatú fájl se tudjon kódot becsempészni: a számok számok, a típusok csak megengedett
-// értékek, az azonosítók csak biztonságos karakterek, a portré csak kép-link lehet.
-const KINDS = ['monster', 'npc', 'pc'], SIDES = ['enemy', 'ally'], VIS = ['dm', 'party'];
-const str = v => v == null ? '' : typeof v === 'object' ? '' : String(v);
-const safeId = v => { const s = typeof v === 'number' ? String(v) : v; return typeof s === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(s) ? s : uid(); };
+// D&D Beyond import: fegyver- és páncéljártasság (nem eszköz)
 const WEAPON_ARMOR_PROF = /^(simple|martial)-weapons$|-armor$|^shields$|^(club|dagger|greatclub|handaxe|javelin|light-hammer|mace|quarterstaff|sickle|spear|crossbow-light|crossbow-heavy|crossbow-hand|dart|shortbow|sling|battleaxe|flail|glaive|greataxe|greatsword|halberd|lance|longsword|maul|morningstar|pike|rapier|scimitar|shortsword|trident|war-pick|warhammer|whip|blowgun|longbow|net|firearms)$/;
-function normInventory(list) {
-  return (Array.isArray(list) ? list : []).slice(0, 1000).filter(isObj).map(i => ({
-    name: str(i.name), qty: Math.max(0, Math.floor(num(i.qty, 1))), equipped: !!i.equipped, attuned: !!i.attuned,
-    magic: !!i.magic, rarity: str(i.rarity), container: str(i.container), note: str(i.note), ref: str(i.ref)
-  })).filter(i => i.name);
-}
-function normCreature(c) {
-  c = isObj(c) ? c : {};
-  const b = blankCreature();
-  const o = {...b, ...c};
-  delete o._leiras;
-  for (const k of ['name', 'source', 'size', 'type', 'alignment', 'cr', 'acNote', 'speed', 'skills', 'senses', 'languages', 'resist', 'immune', 'vuln', 'condImmune', 'notes']) o[k] = str(o[k]);
-  o.kind = KINDS.includes(o.kind) ? o.kind : 'monster';
-  o.id = safeId(o.id);
-  if (o.libId != null) o.libId = safeId(o.libId);
-  if (o.ddbId != null) o.ddbId = num(o.ddbId, null);
-  o.portrait = safeUrl(o.portrait);
-  const ab = isObj(c.abilities) ? c.abilities : {};
-  o.abilities = {}; ABIL.forEach(a => o.abilities[a] = num(ab[a], 10));
-  const hp = isObj(c.hp) ? c.hp : c.hp != null ? {max: c.hp} : {};
-  o.hp = {max: Math.max(1, num(hp.max, 10)), formula: str(hp.formula)};
-  if (hp.cur != null) o.hp.cur = Math.max(0, num(hp.cur, o.hp.max));
-  o.ac = num(o.ac, 10) || 10;
-  o.legendaryCount = Math.max(0, Math.min(10, Math.floor(num(o.legendaryCount, 0))));
-  const sv = isObj(c.saves) ? c.saves : {};
-  o.saves = {}; ABIL.forEach(a => { const v = num(sv[a], null); if (v !== null) o.saves[a] = v; });
-  for (const k of SECTIONS) o[k] = (Array.isArray(o[k]) ? o[k] : []).map(e => typeof e === 'string' ? splitEntry(e) : {name: str(e?.name), text: str(e?.text)});
-  o.initBonus = num(o.initBonus, null);
-  // harcon kívüli adatok (Csapat nézet)
-  o.inventory = normInventory(c.inventory);
-  const cur = isObj(c.currency) ? c.currency : {};
-  o.currency = {}; ['pp', 'gp', 'ep', 'sp', 'cp'].forEach(k => o.currency[k] = Math.max(0, num(cur[k], 0)));
-  const sm = isObj(c.skillMods) ? c.skillMods : null;
-  if (sm) { o.skillMods = {}; for (const k of Object.keys(SKILLS)) if (isObj(sm[k])) o.skillMods[k] = {b: num(sm[k].b, 0), p: [0, 0.5, 1, 2].includes(sm[k].p) ? sm[k].p : 0}; }
-  else delete o.skillMods;
-  const pbo = isObj(c.passiveBonus) ? c.passiveBonus : {};
-  o.passiveBonus = {perception: num(pbo.perception, 0), investigation: num(pbo.investigation, 0), insight: num(pbo.insight, 0)};
-  o.tools = str(o.tools);
-  o.importedAt = typeof c.importedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c.importedAt) ? c.importedAt : '';
-  // játékos app: kié a karakter (Google-fiók), ki láthatja, és NPC-nél mennyi látszik belőle
-  const owner = str(c.owner).trim().toLowerCase();
-  if (o.kind === 'pc' && EMAIL_RE.test(owner)) o.owner = owner; else delete o.owner;
-  if (o.kind === 'monster') delete o.share;
-  else {
-    const sh = isObj(c.share) ? c.share : {}, npc = o.kind === 'npc';
-    o.share = {vis: VIS.includes(sh.vis) ? sh.vis : npc ? 'dm' : 'party', hp: ['exact', 'label'].includes(sh.hp) ? sh.hp : npc ? 'label' : 'exact', ac: typeof sh.ac === 'boolean' ? sh.ac : !npc};
-  }
-  return o;
-}
-function normCombatant(x) {
-  x = isObj(x) ? x : {};
-  const c = normCreature(x.c);
-  delete c.hp.cur;
-  const o = {
-    cid: safeId(x.cid), num: Math.max(0, Math.floor(num(x.num, 0))), c,
-    hp: Math.max(0, num(x.hp, c.hp.max)), temp: Math.max(0, num(x.temp, 0)), init: num(x.init, null),
-    cond: (Array.isArray(x.cond) ? x.cond : []).map(k => ({name: str(k?.name), rounds: k?.rounds == null ? null : Math.max(0, Math.floor(num(k.rounds, 0)))})),
-    conc: !!x.conc, dead: !!x.dead, notes: str(x.notes), leg: Math.max(0, Math.floor(num(x.leg, 0))),
-    group: x.group == null ? null : safeId(x.group), hiddenP: !!x.hiddenP, publicName: str(x.publicName)
-  };
-  if (SIDES.includes(x.side)) o.side = x.side;
-  return o;
-}
-function sanitizeState(d) {
-  d = isObj(d) ? d : {};
-  const enc = isObj(d.enc) ? d.enc : {}, st = isObj(d.settings) ? d.settings : {};
-  const list = (Array.isArray(enc.list) ? enc.list : []).map(normCombatant);
-  return {
-    library: (Array.isArray(d.library) ? d.library : []).map(normCreature),
-    saved: (Array.isArray(d.saved) ? d.saved : []).map(e => ({id: safeId(e?.id), name: str(e?.name), list: (Array.isArray(e?.list) ? e.list : []).map(normCreature)})),
-    enc: {list, round: Math.max(1, Math.floor(num(enc.round, 1))), active: list.some(x => x.cid === enc.active) ? enc.active : null},
-    settings: {
-      groupInit: typeof st.groupInit === 'boolean' ? st.groupInit : S.settings.groupInit,
-      rollHp: typeof st.rollHp === 'boolean' ? st.rollHp : S.settings.rollHp,
-      sources: Array.isArray(st.sources) ? st.sources.filter(s => typeof s === 'string' && /^[\w-]{1,30}$/.test(s)) : S.settings.sources,
-      lastExport: typeof st.lastExport === 'string' && /^\d{4}-\d{2}-\d{2}/.test(st.lastExport) ? st.lastExport.slice(0, 10) : (S.settings.lastExport || ''),
-      partyIds: Array.isArray(st.partyIds) ? [...new Set(st.partyIds.filter(id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id)))] : null
-    }
-  };
-}
-function splitEntry(s) {
-  s = s.trim();
-  const i = s.indexOf('. ');
-  return i > 0 && i < 80 ? {name: s.slice(0, i), text: s.slice(i + 2)} : {name: '', text: s};
-}
 const initBonusOf = c => c.initBonus ?? mod(c.abilities.dex);
 const nameOf = x => x.c.name + (x.num ? ' ' + x.num : '');
 const byId = id => S.enc.list.find(x => x.cid === id);
@@ -383,9 +270,9 @@ function publicChars() {
 }
 const playerEmails = () => [...new Set(S.library.filter(c => c.owner).map(c => c.owner))].sort();
 function syncSharing(ops) {
-  syncCol('characters', publicChars(), 'pub', ops, stableJson);
+  syncCol(UT.karakterek, publicChars(), 'pub', ops, stableJson);
   const pl = JSON.stringify(playerEmails());
-  if (pl !== lastSaved.players) { ops.push(DB.set('access/players', {emails: JSON.parse(pl)})); lastSaved.players = pl; }
+  if (pl !== lastSaved.players) { ops.push(DB.set(UT.jatekosok, {emails: JSON.parse(pl)})); lastSaved.players = pl; }
 }
 const sharingDirty = () => { const now = publicChars(), prev = lastSaved.pub || {};
   return JSON.stringify(playerEmails()) !== lastSaved.players || now.length !== Object.keys(prev).length || now.some(p => prev[p.id] !== stableJson(p)); };
@@ -455,7 +342,7 @@ function syncSheets(ops) {
   // a böngésző gyorsítótárából régi közös fájl (sheet.js, kozos.js) jött: a lapokra nem írunk, amíg az oldal nem frissül (a könyvtári változás megmarad)
   if (regiFajl()) { if (!syncSheets.warned) log('⚠ Az oldal egy része régi változatból töltődött be: frissítsd (Ctrl + F5), addig a karakterlapokra nem írok.'); syncSheets.warned = true; return; }
   const now = new Date().toISOString(), by = authInfo.email || 'DM';
-  for (const id of sheetOps.del) { delete SHEETS[id]; delete shadow[id]; if (DB) ops.push(DB.del('sheets/' + id)); }
+  for (const id of sheetOps.del) { delete SHEETS[id]; delete shadow[id]; if (DB) ops.push(DB.del(UT.lap(id))); }
   sheetOps.del.clear();
   for (const c of S.library) {
     const s = SHEETS[c.id]; if (!s || c.kind !== 'pc') continue;
@@ -493,11 +380,11 @@ function syncSheets(ops) {
     }
     Object.entries(patch).forEach(([p, v]) => setPath(s, p, structuredClone(v)));
     SHEETS[c.id] = Sheet.norm({...s, updatedAt: now, updatedBy: by});
-    if (DB && !sheetOps.set.has(c.id)) ops.push(DB.update('sheets/' + c.id, {...JSON.parse(JSON.stringify(patch)), updatedAt: now, updatedBy: by}));
+    if (DB && !sheetOps.set.has(c.id)) ops.push(DB.update(UT.lap(c.id), {...JSON.parse(JSON.stringify(patch)), updatedAt: now, updatedBy: by}));
   }
-  for (const id of sheetOps.set) if (SHEETS[id] && DB) ops.push(DB.set('sheets/' + id, JSON.parse(JSON.stringify({...SHEETS[id], updatedAt: now, updatedBy: by}))));
+  for (const id of sheetOps.set) if (SHEETS[id] && DB) ops.push(DB.set(UT.lap(id), JSON.parse(JSON.stringify({...SHEETS[id], updatedAt: now, updatedBy: by}))));
   if (DB) sheetOps.set.clear();
-  try { localStorage.setItem('dmscreen-sheets', JSON.stringify(SHEETS)); } catch {}
+  try { localStorage.setItem(HELYI.lapok, JSON.stringify(SHEETS)); } catch {}
 }
 // élő figyelés: a teljes sheets gyűjtemény minden változáskor
 function onSheets(docs) {
@@ -585,13 +472,13 @@ async function doSave() {
   ensureIds();
   const ops = [];
   syncSheets(ops);
-  try { localStorage.setItem('dmscreen', JSON.stringify(S)); } catch {}
+  try { localStorage.setItem(HELYI.allapot, JSON.stringify(S)); } catch {}
   if (!DB) { setSaveState(authInfo.status === 'unconfigured' ? '✓ böngészőben mentve' : ''); return; }
   try {
     const state = JSON.stringify({enc: S.enc, settings: S.settings});
-    if (state !== lastSaved.state) { ops.push(DB.set('dmscreen/state', JSON.parse(state))); lastSaved.state = state; }
-    syncCol('dmscreen_library', S.library, 'lib', ops);
-    syncCol('dmscreen_saved', S.saved, 'saved', ops);
+    if (state !== lastSaved.state) { ops.push(DB.set(UT.allapot, JSON.parse(state))); lastSaved.state = state; }
+    syncCol(UT.konyvtar, S.library, 'lib', ops);
+    syncCol(UT.mentett, S.saved, 'saved', ops);
     syncSharing(ops);
     if (!ops.length) return;
     setSaveState(navigator.onLine ? 'mentés…' : '⚠ nincs internet – a változások később töltődnek fel');
@@ -603,10 +490,10 @@ async function doSave() {
   }
 }
 window.addEventListener('beforeunload', e => {
-  try { localStorage.setItem('dmscreen', JSON.stringify(S)); } catch {}
+  try { localStorage.setItem(HELYI.allapot, JSON.stringify(S)); } catch {}
   if (saveTimer) { doSave(); e.preventDefault(); }
 });
-function applyLoaded(d) { S = sanitizeState({...S, ...d}); }
+function applyLoaded(d) { S = sanitizeState({...S, ...d}, S.settings); }
 // teljes mentésfájl visszatöltése (Menü → Importálás)
 function importBackup(obj) {
   if (!isObj(obj) || !Array.isArray(obj.library) || !isObj(obj.enc)) throw new Error('Ez nem teljes DM Screen mentés');
@@ -614,17 +501,17 @@ function importBackup(obj) {
   save(); render();
 }
 function loadLocal() {
-  try { const t = localStorage.getItem('dmscreen'); if (t) applyLoaded(JSON.parse(t)); } catch {}
+  try { const t = localStorage.getItem(HELYI.allapot); if (t) applyLoaded(JSON.parse(t)); } catch {}
   try {
-    const t = localStorage.getItem('dmscreen-sheets'), o = t ? JSON.parse(t) : null;
+    const t = localStorage.getItem(HELYI.lapok), o = t ? JSON.parse(t) : null;
     if (isObj(o)) restoreSheets(Object.entries(o).map(([id, s]) => ({...s, id})));
   } catch {}
 }
 async function loadFromDb() {
-  const [st, lib, saved, pub, players, sheets] = await Promise.all([DB.get('dmscreen/state'), DB.list('dmscreen_library'), DB.list('dmscreen_saved'),
-    DB.list('characters'), DB.get('access/players'),
+  const [st, lib, saved, pub, players, sheets] = await Promise.all([DB.get(UT.allapot), DB.list(UT.konyvtar), DB.list(UT.mentett),
+    DB.list(UT.karakterek), DB.get(UT.jatekosok),
     // ha a konzolban még a régi szabályok vannak, a lapok nélkül is betölt (a Menü szól)
-    DB.list('sheets').then(l => { sheetsWarn = ''; return l; }, e => { sheetsWarn = e.code || e.message; return []; })]);
+    DB.list(UT.lapok).then(l => { sheetsWarn = ''; return l; }, e => { sheetsWarn = e.code || e.message; return []; })]);
   lastSaved = emptySaved();
   pub.forEach(p => lastSaved.pub[p.id] = stableJson(p));
   if (Array.isArray(players?.emails)) lastSaved.players = JSON.stringify(players.emails);
@@ -652,16 +539,16 @@ const BACKUP_KEEP = 14, BACKUP_MAX = 900000, EXPORT_DAYS = 7;
 let backupWarn = '';
 const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const hasData = () => S.library.length || S.enc.list.length || S.saved.length;
-async function backupIndex() { const d = await DB.get('dmscreen/backups'); return Array.isArray(d?.items) ? d.items : []; }
+async function backupIndex() { const d = await DB.get(UT.mentesek); return Array.isArray(d?.items) ? d.items : []; }
 async function addBackup(id, note, idx) {
   idx = idx || await backupIndex();
   const data = JSON.stringify({library: S.library, saved: S.saved, enc: S.enc, settings: S.settings, sheets: sheetList()});
   if (data.length > BACKUP_MAX) { backupWarn = 'A felhős biztonsági mentés kimaradt, mert túl nagy az adat (valószínűleg sok feltöltött portré). Mentsd fájlba rendszeresen!'; return false; }
-  await DB.set('dmscreen_backup/' + id, {data});
+  await DB.set(UT.mentes(id), {data});
   idx = [{id, note, createdAt: new Date().toISOString(), library: S.library.length, saved: S.saved.length}, ...idx.filter(b => b.id !== id)]
     .sort((a, b) => b.id.localeCompare(a.id));
-  for (const b of idx.slice(BACKUP_KEEP)) await DB.del('dmscreen_backup/' + b.id);
-  await DB.set('dmscreen/backups', {items: idx.slice(0, BACKUP_KEEP)});
+  for (const b of idx.slice(BACKUP_KEEP)) await DB.del(UT.mentes(b.id));
+  await DB.set(UT.mentesek, {items: idx.slice(0, BACKUP_KEEP)});
   backupWarn = '';
   return true;
 }
@@ -674,7 +561,7 @@ async function dailyBackup() {
 }
 const timeStamp = () => { const d = new Date(); return localDate(d) + '-' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0'); };
 async function restoreBackup(id) {
-  const doc = await DB.get('dmscreen_backup/' + id);
+  const doc = await DB.get(UT.mentes(id));
   if (typeof doc?.data !== 'string') throw new Error('a mentés nem található');
   const parsed = JSON.parse(doc.data);
   await addBackup(timeStamp() + '-elotte', 'visszaállítás előtt');  // a mostani állapotot is megőrizzük
@@ -711,7 +598,7 @@ window.DMApp = {
       renderGate('Adatok betöltése…');
       try {
         await loadFromDb(); renderGate(null); dailyBackup();
-        sheetUnsub?.(); sheetUnsub = sheetsWarn ? null : DB.watch?.('sheets', onSheets, () => {}) || null;
+        sheetUnsub?.(); sheetUnsub = sheetsWarn ? null : DB.watch?.(UT.lapok, onSheets, () => {}) || null;
       }
       catch (e) {
         DB = null;
@@ -1171,7 +1058,7 @@ function partyRoll(ids, k, mode) {
 
 // ---------- játékos képernyő ----------
 // csak azt küldjük át, amit a játékosok láthatnak
-const chan = 'BroadcastChannel' in window ? new BroadcastChannel('dmscreen-player') : null;
+const chan = 'BroadcastChannel' in window ? new BroadcastChannel(CSATORNA) : null;
 function publicView() {
   return {
     round: S.enc.round || 1, started: !!S.enc.active,
@@ -2137,12 +2024,12 @@ async function buildRulebook(get = rbFetch) {
   return rb;
 }
 async function uploadRulebook(rb, step = () => {}) {
-  const chunks = Sheet.splitChunks(rb), old = await DB.get('rules/meta');
-  for (const [i, c] of chunks.entries()) { step(`Feltöltés: ${i + 1} / ${chunks.length}`); await DB.set('rules/' + c.id, {data: c.data}); }
-  for (const id of old?.chunks || []) if (!chunks.some(c => c.id === id)) await DB.del('rules/' + id);
+  const chunks = Sheet.splitChunks(rb), old = await DB.get(UT.szabalyMeta);
+  for (const [i, c] of chunks.entries()) { step(`Feltöltés: ${i + 1} / ${chunks.length}`); await DB.set(UT.szabalyDarab(c.id), {data: c.data}); }
+  for (const id of old?.chunks || []) if (!chunks.some(c => c.id === id)) await DB.del(UT.szabalyDarab(id));
   // a meta utoljára: a telefonok csak akkor töltik le az újat, ha minden darab fent van
   const meta = {version: new Date().toISOString(), format: Sheet.RB_FORMAT, chunks: chunks.map(c => c.id), counts: Object.fromEntries(Sheet.RB_KINDS.map(k => [k, rb[k].length]))};
-  await DB.set('rules/meta', meta);
+  await DB.set(UT.szabalyMeta, meta);
   return meta;
 }
 // a Tárgyak fülnek: a felhőben lévő példány, ha nincs (vagy nincs belépés), közvetlenül a tükörből
@@ -2156,7 +2043,7 @@ const rbCounts = c => `${c.spells || 0} varázslat, ${(c.items || 0) + (c.baseIt
 async function openRulebook() {
   openModal('<h2>📖 Szabálykönyv a játékos appnak</h2><p class="muted">Betöltés…</p>');
   let meta = null;
-  try { meta = DB ? await DB.get('rules/meta') : null; } catch (e) { meta = {error: e.code || e.message}; }
+  try { meta = DB ? await DB.get(UT.szabalyMeta) : null; } catch (e) { meta = {error: e.code || e.message}; }
   $('#modalBox').innerHTML = `<h2>📖 Szabálykönyv a játékos appnak</h2>
     <p>A telefonos karakterlap ebből keresi a varázslatokat, tárgyakat és featek leírását. Források: <b>PHB, XGE, TCE</b> (tárgyaknál a <b>DMG 2014</b> is), a 2024-es könyvek nélkül.
     A frissítés letölti az 5e.tools-tükörből, és a privát felhődbe menti; a játékosok telefonja a következő megnyitáskor egyszer letölti, utána internet nélkül is megvan.</p>
@@ -2418,6 +2305,7 @@ document.addEventListener('click', async e => {
     case 'toggleDead': x.dead = !x.dead; save(); render(); break;
     case 'toggleSide': x.side = sideOf(x) === 'enemy' ? 'ally' : 'enemy'; save(); render(); break;
     case 'toggleHidden': x.hiddenP = !x.hiddenP; save(); render(); break;
+    // 'dmscreen-player' itt ablaknév (ugyanaz a lap nyílik újra), nem a CSATORNA
     case 'openPlayer': window.open('player.html','dmscreen-player', 'popup,width=1280,height=800'); break;
     case 'openCharApp': window.open('karakter.html', '_blank'); break;
     case 'portraitUpload': $('#portraitFile').click(); break;

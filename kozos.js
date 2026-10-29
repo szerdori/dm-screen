@@ -18,4 +18,6 @@ const MODULOK = {};
 function modul(nev, v) { MODULOK[nev] = v; }
 // a várttól eltérő (vagy be sem jelentett) modulok neve; üres lista = minden rendben
 function elteroModulok(vart) { return Object.keys(vart).filter(n => MODULOK[n] !== vart[n]); }
-modul('kozos', 2);
+// rövid véletlen azonosító (lények, encounterek, mentések)
+const uid = () => Math.random().toString(36).slice(2, 10);
+modul('kozos', 3);

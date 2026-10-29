@@ -17,7 +17,7 @@ Harckezelő és csapatnyilvántartó webapp D&D 5e mesélőnek. A felhasználó 
 
 ## Változtatási sorrend (contract-first)
 Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
-1. **Szerződés:** `SZERZODES.md` + a tisztító kód (`Sheet.norm` / `normCreature`…, a refaktor után `szerzodes.js`) + teszt.
+1. **Szerződés:** `SZERZODES.md` + a tisztító kód és az útvonal (`szerzodes.js`; a karakterlapé `Sheet.norm` a `sheet.js`-ben) + teszt (a „Szerződés” tesztcsoport).
 2. **Verzió:** a változott közös fájl (`sheet.js`, `kozos.js`) `?v=N` száma és a verzióőr mindenhol (lásd lent és `docs/dontesek/0005`).
 3. **Fogyasztók:** `index.html`, `karakter.html`, `player.html`.
 4. **Kapu – a felhasználó:** jóváhagyja a commitot és a feltöltést.
@@ -37,13 +37,13 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 
 ## Felépítés
 - **Élő app:** https://szerdori.github.io/dm-screen/ (GitHub Pages, `main` ág gyökere). Tároló: https://github.com/szerdori/dm-screen. Asztali ikon: Chrome `--app=` módban nyitja a webes címet (ikon: `favicon.ico`).
-- **Fájlok:** `index.html` (az egész DM app, vanilla JS, nincs build), `player.html` (játékos képernyő a második monitorra), `karakter.html` (játékos app telefonra), `kozos.js` (mindhárom oldal közös alapja: `$`, `esc`, `rnd`, a verzióőr: `modul`, `elteroModulok`), `sheet.js` (közös kód a kettőnek: karakterlap-formátum `Sheet.norm`, számolás, pihenők, spell slot táblák, szabálykönyv betöltése és tárgyvariánsok; minden a `window.Sheet` alatt), `firebase-config.js` (nyilvános webes konfig), `firestore.rules` (a konzolba másolandó szabályok – ez az élő változat, nem minta), `tests/index.html` + `tests/tests.js` (tesztek), `teszt.ps1` / `teszt.cmd` (futtató), `feltoltes.ps1` / `.cmd` (feltöltő), `README.md`.
+- **Fájlok:** `index.html` (az egész DM app, vanilla JS, nincs build), `player.html` (játékos képernyő a második monitorra), `karakter.html` (játékos app telefonra), `kozos.js` (mindhárom oldal közös alapja: `$`, `esc`, `rnd`, `uid`, a verzióőr: `modul`, `elteroModulok`), `szerzodes.js` (az adatformátumok: útvonalak és tisztítók, lásd `SZERZODES.md`), `sheet.js` (közös kód a kettőnek: karakterlap-formátum `Sheet.norm`, számolás, pihenők, spell slot táblák, szabálykönyv betöltése és tárgyvariánsok; minden a `window.Sheet` alatt), `firebase-config.js` (nyilvános webes konfig), `firestore.rules` (a konzolba másolandó szabályok – ez az élő változat, nem minta), `tests/index.html` + `tests/tests.js` (tesztek), `teszt.ps1` / `teszt.cmd` (futtató), `feltoltes.ps1` / `.cmd` (feltöltő), `README.md`.
 
 ## Fejlesztői környezet
 - Nincs Node és Python; PowerShell 5.1 + Git (`C:\Program Files\Git\cmd\git.exe`), Chrome és Edge van.
 - PowerShell 5.1 a BOM nélküli UTF-8 `.ps1`-ben az ékezeteket elrontja → ékezetes szkriptet UTF-8 **BOM-mal** ments (vagy maradj ASCII-nál).
 - `teszt.ps1`: saját kis webszerver a 8767-es porton + `chrome --headless --dump-dom`; az app `index.html?test=1`-gyel töltődik iframe-be. A `-Lefedettseg` kapcsoló a Chrome DevTools-protokollal (8768-as port, `tests\lefedettseg.cs`, Node nélkül) méri a lefedettséget; 2026-10-29-én ≈97,6% sor, 95% függvény – ami kimarad, az főleg a Firebase-réteg (élő belépés nélkül nem tesztelhető). Tesztsegédek a `tests.js` elején (`A()`, `W`, `mk()`, `pc()`, `stubRnd()`, `makeFakeDb()`, `assertNoXss()`); a `const`-tal deklarált app-függvényeket a futtató `W.név` alá másolja – új ilyen segédnél add a listához.
-- **Közös fájlok változata** (verzióőr, miért: `docs/dontesek/0005`): ha a `kozos.js` vagy a `sheet.js` olyan nevet kap vagy úgy változik, amire az oldalak támaszkodnak, emeld a fájlban a számot (`modul('kozos', N)` / `Sheet.VERSION`), és minden oldalon a `?v=N`-t és a `VART_MODULOK`-ot. Egy teszt ellenőrzi, hogy a három egyezik; eltérésnél (régi, gyorsítótárazott fájl) az oldalak nem írnak a felhőbe.
+- **Közös fájlok változata** (verzióőr, miért: `docs/dontesek/0005`): ha a `kozos.js`, a `sheet.js` vagy a `szerzodes.js` olyan nevet kap vagy úgy változik, amire az oldalak támaszkodnak, emeld a fájlban a számot (`modul('kozos', N)`, `modul('szerzodes', N)` / `Sheet.VERSION`), és minden oldalon a `?v=N`-t és a `VART_MODULOK`-ot. Egy teszt ellenőrzi, hogy a három egyezik; eltérésnél (régi, gyorsítótárazott fájl) az oldalak nem írnak a felhőbe.
 - `teszt.ps1 -Lefedettseg` a mért fájlokat magától gyűjti (az oldalak + minden saját `.js`, a `tests` és az `adatok` kivételével) – új fájlnál nincs teendő.
 - Böngészős előnézethez a `.claude\launch.json`-ba (git-ignorált) egy statikus szerver kell; a régi PowerShell-szerver (`server.ps1`) már nincs meg.
 

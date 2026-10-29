@@ -163,8 +163,9 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 </div></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
-<script src="kozos.js?v=2"></script>
+<script src="kozos.js?v=3"></script>
 <script src="sheet.js?v=6"></script>
+<script src="szerzodes.js?v=1"></script>
 <script>
 'use strict';
 // Játékos app: belépés Google-fiókkal; a saját karakter teljes telefonos lapja (sheets/{id}) és a csapat nyilvános lapjai (characters/{id}).
@@ -172,7 +173,7 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 2, sheet: 6};
+const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -186,15 +187,8 @@ let me = '', isDM = false, chars = [], sheets = new Map(), sheetErr = '';
 let view = {id: null, tab: 'harc'}, rbInfo = null, rbErr = '', rollMode = '', rolls = [];
 let hdOpen = false, castOpen = null, featPick = null, pendingRender = false, draft = null, openKeys = new Set(), searchQ = {spell: '', item: '', feat: ''}, notesTimer = null;
 
-function normChar(d) {
-  d = isObj(d) ? d : {};
-  const hp = isObj(d.hp) ? {max: Math.max(1, num(d.hp.max, 1)), cur: Math.max(0, num(d.hp.cur, 0))} : null;
-  return {
-    id: str(d.id), kind: d.kind === 'npc' ? 'npc' : 'pc', owner: str(d.owner).toLowerCase(), visibility: d.visibility === 'party' ? 'party' : 'dm',
-    name: str(d.name) || '(névtelen)', portrait: safeUrl(d.portrait), level: str(d.level),
-    ac: d.ac == null ? null : num(d.ac, null), hp, status: hp ? null : ST[d.status] ? d.status : null
-  };
-}
+// a karakter nyilvános része (characters/{id}): a szerződés tisztítója
+const normChar = Szerzodes.normPublicChar;
 const avatar = (portrait, name) => portrait ? `<img class="av" src="${esc(portrait)}" alt="">` : `<div class="av">${esc(String(name).charAt(0).toUpperCase())}</div>`;
 function hpBar(hp, cls = '') {
   const p = Math.max(0, Math.min(1, hp.cur / hp.max));
@@ -1089,6 +1083,7 @@ if (!cfg || !cfg.apiKey || location.protocol === 'file:' || new URLSearchParams(
     const app = initializeApp(cfg);
     const auth = A.getAuth(app);
     const fs = F.initializeFirestore(app, {localCache: F.persistentLocalCache({tabManager: F.persistentMultipleTabManager()})});
+    const UT = window.Szerzodes.UT;  // a felhős útvonalak (szerzodes.js)
     const provider = new A.GoogleAuthProvider();
     provider.setCustomParameters({prompt: 'select_account'});
     window.KAuth = {
@@ -1104,8 +1099,8 @@ if (!cfg || !cfg.apiKey || location.protocol === 'file:' || new URLSearchParams(
     };
     // írás mezőnként: a lap (sheets) és a csapat felé látszó rész (characters); internet nélkül a Firestore később tölti fel
     window.KDB = {
-      update: (id, p) => F.updateDoc(F.doc(fs, 'sheets/' + id), p).catch(e => console.warn('a lap mentése nem sikerült:', e.code)),
-      pub: (id, p) => F.updateDoc(F.doc(fs, 'characters/' + id), p).catch(() => {}),
+      update: (id, p) => F.updateDoc(F.doc(fs, UT.lap(id)), p).catch(e => console.warn('a lap mentése nem sikerült:', e.code)),
+      pub: (id, p) => F.updateDoc(F.doc(fs, UT.karakter(id)), p).catch(() => {}),
     };
     const rulesDb = {get: async p => { const s = await F.getDoc(F.doc(fs, p)); return s.exists() ? s.data() : null; }};
     let unsub = [];
@@ -1115,13 +1110,13 @@ if (!cfg || !cfg.apiKey || location.protocol === 'file:' || new URLSearchParams(
       const email = (u.email || '').toLowerCase();
       // DM-e: az access/dms dokumentumot csak a DM olvashatja
       let dm = false;
-      try { dm = (await F.getDoc(F.doc(fs, 'access/dms'))).exists(); } catch {}
+      try { dm = (await F.getDoc(F.doc(fs, UT.dmek))).exists(); } catch {}
       window.KApp.setAuth({status: 'signedIn', email, dm});
       // két élő lekérdezés a nyilvános részekre: a saját és a csapat által látható lapok (a szabályok csak így engedik)
       const parts = {own: new Map(), party: new Map()};
       let denied = 0;
       const push = () => window.KApp.setChars([...new Map([...parts.party, ...parts.own]).values()]);
-      const col = F.collection(fs, 'characters');
+      const col = F.collection(fs, UT.karakterek);
       for (const [key, q] of [['own', F.query(col, F.where('owner', '==', email))], ['party', F.query(col, F.where('visibility', '==', 'party'))]]) {
         unsub.push(F.onSnapshot(q, snap => {
           parts[key] = new Map(snap.docs.map(d => [d.id, {...d.data(), id: d.id}]));
@@ -1132,7 +1127,7 @@ if (!cfg || !cfg.apiKey || location.protocol === 'file:' || new URLSearchParams(
         }));
       }
       // a teljes karakterlap: a játékosnak a sajátja, a DM-nek mind
-      const sq = dm ? F.collection(fs, 'sheets') : F.query(F.collection(fs, 'sheets'), F.where('owner', '==', email));
+      const sq = dm ? F.collection(fs, UT.lapok) : F.query(F.collection(fs, UT.lapok), F.where('owner', '==', email));
       unsub.push(F.onSnapshot(sq, snap => window.KApp.setSheets(snap.docs.map(d => ({...d.data(), id: d.id}))),
         e => window.KApp.setSheets([], e.code === 'permission-denied' ? 'a DM-nek frissítenie kell a jogosultsági szabályokat' : e.code || e.message)));
       // szabálykönyv: a telefonon tárolt példány, ha a felhőben nincs újabb

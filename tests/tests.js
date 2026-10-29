@@ -3079,6 +3079,61 @@ describe('Telefonos karakterlap (karakter.html)', () => {
 });
 
 // ======================================================================
+describe('Szerződés (szerzodes.js)', () => {
+  test('minden felhős útvonal gyűjteményére van szabály a firestore.rules-ban', async () => {
+    const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text(), UT = W.Szerzodes.UT;
+    const utak = Object.values(UT).map(u => typeof u === 'function' ? u('x') : u);
+    eq(utak.length, 13, 'az útvonalak száma (új útvonalnál a teszt is bővül)');
+    for (const u of utak) {
+      const col = u.split('/')[0], doc = u.split('/')[1];
+      const van = col.startsWith('dmscreen') ? rules.includes("col.matches('dmscreen.*')")
+        : col === 'access' ? rules.includes(`match /access/${doc} `) : rules.includes(`match /${col}/{`);
+      ok(van, 'nincs szabály: ' + u);
+    }
+  });
+  test('egy helyen: a sheet.js szabálykönyv-útvonalai, a böngésző-tároló kulcsai és a játékos képernyő csatornája', async () => {
+    const {UT, HELYI, CSATORNA} = W.Szerzodes, kert = [];
+    await W.Sheet.loadRulebook({get: async p => { kert.push(p); return p === UT.szabalyMeta ? {version: 1, chunks: ['a']} : {data: '{"k":"spells","a":[]}'}; }});
+    eq(kert, [UT.szabalyMeta, UT.szabalyDarab('a')]);
+    eq(HELYI, {allapot: 'dmscreen', lapok: 'dmscreen-sheets'}, 'a régi kulcsok (a böngészőben tárolt másolat ezeken van)');
+    localStorage.removeItem(HELYI.allapot); A('doSave()');
+    await until(() => JSON.parse(localStorage.getItem(HELYI.allapot) || 'null')?.settings?.sources, 2000, 'helyi mentés a HELYI.allapot kulcson');
+    has(await (await fetch('../player.html', {cache: 'no-store'})).text(), `new BroadcastChannel('${CSATORNA}')`, 'player.html csatornája');
+  });
+  test('a tisztítók kimenete stabil: még egyszer tisztítva nem változik (lény, harc, állapot, nyilvános karakterrész)', () => {
+    const {normCreature, normCombatant, sanitizeState, normPublicChar} = W.Szerzodes;
+    const npc = {name: 'Őr', kind: 'npc', ac: 13, hp: {max: 20, cur: 8}, share: {vis: 'party', hp: 'label', ac: false}};
+    for (const c of [mk(), pc('Rella', 3, {owner: 'A@X.hu', inventory: [{name: 'Kard', qty: '2'}]}), npc, {kind: 'gonosz', hp: 'x'}]) {
+      const egy = normCreature(c); eq(normCreature(egy), egy, 'normCreature: ' + c.name);
+    }
+    const x = normCombatant({c: mk(), hp: '5', cond: [{name: 'Prone', rounds: '2'}]}); eq(normCombatant(x), x, 'normCombatant');
+    const st = sanitizeState({library: [mk()], enc: {list: [x], round: 3, active: x.cid}, settings: {groupInit: false}}, A('S.settings'));
+    eq(sanitizeState(st, A('S.settings')), st, 'sanitizeState');
+    eq(st.settings.rollHp, A('S.settings.rollHp'), 'a hiányzó beállítás az alapértékből jön');
+    try {
+      A(`S.library = [${JSON.stringify(pc('Rella', 3, {id: 'p1', owner: 'a@x.hu'}))}, ${JSON.stringify({...npc, id: 'n1'})}].map(normCreature)`);
+      const pub = W.publicChars(); eq(pub.length, 2);
+      // kulcssorrendtől függetlenül (a Firestore sem őrzi a sorrendet)
+      for (const p of pub) eq(W.stableJson(normPublicChar(p)), W.stableJson(p), 'a DM Screen által írt nyilvános rész a karakter.html tisztítóján változatlan: ' + p.name);
+      eq(pub.find(p => p.id === 'n1').status, 'bloodied');
+    } finally { A('S.library = []'); }
+  });
+  test('egy helyen: az állapotkódok (Sheet.hpStatus → ALLAPOTOK → a karakter.html címkéi) és az alapbeállítások', () => {
+    const {ALLAPOTOK, ALAP_BEALLITASOK, sanitizeState} = W.Szerzodes;
+    eq(Object.keys(K.eval('ST')).sort(), [...ALLAPOTOK].sort(), 'a karakter.html minden állapotkódnak ad címkét, és csak azoknak');
+    for (const [cur, max] of [[10, 10], [8, 10], [5, 10], [0, 10]]) ok(ALLAPOTOK.includes(W.Sheet.hpStatus(cur, max)), `hpStatus(${cur}, ${max})`);
+    eq(W.Szerzodes.normPublicChar({status: 'constructor'}).status, null, 'ismeretlen kód: null');
+    eq(sanitizeState({}).settings, {...ALAP_BEALLITASOK, lastExport: '', partyIds: null}, 'alapbeállítás alap nélkül');
+    ok(Object.isFrozen(ALAP_BEALLITASOK) && A('S.settings.sources') !== ALAP_BEALLITASOK.sources, 'az alap nem írható át, az app saját másolatot kap');
+  });
+  test('a karakter.html a szerződés tisztítóját használja; az index.html nem tart saját másolatot', () => {
+    ok(K.eval('normChar') === K.Szerzodes.normPublicChar, 'karakter.html: normChar');
+    for (const n of ['normCreature', 'normCombatant', 'sanitizeState', 'normInventory', 'blankCreature', 'splitEntry', 'safeId', 'str', 'TEMPLATE', 'SECTIONS', 'UT'])
+      ok(A(n) === W.Szerzodes[n], 'index.html: ' + n);
+  });
+});
+
+// ======================================================================
 describe('Általános', () => {
   test('közös kód: a három oldal a kozos.js $ / esc / rnd függvényét használja', () => {
     const src = w => ['$', 'esc', 'rnd'].map(n => w.eval(n).toString());
@@ -3155,7 +3210,7 @@ async function run() {
   for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'loadLoot', 'confirm', 'alert', 'download', 'buildRulebook']) ORIG[k] = W[k];
   K.addEventListener('unhandledrejection', e => appErrors.push('karakter.html promise: ' + (e.reason?.message || e.reason)));
   // a „const f = ...” segédfüggvények nem window-tulajdonságok, ezért elérhetővé tesszük őket W.f néven
-  for (const k of ['sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp', 'hpStatus', 'playerEmails', 'stableJson', 'sharingDirty']) W[k] = A(k);
+  for (const k of ['normCreature', 'normCombatant', 'splitEntry', 'sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp', 'hpStatus', 'playerEmails', 'stableJson', 'sharingDirty']) W[k] = A(k);
   for (const t of TESTS) {
     if (t.online && !ONLINE) { skip++; continue; }
     try {

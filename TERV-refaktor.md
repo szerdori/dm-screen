@@ -1,6 +1,6 @@
 # Refaktor: rétegek, szerződés, SOLID – terv
 
-*Készült: 2026-10-29. Állapot: **elfogadva 2026-10-29**, ág: `refaktor-retegek`; kész: 0–1. lépés. Előzmény: a kódtisztítás 1–4. lépése élesben (`bfb1a46`: `kozos.js`, az `index.html` a `sheet.js` segédeit használja). Ez a terv a felmérés 5–7. pontját (az `index.html` szétbontása, a `Sheet.calc` és a `convertDDB` felbontása) dolgozza ki, a SOLID elvek és egy contract-first munkamódszer mintája alapján.*
+*Készült: 2026-10-29. Állapot: **elfogadva 2026-10-29**, ág: `refaktor-retegek`; kész: 0–2. lépés. Előzmény: a kódtisztítás 1–4. lépése élesben (`bfb1a46`: `kozos.js`, az `index.html` a `sheet.js` segédeit használja). Ez a terv a felmérés 5–7. pontját (az `index.html` szétbontása, a `Sheet.calc` és a `convertDDB` felbontása) dolgozza ki, a SOLID elvek és egy contract-first munkamódszer mintája alapján.*
 
 A felhasználó döntései (2026-10-29): **rétegek szerinti szétbontás**; **szerződés kódban és leírásban**; **a tudás szétosztása** (CLAUDE.md / SZERZODES.md / döntési jegyzetek / tervek); **csak olvasó ellenőrző ügynök**.
 
@@ -63,14 +63,14 @@ A `karakter.html` (≈ 900 sor szkript) ugyanígy bontható, de **később** (7.
 A minta lényege: az adatformátum egy helyen van leírva, minden fogyasztó onnan veszi, és ha valami hiányzik, **először a szerződés változik**. Nálunk ennek megfelelője:
 
 - **`szerzodes.js`** (`window.Szerzodes`):
-  - `UT` – minden Firestore-útvonal egy helyen (`state: 'dmscreen/state'`, `library: 'dmscreen_library'`, `sheet: id => 'sheets/' + id`, …);
-  - a tisztítók: `normCreature`, `normCombatant`, `sanitizeState`, a nyilvános karakterrész (`publicChars` / a `karakter.html` `normChar`-ja – ma kétszer van meg), a játékos képernyő üzenete (`publicView`);
-  - formátumverziók: `STATE_FORMAT`, és hivatkozás a `Sheet.FORMAT`, `Sheet.RB_FORMAT` értékekre.
+  - `UT` – minden Firestore-útvonal egy helyen (`UT.allapot`, `UT.konyvtar`, `UT.lap(id)`, …), mellette `HELYI` (böngésző-tároló) és `CSATORNA` (játékos képernyő);
+  - a tisztítók: `normCreature`, `normCombatant`, `sanitizeState` (alapbeállítás: `ALAP_BEALLITASOK`), `normInventory`, a nyilvános karakterrész `normPublicChar` (a `karakter.html` `normChar`-ja helyett); *a `publicChars()` és a `publicView()` összeállítása a 3. lépésben kerül az adattár mellé (2026-10-29: a 2. lépésben az `index.html`-ben maradt, a `publicChars` kimenetét teszt veti össze a `normPublicChar`-ral);*
+  - formátumverziók: `Sheet.FORMAT`, `Sheet.RB_FORMAT`; a DM Screen állapotának saját verziója (`STATE_FORMAT`) akkor kell, ha a formátuma először változik – addig nem vezetjük be.
 - A karakterlap formátuma marad a **`sheet.js`**-ben (`Sheet.norm`, `Sheet.TEMPLATE`) – az már most szerződésként működik.
 - **`SZERZODES.md`**: emberi leírás mezőnként (ami ma a CLAUDE.md „Adatok” részében van), ki írja, ki olvassa, melyik szabály védi.
 - **Tesztek a szerződésre:**
   - minden `Szerzodes.UT` gyűjteményhez van `match` a `firestore.rules`-ban (a tesztszerver kiszolgálja a fájlt, a teszt szövegesen nézi);
-  - minden íráshoz használt adat a tisztítón átmenve változatlan (`norm(x) ≡ x`) – a hamis DB (`makeFakeDb`) minden `set`/`update`-et ellenőriz;
+  - minden íráshoz használt adat a tisztítón átmenve változatlan (`norm(x) ≡ x`) – *kész a tisztítókra és a `publicChars`-ra; a hamis DB (`makeFakeDb`) minden `set`/`update`-ének ellenőrzése a 3. lépésben (az adattárral együtt);*
   - a meglévő XSS-tesztek a szerződés tisztítóit használják.
 
 **Változtatási sorrend** (a minta „change order”-je; a CLAUDE.md-be kerül):
@@ -89,8 +89,8 @@ Mindegyik külön commit, külön jóváhagyással, és **mindegyik után éles�
 |---|---|---|---|
 | 0 | **Tudás szétosztása, ellenőrző ügynök** | CLAUDE.md szétbontása (lásd lent), `docs/dontesek/` az első döntési jegyzetekkel, `.claude/agents/ellenorzo.md`. Kódváltozás nincs. | nincs |
 | 1 | **Verzióőr általánosítása + tesztfuttató** | A `sheet.js`-es `VERSION`-ellenőrzés helyett közös modul-nyilvántartás a `kozos.js`-ben: minden fájl bejelenti a változatát (`modul('harc', 3)`), induláskor az oldal összeveti a várt értékekkel; eltérésnél figyelmeztető sáv és **nincs írás** (mint most a régi `sheet.js`-nél). A `teszt.ps1` a lefedettséghez magától összegyűjti a `*.js` fájlokat. | kicsi |
-| 2 | **Szerződés** | `szerzodes.js` + `SZERZODES.md`; a tisztítók és az útvonalak átköltöznek; a `karakter.html` `normChar`-ja a közös tisztítót használja; szerződés-tesztek. | kicsi–közepes |
-| 3 | **Adattár (`Tar`)** | Minden `DB.*`-hívás a `js/adat/tar.js` nevesített függvényein át; rétegszabály-teszt. | közepes |
+| 2 | **Szerződés** *(kész 2026-10-29)* | `szerzodes.js` + `SZERZODES.md`; a tisztítók, az útvonalak, a böngésző-tároló kulcsai és a csatorna átköltöztek; a `karakter.html` `normChar`-ja a közös tisztítót használja; szerződés-tesztek. | kicsi–közepes |
+| 3 | **Adattár (`Tar`)** | Minden `DB.*`-hívás a `js/adat/tar.js` nevesített függvényein át; a `publicChars()` / `publicView()` az adattár mellé; a hamis DB minden írást a szerződés tisztítóján ellenőriz; rétegszabály-teszt. | közepes |
 | 4 | **`index.html` szétbontása** | Szakaszonként egy fájl, a logikai fájlok előbb (DOM nélkül), aztán a felület, végül `indulas.js`. **Egy fájl = egy commit**, mindegyik után teszt. Az `index.html`-ben a végén csak a HTML-váz, a stílus és a `<script src>` sorok maradnak. | közepes (gyorsítótár → 1. lépés védi) |
 | 5 | **Gombok nyilvántartása (`AKCIOK`)** | A 229 soros kattintáskezelő `if`-lánca helyett `data-act="nev"` + `AKCIOK.nev = (el, e) => …`. A Shift/Ctrl-kezelés egy közös segédben. | közepes |
 | 6 | **Importálók egységesítése** | `IMPORTEROK = [{nev, felismer(o), atalakit(o)}]`; a beillesztés/fájl ebből választ. A `convertDDB` részfüggvényekre: képességek, mentők/skillek, felszerelés, spellek, támadások. LSP-teszt minden importálóra. | közepes |
