@@ -537,6 +537,14 @@ const DDB = {success: true, data: {
 }};
 
 describe('D&D Beyond átalakítás', () => {
+  test('stripHtml: a HTML szövege marad, a beillesztett kép eseménykezelője nem fut le', async () => {
+    eq(W.stripHtml('<p>Első <b>vastag</b></p>  \n<p>Második &amp; harmadik</p>'), 'Első vastag\nMásodik & harmadik');
+    eq([W.stripHtml(null), W.stripHtml('')], ['', '']);
+    delete W.__stripXss;
+    eq(W.stripHtml('<img src="x:nincs" onerror="window.__stripXss = 1">kép'), 'kép');
+    await wait(100);
+    eq(W.__stripXss, undefined, 'az onerror nem futott le');
+  });
   test('képességek: alap + bónusz + faji bónusz + „set” + felülírás', () => {
     eq(W.convertDDB(DDB).abilities, {str: 17, dex: 16, con: 19, int: 12, wis: 12, cha: 8});
   });
