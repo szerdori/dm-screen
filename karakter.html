@@ -163,17 +163,19 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 </div></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
-<script src="kozos.js?v=1"></script>
-<script src="sheet.js?v=5"></script>
+<script src="kozos.js?v=2"></script>
+<script src="sheet.js?v=6"></script>
 <script>
 'use strict';
 // Játékos app: belépés Google-fiókkal; a saját karakter teljes telefonos lapja (sheets/{id}) és a csapat nyilvános lapjai (characters/{id}).
 // A lapot a gazdája (és a DM) írja; minden változás mezőnként megy a felhőbe, a DM Screen élőben látja.
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
-// a betöltött sheet.js változata egyezik-e ezzel az oldallal (a böngésző gyorsítótárából régi is jöhet); ha nem, a lap nem írható
-const SHEET_V = 5;
-let sheetStale = H.VERSION !== SHEET_V;
+// a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
+const VART_MODULOK = {kozos: 2, sheet: 6};
+// igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
+function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
+let sheetStale = regiFajl();
 const {isObj, num, str, mod, sgn, safeUrl} = H;
 const ST = {healthy: 'Sértetlen', hurt: 'Sérült', bloodied: 'Súlyosan sérült', down: 'Eszméletlen'};
 const RESET_HU = {short: 'short rest', long: 'long rest', none: 'nem töltődik'};

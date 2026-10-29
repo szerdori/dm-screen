@@ -5,8 +5,8 @@
 'use strict';
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
-  // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (lásd SHEET_V)
-  const VERSION = 5;
+  // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
+  const VERSION = 6;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -1101,6 +1101,9 @@ window.Sheet = (() => {
     profs: {armor: 'light armor', weapons: 'simple weapons, hand crossbows, longswords, rapiers, shortswords', tools: "thieves' tools, disguise kit", languages: 'Common, Halfling, Thieves\' Cant'},
     senses: '', resist: '', notes: ''
   };
+
+  // verzióőr: a kozos.js nyilvántartásába (az oldalak a kozos.js-t a sheet.js előtt töltik)
+  if (typeof modul === 'function') modul('sheet', VERSION);
 
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,

@@ -1,5 +1,5 @@
 // Közös alapok mindhárom oldalnak (index.html, karakter.html, player.html); a sheet.js előtt töltődik.
-// Ha változik, az oldalakon a kozos.js?v=N számát is emeld (a böngésző különben a régit adhatja).
+// Ha változik, a modul('kozos', N) számát és az oldalakon a kozos.js?v=N-t és a VART_MODULOK-ot is emeld (egy teszt figyeli, hogy egyezzenek).
 'use strict';
 const $ = s => document.querySelector(s);
 // minden kiírt szöveg ezen megy át (a bejövő adatot más is írhatja: játékos, importált fájl)
@@ -10,3 +10,12 @@ function rnd(d) {
   do crypto.getRandomValues(a); while (a[0] >= lim);
   return 1 + (a[0] % d);
 }
+
+// ---------- verzióőr (docs/dontesek/0005) ----------
+// Minden közös fájl bejelenti a változatát (a <script src="név.js?v=N"> N-je); az oldal a VART_MODULOK-kal veti össze.
+// Eltérés = a böngésző egy régi, gyorsítótárazott példányt adott: ilyenkor az oldal nem ír a felhőbe, és frissítést kér.
+const MODULOK = {};
+function modul(nev, v) { MODULOK[nev] = v; }
+// a várttól eltérő (vagy be sem jelentett) modulok neve; üres lista = minden rendben
+function elteroModulok(vart) { return Object.keys(vart).filter(n => MODULOK[n] !== vart[n]); }
+modul('kozos', 2);

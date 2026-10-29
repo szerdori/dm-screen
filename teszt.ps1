@@ -83,7 +83,10 @@ try {
       } while ($kesz -ne '1' -and ((Get-Date) - $t0).TotalMinutes -lt 6)
       if ($kesz -ne '1') { Write-Host 'A tesztek nem fejeződtek be 6 percen belül.' -ForegroundColor Red; exit 2 }
       $riport = $cdp.Eval("document.getElementById('report').textContent")
-      $fajlok = [string[]]@('index.html', 'sheet.js', 'karakter.html', 'player.html', 'kozos.js')
+      # a mért fájlok: az oldalak és minden saját .js (a tests\ és az adatok\ kivételével; a firebase-config.js csak beállítás)
+      $sajatJs = Get-ChildItem -Path $root -Recurse -Filter *.js | ForEach-Object { $_.FullName.Substring($root.Length + 1).Replace('\', '/') } |
+        Where-Object { $_ -ne 'firebase-config.js' -and $_ -notmatch '^(tests|adatok)/' }
+      $fajlok = [string[]]@(@('index.html', 'karakter.html', 'player.html') + @($sajatJs))
       $eredm = [Coverage]::Build($root, $fajlok, $cdp, $cdp.Call('Profiler.takePreciseCoverage', '{}'))
     } finally { if (-not $proc.HasExited) { $proc.Kill() } }
 

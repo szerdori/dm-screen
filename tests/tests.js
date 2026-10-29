@@ -3093,6 +3093,45 @@ describe('Általános', () => {
     for (const n of ['isObj', 'num', 'str', 'mod', 'sgn', 'safeUrl']) ok(K.eval(n) === K.Sheet[n], 'karakter.html: ' + n);
     eq([A(`propOf('finesse|PHB')`), A(`propOf({uid: 'light|PHB'})`), A('propOf(null)')], ['finesse', 'light', '']);
   });
+  test('verzióőr: a <script src> ?v= száma = a fájl bejelentett változata = az oldal VART_MODULOK-ja', () => {
+    for (const [nev, w] of [['index.html', W], ['karakter.html', K], ['player.html', P]]) {
+      const v = {};
+      for (const s of w.document.querySelectorAll('script[src*="?v="]')) {
+        const m = s.getAttribute('src').match(/^(?:.*\/)?([\w-]+)\.js\?v=(\d+)$/); ok(m, nev + ': ?v= formátum: ' + s.getAttribute('src'));
+        v[m[1]] = +m[2];
+      }
+      ok(Object.keys(v).length, nev + ': van ?v=-s közös fájl');
+      const nincsV = [...w.document.querySelectorAll('script[src]')].map(s => s.getAttribute('src')).filter(s => !s.includes('?v=') && s !== 'firebase-config.js');
+      eq(nincsV, [], nev + ': minden közös fájl ?v=-vel töltődik');
+      for (const [f, n] of Object.entries(v)) eq(w.eval('MODULOK')[f], n, `${nev}: ${f}.js bejelentett változata`);
+      if (w !== P) eq(w.eval('VART_MODULOK'), v, nev + ': VART_MODULOK');
+      eq(w.eval('elteroModulok(typeof VART_MODULOK === "undefined" ? {} : VART_MODULOK)'), [], nev + ': nincs eltérés');
+    }
+    eq(W.Sheet.VERSION, A('MODULOK.sheet'), 'Sheet.VERSION');
+  });
+  test('verzióőr: régi (gyorsítótárazott) közös fájl mellett a DM Screen nem ír a lapokra, és frissítést kér', () => {
+    eq(A(`MODULOK.kozos = 1; elteroModulok({kozos: 2, sheet: MODULOK.sheet, uj: 1})`), ['kozos', 'uj'], 'eltérő és be nem jelentett modul');
+    try {
+      A('syncSheets.warned = false');
+      const ops = []; W.syncSheets(ops);
+      eq(ops, [], 'nem írt'); has(lastLog(), 'Ctrl + F5');
+      W.syncSheets(ops); eq(A('logLines.filter(l => l.html.includes("Ctrl + F5")).length'), 1, 'csak egyszer szól');
+    } finally { A('MODULOK.kozos = VART_MODULOK.kozos; syncSheets.warned = false'); }
+    ok(!A('regiFajl()'), 'visszaállítva nem régi');
+    // nagyon régi kozos.js (még nincs benne verzióőr): régi fájlnak számít, és nem dob hibát
+    const origW = W.elteroModulok, origK = K.elteroModulok;
+    try {
+      W.elteroModulok = undefined; K.elteroModulok = undefined;
+      ok(A('regiFajl()'), 'index.html: verzióőr nélküli kozos.js = régi');
+      A('syncSheets.warned = false'); W.syncSheets([]); has(lastLog(), 'Ctrl + F5');
+      ok(K.regiFajl(), 'karakter.html: verzióőr nélküli kozos.js = régi');
+    } finally { W.elteroModulok = origW; K.elteroModulok = origK; A('syncSheets.warned = false'); }
+    try {
+      K.eval('MODULOK.sheet = 1');
+      ok(K.regiFajl(), 'karakter.html: régi sheet.js felismerve');
+    } finally { K.eval('MODULOK.sheet = VART_MODULOK.sheet'); }
+    ok(!K.regiFajl(), 'karakter.html: visszaállítva nem régi');
+  });
   test('nem volt JavaScript-hiba az app futása közben', () => eq(appErrors, []));
 });
 

@@ -1,6 +1,6 @@
 # Refaktor: rétegek, szerződés, SOLID – terv
 
-*Készült: 2026-10-29. Állapot: **elfogadva 2026-10-29**, ág: `refaktor-retegek`; kész: 0. lépés. Előzmény: a kódtisztítás 1–4. lépése élesben (`bfb1a46`: `kozos.js`, az `index.html` a `sheet.js` segédeit használja). Ez a terv a felmérés 5–7. pontját (az `index.html` szétbontása, a `Sheet.calc` és a `convertDDB` felbontása) dolgozza ki, a SOLID elvek és egy contract-first munkamódszer mintája alapján.*
+*Készült: 2026-10-29. Állapot: **elfogadva 2026-10-29**, ág: `refaktor-retegek`; kész: 0–1. lépés. Előzmény: a kódtisztítás 1–4. lépése élesben (`bfb1a46`: `kozos.js`, az `index.html` a `sheet.js` segédeit használja). Ez a terv a felmérés 5–7. pontját (az `index.html` szétbontása, a `Sheet.calc` és a `convertDDB` felbontása) dolgozza ki, a SOLID elvek és egy contract-first munkamódszer mintája alapján.*
 
 A felhasználó döntései (2026-10-29): **rétegek szerinti szétbontás**; **szerződés kódban és leírásban**; **a tudás szétosztása** (CLAUDE.md / SZERZODES.md / döntési jegyzetek / tervek); **csak olvasó ellenőrző ügynök**.
 
