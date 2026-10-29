@@ -376,7 +376,7 @@ function syncCol(col, arr, key, ops, ser = JSON.stringify) {
 // Játékos karakter: a gazdája mindig látja; „csapat” láthatóságnál a többi játékos is.
 // NPC: csak „csapat” láthatóságnál jelenik meg, a HP pontosan vagy csak állapotként, az AC ki-be kapcsolható.
 // A titkos rész (statok, jegyzetek, akciók) a dmscreen_library-ben marad, azt csak a DM olvashatja.
-const hpStatus = (cur, max) => cur <= 0 ? 'down' : cur <= max / 2 ? 'bloodied' : cur < max ? 'hurt' : 'healthy';
+const hpStatus = Sheet.hpStatus;
 function publicChars() {
   return S.library.filter(c => c.kind === 'pc' ? c.owner || c.share.vis === 'party' : c.kind === 'npc' && c.share.vis === 'party').map(c => {
     const pc = c.kind === 'pc', cur = c.hp.cur ?? c.hp.max, exact = pc || c.share.hp === 'exact';

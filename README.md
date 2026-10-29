@@ -15,4 +15,5 @@ Frissítés feltöltése: `.\feltoltes.ps1 "Mit változtattunk"` – előtte aut
 - `.\teszt.ps1` (vagy dupla kattintás a `teszt.cmd`-n): lefuttatja a regressziós teszteket láthatatlan Chrome-ban, kb. fél perc.
 - `.\teszt.ps1 -Online`: az 5e.tools adatok elérhetőségét is ellenőrzi.
 - `.\teszt.ps1 -Bongeszo`: látható böngészőben futtatja (hibakereséshez).
+- `.\teszt.ps1 -Lefedettseg`: megméri, hogy a tesztek a kód hány százalékát futtatják le (fájlonként: sorok, kód, függvények); a részletes riport (piros = nem futott le) a `%TEMP%\dmscreen-lefedettseg.html` fájlban.
 - Új teszt: `tests\tests.js`, a megfelelő `describe(...)` blokkba egy `test('név', () => { ... })` sor. A fájl elején leírás van a segédfüggvényekről.

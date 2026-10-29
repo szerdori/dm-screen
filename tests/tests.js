@@ -426,6 +426,13 @@ describe('5e.tools átalakítás', () => {
     eq(t('{@actSave wis} {@actSaveFail} {@actSaveSuccess} {@actSaveSuccessOrFail}'), 'Wisdom Saving Throw: Failure: Success: Failure or Success:');
     eq(t('{@spell fireball|xphb} {@creature goblin|mm|the goblin} {@chance 25}'), 'fireball the goblin 25%');
     eq(t('{@b {@i nested}}'), 'nested');
+    eq(t('{@hom}{@d20 3} {@d20 x} {@actTrigger} {@actResponse}'), 'Hit or Miss: +3 +0 Trigger: Response:');
+  });
+  test('_copy módosítások: tömbelem cseréje név vagy sorszám szerint, elejére fűzés', () => {
+    const o = {action: [{name: 'A'}, {name: 'B'}, 'C']};
+    W.applyMod(o, {action: [{mode: 'replaceArr', replace: 'B', items: {name: 'B2'}}, {mode: 'replaceArr', replace: {index: 0}, items: [{name: 'A1'}, {name: 'A2'}]},
+      {mode: 'replaceArr', replace: 'nincs', items: {name: 'X'}}, {mode: 'prependArr', items: 'Első'}]});
+    eq(o.action.map(x => x.name || x), ['Első', 'A1', 'A2', 'B2', 'C']);
   });
   test('listák és egymásba ágyazott bejegyzések', () => {
     eq(W.entriesToText([{type: 'list', items: ['a', {type: 'item', name: 'B.', entry: 'b'}]}, {type: 'entries', name: 'C', entries: ['c']}]), '• a\n• B. b\nC. c');
@@ -542,6 +549,12 @@ describe('D&D Beyond átalakítás', () => {
   test('AC páncél nélkül: 10 + DEX + Unarmored Defense (CON)', () => {
     const d = structuredClone(DDB); d.data.inventory = []; d.data.modifiers.class.push({type: 'set', subType: 'unarmored-armor-class', statId: 3});
     eq(W.convertDDB(d).ac, 10 + 3 + 4 + 1);
+  });
+  test('AC páncél nélkül, rögzített alapértékkel (pl. Draconic Resilience: 13 + DEX), ha az a nagyobb', () => {
+    const d = structuredClone(DDB); d.data.inventory = []; d.data.modifiers.class.push({type: 'set', subType: 'unarmored-armor-class', value: 13});
+    eq(W.convertDDB(d).ac, 13 + 3 + 1);
+    d.data.modifiers.class.at(-1).value = 9;
+    eq(W.convertDDB(d).ac, 10 + 3 + 1, 'a kisebb alapérték nem számít');
   });
   test('mentők, skillek, expertise, passive Perception, darkvision, nyelvek, initiative', () => {
     const c = W.convertDDB(DDB);
@@ -859,6 +872,153 @@ describe('Felület', () => {
   test('egyéni dobás a dobássávban', () => {
     stubRnd(3); $('#diceInput').value = '2d4+1'; click('[data-act="rollCustom"]'); has(lastLog(), '<b>7</b>');
     stubRnd(6); click('[data-die="1d6"]'); has(lastLog(), '<b>6</b>');
+  });
+  test('fejléc: Előző / Következő gomb, Initiative dobás ablak (ellenfelek, hiányzók, mindenki; közös initiative kapcsoló)', () => {
+    const [p] = add(pc('Rella')), [g1, g2] = add(mk(), 2);
+    p.init = 20; g1.init = 15; g2.init = 10;
+    click('[data-act="next"]'); click('[data-act="next"]'); eq(A('S.enc.active'), g1.cid);
+    click('[data-act="prev"]'); eq(A('S.enc.active'), p.cid);
+    click('[data-act="rollInit"]'); has($('#modalBox').textContent, 'Initiative dobás');
+    stubRnd(7); click('[data-act="init"][data-mode="monsters"]');
+    eq([p.init, g1.init, g2.init], [20, 9, 9], 'a játékos marad, az együtt hozzáadott goblinok közös értéket kapnak');
+    ok($('#modal').hidden, 'az ablak bezárult'); has(allLog(), 'Initiative dobva');
+    p.init = null; stubRnd(11); W.openInitMenu(); click('[data-act="init"][data-mode="missing"]');
+    eq([p.init, g1.init], [12, 9], 'csak akinek nincs');
+    W.openInitMenu();
+    const box = $('[data-setting="groupInit"]'); box.checked = false; box.dispatchEvent(new W.Event('change', {bubbles: true}));
+    eq(A('S.settings.groupInit'), false);
+    stubRnd(1, 2, 5); click('[data-act="init"][data-mode="all"]');
+    eq([p.init, g1.init, g2.init], [2, 4, 7], 'mindenki külön dob');
+  });
+  test('csempe gombjai: koncentráció (a chipre kattintva is megszűnik), halott, rejtett; adatlapról vissza az aktuálishoz', () => {
+    const [a] = add(mk('A')), [b] = add(mk('B')); a.init = 10; b.init = 5; W.step(1);
+    const on = (x, sel) => click(`[data-cid="${x.cid}"] ${sel}`);
+    on(b, 'button[data-act="toggleConc"]'); ok(b.conc, 'koncentrál');
+    on(b, '.chip.conc'); ok(!b.conc, 'a chip megszünteti');
+    on(b, '[data-act="toggleHidden"]'); ok(b.hiddenP && $(`.tile[data-cid="${b.cid}"]`).classList.contains('hiddenp'), 'rejtett');
+    on(b, '[data-act="toggleDead"]'); ok(b.dead && $(`.tile[data-cid="${b.cid}"]`).classList.contains('dead'), 'halott');
+    on(b, '.t-name'); eq(A('selected'), b.cid);
+    click('[data-act="deselect"]'); eq(A('selected'), null);
+  });
+  test('Menü → Ürítés (Mégse = marad), nehézség ablak bezárása, mentett encounter törlése, forráskönyvek kijelölése', () => {
+    add(mk()); W.openMenu();
+    W.confirm = () => false; click('[data-act="clearAll"]'); eq(list().length, 1, 'Mégse');
+    W.confirm = () => true; click('[data-act="clearAll"]'); eq([list().length, $('#modal').hidden], [0, true]);
+    W.openDiffInfo(); ok(!$('#modal').hidden); click('[data-act="edCancel"]'); ok($('#modal').hidden, 'Bezárás');
+    A(`S.saved = [{id: 'e1', name: 'Kápolna', list: []}]`); W.openLib('enc'); click('[data-act="encDel"]'); eq(A('S.saved'), []);
+    A(`fiveIndex = {TST: 'x.json', MM: 'y.json'}`); W.openLib('five');
+    const src = k => $(`input[data-src="${k}"]`), tick = (k, v) => { src(k).checked = v; src(k).dispatchEvent(new W.Event('change', {bubbles: true})); };
+    tick('TST', true); tick('MM', false);
+    eq(A('S.settings.sources'), ['TST']);
+  });
+  test('letöltések és sablonok: lény exportja (fájlnév tisztítva), sablonok, sablon megjelenítése', () => {
+    const files = []; W.download = (n, o) => files.push([n, o]);
+    W.upsertLibrary(mk('Kő-Ogre!'));
+    W.openLib('lib'); click('[data-act="libExport"]');
+    W.openLib('json'); click('[data-act="showTemplate"]'); has($('#jsonIn').value, '"name"');
+    click('[data-act="downloadSheetTemplate"]');
+    W.openMenu(); click('[data-act="downloadTemplate"]');
+    eq(files.map(f => f[0]), ['Kő-Ogre.json', 'karakterlap-sablon.json', 'dmscreen-sablon.json']);
+    eq([files[0][1].name, files[1][1].format], ['Kő-Ogre!', 'dmscreen-karakter']);
+  });
+  test('download: JSON fájlt készít a megadott névvel', async () => {
+    let got; const proto = W.HTMLAnchorElement.prototype, origClick = proto.click;
+    proto.click = function () { got = [this.download, this.href]; };
+    try { ORIG.download('x.json', {a: 1}); } finally { proto.click = origClick; }
+    eq(got[0], 'x.json');
+    eq(await (await W.fetch(got[1])).json(), {a: 1});
+  });
+  const pickFile = (input, content, name, type = 'application/json') => {
+    const dt = new W.DataTransfer(); dt.items.add(new W.File([content], name, {type}));
+    input.files = dt.files; input.dispatchEvent(new W.Event('change', {bubbles: true}));
+  };
+  test('fájl importálása: lények (JSON fül), teljes mentés (Menü), hibás fájl', async () => {
+    const fi = $('#fileIn'); let opened = 0; fi.click = () => opened++;
+    try {
+      W.openLib('json'); click('[data-act="importFile"]'); eq(opened, 1, 'fájlválasztó');
+      pickFile(fi, JSON.stringify([mk('Fájlgoblin')]), 'lenyek.json');
+      await until(() => A('S.library').some(c => c.name === 'Fájlgoblin'), 2000, 'lény import');
+      has(allLog(), '1 lény importálva');
+      W.openMenu(); click('[data-act="importAll"]'); eq(opened, 2);
+      pickFile(fi, JSON.stringify({library: [mk('Mentett')], enc: {list: [], round: 1, active: null}, saved: []}), 'mentes.json');
+      await until(() => A('S.library').map(c => c.name).join() === 'Mentett', 2000, 'mentés visszatöltése');
+      let msg = ''; W.alert = m => { msg = m; };
+      pickFile(fi, 'nem json', 'rossz.json');
+      await until(() => msg, 2000, 'hibaüzenet'); has(msg, 'Hibás fájl');
+    } finally { delete fi.click; }
+  });
+  test('portré a szerkesztőben: link, feltöltött kép 256 px-es JPEG-ként, törlés', async () => {
+    W.openEditor(W.normCreature({}), () => {});
+    const pf = $('#portraitFile'); let opened = 0; pf.click = () => opened++;
+    click('[data-act="portraitUpload"]'); eq(opened, 1, 'fájlválasztó');
+    setVal('#portraitUrl', 'https://x/k.png', 'input');
+    eq([$('#edForm').elements.portrait.value, $('#portraitPv').style.visibility], ['https://x/k.png', 'visible']);
+    const cv = W.document.createElement('canvas'); cv.width = 40; cv.height = 20;
+    pickFile(pf, await new Promise(r => cv.toBlob(r, 'image/png')), 'k.png', 'image/png');
+    await until(() => $('#edForm').elements.portrait.value.startsWith('data:image/jpeg'), 3000, 'kicsinyített kép');
+    eq([$('#portraitUrl').value, $('#portraitUrl').placeholder], ['', '(feltöltött kép)']);
+    click('[data-act="portraitClear"]');
+    eq([$('#edForm').elements.portrait.value, $('#portraitPv').style.visibility], ['', 'hidden']);
+  });
+  test('vágólap: D&D Beyond beillesztés (magától, gombbal, vágólapról), zsákmány másolása; ha a böngésző nem engedi', async () => {
+    W.openLib('ddb');
+    const dt = new W.DataTransfer(); dt.setData('text/plain', JSON.stringify(DDB));
+    $('#ddbPaste').dispatchEvent(new W.ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true}));
+    has($('#ddbMsg').textContent, '✓', 'beillesztéskor importált');
+    $('#ddbMsg').innerHTML = ''; $('#ddbPaste').value = JSON.stringify(DDB); click('[data-act="ddbPasteImport"]');
+    has($('#ddbMsg').textContent, '✓', 'Importálás gomb');
+    let copied = null;
+    Object.defineProperty(W.navigator, 'clipboard', {configurable: true, value: {readText: async () => JSON.stringify(DDB), writeText: async t => { copied = t; }}});
+    try {
+      $('#ddbMsg').innerHTML = ''; click('[data-act="ddbClipboard"]');
+      await until(() => $('#ddbMsg').textContent.includes('✓'), 2000, 'vágólapról');
+      W.navigator.clipboard.readText = async () => { throw new Error('tiltva'); };
+      click('[data-act="ddbClipboard"]');
+      await until(() => $('#ddbMsg').textContent.includes('nem engedte'), 2000, 'tiltott vágólap');
+      stubLoot(); add(pc('A')); const [g] = add(mk()); g.dead = true;
+      W.openLoot(); W.rnd = d => d; click('[data-act="lootRoll"]');
+      await until(() => $('#lootOut [data-act="lootCopy"]'), 2000, 'zsákmány');
+      click('#lootOut [data-act="lootCopy"]');
+      await until(() => $('[data-act="lootCopy"]').textContent === '✓ Kimásolva', 2000, 'másolás'); has(copied, 'Összesen');
+      W.navigator.clipboard.writeText = async () => { throw new Error('tiltva'); };
+      click('#lootOut [data-act="lootCopy"]');
+      await until(() => $('[data-act="lootCopy"]').textContent === 'A böngésző nem engedte', 2000, 'tiltott másolás');
+    } finally { delete W.navigator.clipboard; }
+  });
+  test('letöltők (ál-fetch): 5e.tools forráslista és könyv, kincstáblák; egyszer tölt le, hibánál érthető üzenet', async () => {
+    const origFetch = W.fetch, urls = [];
+    W.fetch = async u => {
+      u = String(u); urls.push(u);
+      return {ok: true, json: async () => u.endsWith('index.json') ? {TST: 'bestiary-tst.json'} : u.includes('bestiary-tst') ? {monster: [FIVE.brute]} : {tabla: 1}};
+    };
+    try {
+      eq(await ORIG.loadFiveIndex(), {TST: 'bestiary-tst.json'});
+      eq((await ORIG.loadFiveSource('TST')).map(m => m.name), ['Test Brute']);
+      await ORIG.loadFiveSource('TST'); await ORIG.loadFiveIndex();
+      eq(urls.length, 2, 'másodszor már nem tölt le');
+      let err = ''; try { await ORIG.loadFiveSource('XYZ'); } catch (e) { err = e.message; }
+      has(err, 'Ismeretlen forrás');
+      eq(await ORIG.loadLoot(), {tabla: 1}); await ORIG.loadLoot(); eq(urls.length, 3);
+      A('lootData = null'); W.fetch = async () => ({ok: false, status: 404});
+      err = ''; try { await ORIG.loadLoot(); } catch (e) { err = e.message; }
+      eq(err, 'HTTP 404');
+    } finally { W.fetch = origFetch; }
+    A('fiveIndex = null'); W.loadFiveIndex = async () => { throw new Error('offline'); };
+    W.openLib('five'); await until(() => $('#fiveMsg').textContent.includes('Nem sikerült elérni'), 2000, 'hibaüzenet');
+    W.loadFiveIndex = async () => { A(`fiveIndex = {TST: 'x.json'}`); return {TST: 'x.json'}; };
+    W.openLib('five'); await until(() => $('input[data-src="TST"]'), 2000, 'forráslista');
+  });
+  test('az oldal bezárásakor helyi másolat, függő mentés azonnal', () => {
+    const origSave = W.doSave; let saved = 0; W.doSave = () => { saved++; };
+    try {
+      add(mk('Bezáráskor'));
+      A('clearTimeout(saveTimer); saveTimer = null');
+      let e = new W.Event('beforeunload', {cancelable: true}); W.dispatchEvent(e);
+      has(W.localStorage.getItem('dmscreen'), 'Bezáráskor'); eq([saved, e.defaultPrevented], [0, false]);
+      A('saveTimer = setTimeout(() => {}, 60000)');
+      e = new W.Event('beforeunload', {cancelable: true}); W.dispatchEvent(e);
+      eq([saved, e.defaultPrevented], [1, true]);
+    } finally { W.doSave = origSave; A('clearTimeout(saveTimer); saveTimer = null'); W.localStorage.removeItem('dmscreen'); }
   });
 });
 
@@ -2016,7 +2176,36 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
   });
 });
 
+describe('Választó-modul: további választástípusok (sheet.js)', () => {
+  test('skill: a forrás listája vagy minden skill; a máshonnan jártas tiltva, a saját választás nem', () => {
+    const H = W.Sheet, cr = {skills: {stealth: {prof: 1}, arcana: {prof: 1}}, choices: []};
+    const o = H.choiceOptions({kind: 'skills', key: 'k', n: 2, from: ['Stealth', 'Sleight of Hand', 'Arcana', 'Nincs ilyen'], value: ['arcana']}, cr, null);
+    eq([o.multi, o.free, o.n], [true, false, 2]);
+    eq(o.opts.map(x => [x.v, x.dis, x.note]), [['stealth', true, 'már jártas'], ['sleight-of-hand', false, ''], ['arcana', false, '']]);
+    eq(H.choiceOptions({kind: 'skills', key: 'k', n: 1}, {}, null).opts.length, Object.keys(H.SKILLS).length, 'lista nélkül minden skill');
+  });
+  test('eszköz: listából vagy szabad szöveg', () => {
+    const H = W.Sheet;
+    eq(H.choiceOptions({kind: 'tool', key: 't', n: 1, from: ['Lute', 'Flute']}, {}, null), {multi: false, free: false, n: 1, opts: [{v: 'Lute', l: 'Lute'}, {v: 'Flute', l: 'Flute'}]});
+    eq(H.choiceOptions({kind: 'tool', key: 't', n: 1, from: []}, {}, null).free, true);
+  });
+  test('alfaj: csak a faj alfajai, az „(alap)” változat a faj nevével; beírás és törlés', () => {
+    const H = W.Sheet, rb = {subraces: [{n: 'High Elf', s: 'PHB', race: 'Elf'}, {n: 'Base (alap)', s: 'PHB', race: 'Elf'}, {n: 'Hill Dwarf', s: 'PHB', race: 'Dwarf'}]};
+    const c = {kind: 'subrace', key: 'race:sub', src: 'Faj: Elf|PHB', n: 1};
+    eq(H.choiceOptions(c, {}, rb).opts, [{v: 'High Elf|PHB', l: 'High Elf'}, {v: 'Base (alap)|PHB', l: 'Elf (alap)'}]);
+    const b = H.setChoice({levels: []}, c, 'High Elf|PHB');
+    eq([b.subrace, H.setChoice(b, c, '').subrace], ['High Elf|PHB', '']);
+  });
+  test('érvénytelen választás-érték (pl. függvény) nem kerül a felépítésbe', () => {
+    eq(W.Sheet.setChoice({levels: []}, {kind: 'feat', key: 'k'}, () => 1).ch, {});
+  });
+});
+
 describe('Szabálykönyv és tárgy-import', () => {
+  test('feat-feltételek szövegesen', () => {
+    eq(W.featPre([{proficiency: [{armor: 'medium'}]}, {level: 4}, {spellcasting2020: true}, {other: 'egyéb'}, {race: [{name: 'Elf', subrace: 'High'}, {name: 'Gnome'}]}]),
+      'medium armor / level 4 / spellcasting / egyéb / Elf (High) or Gnome');
+  });
   test('5e.tools → saját formátum: csak PHB / XGE / TCE (tárgyaknál DMG) 2014, a 2024-es könyvek nélkül', async () => {
     const rb = await fakeRb();
     const sp = Object.fromEntries(rb.spells.map(s => [s.n, s]));
@@ -2825,6 +3014,67 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     eq(kq('#hpIn').value, '7'); hasNot(kq('.hpnum').textContent, '10');
     inp.blur(); await wait(50);
     has(kq('.hpnum').textContent, '10');
+  });
+  ktest('halálmentő pöttyök, Pact slot, állapot eltávolítása (a koncentrációé a koncentrációt is megszünteti), koncentráció megszakítása', () => {
+    openSheet({hp: {max: 24, cur: 0, temp: 0}});
+    kclick('[data-act="ds"][data-kind="fail"][data-i="1"]'); eq(lastUpdate().deathSaves, {ok: 0, fail: 2});
+    kclick('[data-act="ds"][data-kind="ok"][data-i="0"]'); eq(lastUpdate().deathSaves, {ok: 1, fail: 2});
+    // 0 HP-n a koncentráció magától megszakad, ezért az állapotokat élő karakteren nézzük
+    openSheet({conditions: ['Prone', 'Bless'], concentration: 'Bless', spellcasting: {ability: 'cha', slots: [], used: [], pact: {level: 2, max: 2, used: 0}}});
+    kclick(kqa('[data-act="condRm"]')[0]); eq(lastUpdate().conditions, ['Bless']); ok(!('concentration' in lastUpdate()), 'a koncentráció marad');
+    kclick('[data-act="condRm"]'); eq([lastUpdate().conditions, lastUpdate().concentration], [[], '']);
+    kclick('[data-tab="var"]'); kclick('[data-act="pact"][data-j="1"]'); eq(lastUpdate().spellcasting.pact.used, 2);
+    openSheet({concentration: 'Haste', conditions: ['Haste', 'Prone']});
+    kclick('[data-act="concEnd"]'); eq([lastUpdate().concentration, lastUpdate().conditions], ['', ['Prone']]);
+  });
+  ktest('eltávolítás megerősítéssel (Mégse = marad): varázslat, tárgy, jellemző; saját jellemző felvétele', () => {
+    openSheet({spells: [{name: 'Shield', level: 1}], inventory: [{name: 'Kötél'}], features: [{name: 'Sneak Attack'}]});
+    const wrote = k => klog.some(l => l[0] === 'update' && k in l[2]);
+    kclick('[data-tab="var"]');
+    K.confirm = () => false; kclick('[data-act="spellRm"]'); ok(!wrote('spells'), 'Mégse');
+    K.confirm = () => true; kclick('[data-act="spellRm"]'); eq(lastUpdate().spells, []);
+    kclick('[data-tab="fel"]'); kclick('[data-act="itemRm"]'); eq(lastUpdate().inventory, []);
+    kclick('[data-tab="kep"]');
+    kset('#featNew', 'Szerencsés', 'input'); kset('#featNewT', 'újradobhat', 'input'); kset('#featNewS', 'Halfling', 'input');
+    kclick('[data-act="featCustom"]');
+    eq(lastUpdate().features.map(f => [f.name, f.text, f.src]), [['Sneak Attack', '', ''], ['Szerencsés', 'újradobhat', 'Halfling']]);
+    kclick(kqa('[data-act="featRm"]')[0]); eq(lastUpdate().features.map(f => f.name), ['Szerencsés']);
+  });
+  ktest('feat keresése a szabálykönyvben: feltétel, „megvan” jelölés, nincs találat; a választó kihagyható', async () => {
+    K.KApp.setRulebook({version: 'v1', rb: await fakeRb()});
+    openSheet({features: [{name: 'Alert'}]});
+    kclick('[data-tab="kep"]');
+    kset('#featQ', 'aler', 'input'); has(kq('#featRes').textContent, '✓ megvan');
+    kset('#featQ', 'zzzz', 'input'); has(kq('#featRes').textContent, 'Nincs találat');
+    kset('#featQ', 'grap', 'input'); has(kq('#featRes').textContent, 'feltétel: STR 13');
+    kset('#featQ', 'elven', 'input'); kclick('#featRes [data-act="featAdd"]');
+    eq(lastUpdate().features.map(f => f.name), ['Alert', 'Elven Accuracy']);
+    ok(kq('#featPickBox'), 'választó'); kclick('[data-act="featPickSkip"]'); ok(!kq('#featPickBox'), 'kihagyva');
+  });
+  ktest('hangolás: a 4. tárgynál rákérdez (Mégse = nem hangol); jegyzet gépelés közben is mentődik; Enter a HP-mezőben', async () => {
+    openSheet({inventory: ['A', 'B', 'C', 'D'].map((name, i) => ({name, attuned: i < 3}))});
+    kclick('[data-tab="fel"]');
+    const free = () => kqa('[data-act="attune"]').find(x => !x.checked);
+    K.confirm = () => false; const box = free(); kset(box, true); ok(!box.checked, 'Mégse');
+    K.confirm = () => true; kset(free(), true); eq(lastUpdate().inventory.filter(i => i.attuned).length, 4);
+    kclick('[data-tab="jegyz"]'); kset('#notes', 'Nyom a kútnál', 'input');
+    await until(() => klog.some(l => l[0] === 'update' && l[2].notes === 'Nyom a kútnál'), 3000, 'jegyzet mentése');
+    kclick('[data-tab="harc"]');
+    const hp = kq('#hpIn'), enter = () => hp.dispatchEvent(new K.KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+    hp.value = '5'; enter(); eq(lastUpdate().hp.cur, 19);
+    kq('#hpIn').value = '-3'; kq('#hpIn').dispatchEvent(new K.KeyboardEvent('keydown', {key: 'Enter', bubbles: true})); eq(lastUpdate().hp.cur, 22);
+  });
+  ktest('lista: a karakterek név szerint (magyar ábécé); űrlapsor törlése; a kockadobás 1..N között egyenletes', () => {
+    K.KApp.setAuth({status: 'signedIn', email: 'a@x.hu'});
+    K.KApp.setChars(['Zoli', 'Ádám', 'Bori'].map((name, i) => ({id: 'c' + i, kind: 'pc', owner: 'b@x.hu', visibility: 'party', name, hp: {cur: 1, max: 1}})));
+    const t = ktext(); ok(t.indexOf('Ádám') < t.indexOf('Bori') && t.indexOf('Bori') < t.indexOf('Zoli'), 'sorrend: ' + t.slice(0, 200));
+    openSheet();
+    kclick('[data-tab="adat"]');
+    const rows = () => kqa('#edForm [name^="at_name_"]').length, n = rows();
+    kclick('[data-act="rowRm"][data-list="attacks"]'); eq(rows(), n - 1);
+    const seen = new Set();
+    for (let i = 0; i < 2000; i++) { const v = ORIGK.rnd(6); ok(v >= 1 && v <= 6 && Number.isInteger(v), 'érvénytelen: ' + v); seen.add(v); }
+    eq(seen.size, 6);
   });
 });
 

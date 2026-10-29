@@ -748,20 +748,6 @@ window.Sheet = (() => {
     if (withAc) Object.assign(p, {ac: c.ac.v, acNote: c.acNote});
     return p;
   }
-  // a kézi lap Alapadatok-űrlapjának osztályai → a szabálymotoros lap felépítése (a meglévő szintek sorrendje és HP-ja marad)
-  function classesToBuild(b, classes, rb) {
-    let levels = [...b.levels];
-    const want = classes.map(c => ({c: findClass(c.name) || c.name, n: c.level})).filter(x => x.c);
-    levels = levels.filter(l => want.some(w => w.c === l.c));
-    for (const w of want) {
-      const have = levels.filter(l => l.c === w.c).length;
-      if (have < w.n) levels.push(...Array.from({length: w.n - have}, () => ({c: w.c, hp: null})));
-      for (let k = have; k > w.n; k--) levels.splice(levels.map(l => l.c).lastIndexOf(w.c), 1);
-    }
-    const sub = Object.fromEntries(classes.map(c => { const n = findClass(c.name) || c.name; return [n, subclassRef(n, c.subclass, rb)]; }).filter(([, r]) => r));
-    return normBuild({...b, levels, sub});
-  }
-
   // ---------- választó-modul (a Felépítés és a szintlépés-varázsló közös része): egy választási hely opciói és beírása ----------
   // choiceOptions(c, calc-eredmény, rb) → {multi, n, free, opts: [{v, l, note, dis}]}; multi = jelölőnégyzetek, free = szabad szöveg
   const ABIL_OPTS = ABIL.map(a => ({v: a, l: a.toUpperCase()}));
@@ -1121,6 +1107,6 @@ window.Sheet = (() => {
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     ASI_LEVELS, FEATURE_FX, classInfo, buildClasses, calc, materialize, ovEdits, refName,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
-    classNames, subclassesOf, subclassRef, raceOptions, findRace, legacyCalc, derive, acItem, equipPatch, classesToBuild, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
+    classNames, subclassesOf, subclassRef, raceOptions, findRace, legacyCalc, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, emptyRulebook, joinChunks, splitChunks, loadRulebook, idb, variantFits, allItems, search, refOf, byRef, itemLine, spellLine};
 })();

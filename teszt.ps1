@@ -2,8 +2,9 @@
 # Használat:  .\teszt.ps1              helyi tesztek, láthatatlan Chrome-ban
 #             .\teszt.ps1 -Online      + az 5e.tools adatok elérhetőségének ellenőrzése (internet kell)
 #             .\teszt.ps1 -Bongeszo    a teszteket látható böngészőben nyitja meg (hibakereséshez)
+#             .\teszt.ps1 -Lefedettseg a tesztek mellett megméri, a kód mekkora részét futtatják le (riport: %TEMP%\dmscreen-lefedettseg.html)
 # Új teszteket a tests\tests.js fájlba lehet írni.
-param([switch]$Online, [switch]$Bongeszo, [int]$Port = 8767)
+param([switch]$Online, [switch]$Bongeszo, [switch]$Lefedettseg, [int]$Port = 8767)
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -54,6 +55,56 @@ try {
   if ($Bongeszo) {
     Start-Process $url
     Read-Host 'A tesztek a böngészőben futnak. Ha végeztél, nyomj Entert (leáll a tesztszerver)'
+    exit 0
+  }
+
+  if ($Lefedettseg) {
+    Write-Host 'Tesztek futtatása lefedettségméréssel (1–3 perc)…' -ForegroundColor Cyan
+    Add-Type -Path (Join-Path $root 'tests\lefedettseg.cs') -ReferencedAssemblies System.Web.Extensions, System.Net.WebSockets, System.Core
+    $dbgPort = $Port + 1
+    $profil = Join-Path $env:TEMP 'dmscreen-lefedettseg-profil'
+    $proc = Start-Process -FilePath $chrome -PassThru -ArgumentList @('--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+      '--disable-extensions', "--user-data-dir=`"$profil`"", '--window-size=1600,1000', "--remote-debugging-port=$dbgPort", 'about:blank')
+    try {
+      $lap = $null
+      for ($i = 0; $i -lt 50 -and -not $lap; $i++) {
+        try { $lap = (Invoke-RestMethod "http://127.0.0.1:$dbgPort/json/list") | Where-Object { $_.type -eq 'page' } | Select-Object -First 1 } catch { Start-Sleep -Milliseconds 200 }
+      }
+      if (-not $lap) { Write-Host 'Nem sikerült kapcsolódni a Chrome-hoz.' -ForegroundColor Red; exit 2 }
+      $cdp = New-Object Cdp $lap.webSocketDebuggerUrl
+      foreach ($m in 'Runtime.enable', 'Debugger.enable', 'Profiler.enable') { [void]$cdp.Call($m, '{}') }
+      [void]$cdp.Call('Debugger.setSkipAllPauses', '{"skip":true}')
+      [void]$cdp.Call('Profiler.startPreciseCoverage', '{"callCount":true,"detailed":true}')
+      [void]$cdp.Call('Page.navigate', "{`"url`":`"$url`"}")
+      $t0 = Get-Date
+      do {
+        Start-Sleep -Milliseconds 500
+        $kesz = try { $cdp.Eval("document.body && document.body.dataset.done || ''") } catch { '' }
+      } while ($kesz -ne '1' -and ((Get-Date) - $t0).TotalMinutes -lt 6)
+      if ($kesz -ne '1') { Write-Host 'A tesztek nem fejeződtek be 6 percen belül.' -ForegroundColor Red; exit 2 }
+      $riport = $cdp.Eval("document.getElementById('report').textContent")
+      $fajlok = [string[]]@('index.html', 'sheet.js', 'karakter.html', 'player.html')
+      $eredm = [Coverage]::Build($root, $fajlok, $cdp, $cdp.Call('Profiler.takePreciseCoverage', '{}'))
+    } finally { if (-not $proc.HasExited) { $proc.Kill() } }
+
+    $riport -split "`n" | Where-Object { $_ -like 'HIBA*' -or $_ -match '^\s+→' } | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+    Write-Host ($riport -split "`n" | Where-Object { $_ -like 'ÖSSZESEN*' })
+    Write-Host ''
+    $pct = { param($a, $b) if ($b) { '{0,5:N1}%' -f (100 * $a / $b) } else { '   – ' } }
+    $sor = '{0,-15} {1} {2,13}   {3}    {4} {5,11}'
+    Write-Host ($sor -f 'Fájl', ' Sorok', '', 'Kód', 'Függvények', '') -ForegroundColor Cyan
+    $ossz = @{E = 0; L = 0; C = 0; CH = 0; F = 0; FH = 0}
+    foreach ($f in $eredm) {
+      $l = $f.Full + $f.Partial
+      Write-Host ($sor -f $f.Name, (& $pct $l $f.Exec), "($l/$($f.Exec))", (& $pct $f.CharsHit $f.Chars), (& $pct $f.FuncsHit $f.Funcs.Count), "($($f.FuncsHit)/$($f.Funcs.Count))")
+      $ossz.E += $f.Exec; $ossz.L += $l; $ossz.C += $f.Chars; $ossz.CH += $f.CharsHit; $ossz.F += $f.Funcs.Count; $ossz.FH += $f.FuncsHit
+    }
+    Write-Host ($sor -f 'ÖSSZESEN', (& $pct $ossz.L $ossz.E), "($($ossz.L)/$($ossz.E))", (& $pct $ossz.CH $ossz.C), (& $pct $ossz.FH $ossz.F), "($($ossz.FH)/$($ossz.F))") -ForegroundColor Green
+    Write-Host 'Sorok: legalább részben lefutott sorok; Kód: a lefutott kód aránya (karakterre); Függvények: legalább egyszer meghívott függvények.' -ForegroundColor DarkGray
+    $html = Join-Path $env:TEMP 'dmscreen-lefedettseg.html'; $txt = Join-Path $env:TEMP 'dmscreen-lefedettseg.txt'
+    [Coverage]::Html($eredm, $html)
+    [IO.File]::WriteAllText($txt, [Coverage]::Missed($eredm), [Text.Encoding]::UTF8)
+    Write-Host "`nRészletes riport: $html`nLe nem futott függvények: $txt"
     exit 0
   }
 
