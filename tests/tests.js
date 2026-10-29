@@ -3088,13 +3088,26 @@ describe('Telefonos karakterlap (karakter.html)', () => {
 
 // ======================================================================
 describe('Szerződés (szerzodes.js)', () => {
-  test('rétegek: az index.html nem hívja közvetlenül az adatbázist, és nem ismeri az útvonalakat (csak a js/adat/tar.js)', async () => {
-    const html = await (await fetch('../index.html', {cache: 'no-store'})).text();
+  test('rétegek: csak a js/adat/tar.js hívja az adatbázist; a logika nem nyúl a DOM-hoz, a felület nem hívja a Tar-t (docs/dontesek/0006)', async () => {
+    const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();
+    const html = await szoveg('index.html');
     // csak a sima <script> blokkok: a Firebase-modul (type="module") maga a port-illesztő, az szándékosan kimarad (docs/dontesek/0001)
-    const kod = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
-    ok(kod.length > 50000, 'megtalálta a szkriptet');
-    eq([...kod.matchAll(/\b(DB|UT|db)\.\w+/g)].map(m => m[0]), [], 'közvetlen adatbázis- vagy útvonal-hívás');
-    has(await (await fetch('../js/adat/tar.js', {cache: 'no-store'})).text(), 'db.set(', 'a Tar ír');
+    const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
+    const fajlok = [...html.matchAll(/<script src="(js\/[\w\/-]+\.js)\?v=\d+"><\/script>/g)].map(m => m[1]);
+    const logika = fajlok.filter(f => f.startsWith('js/logika/')), felulet = fajlok.filter(f => f.startsWith('js/felulet/'));
+    ok(fajlok.includes('js/adat/tar.js') && logika.length >= 10 && felulet.length >= 3, 'megtalálta a fájlokat: ' + fajlok.join(', '));
+    eq(fajlok.length, [...html.matchAll(/<script[^>]*src="js\//g)].length, 'minden js/ fájl a megszokott alakban töltődik (<script src="js/….js?v=N">)');
+    const talal = (kod, re) => [...kod.matchAll(re)].map(m => m[0]);
+    const DB_RE = /\b(DB|UT|db)\??\.\w+/g, TAR_RE = /\b(Tar|DB|UT|db)\??\.\w+/g,
+      DOM_RE = /\bdocument\.|(?<![\\\w$])\$\$?\(|\.(innerHTML|outerHTML|classList)\b|querySelector|getElements?By|insertAdjacentHTML|createElement/g;
+    eq(talal(inline, DB_RE), [], 'index.html: közvetlen adatbázis- vagy útvonal-hívás');
+    for (const f of fajlok.filter(f => f !== 'js/adat/tar.js')) {
+      const kod = await szoveg(f);
+      eq(talal(kod, DB_RE), [], f + ': közvetlen adatbázis- vagy útvonal-hívás');
+      if (logika.includes(f)) eq(talal(kod, DOM_RE), [], f + ': a logika nem nyúl a DOM-hoz');
+      if (felulet.includes(f)) eq(talal(kod, TAR_RE), [], f + ': a felület nem hívja a Tar-t');
+    }
+    has(await szoveg('js/adat/tar.js'), 'db.set(', 'a Tar ír');
   });
   test('minden felhős írás átmegy a szerződés tisztítóján (mentés, lap, nyilvános rész, napi mentés)', async () => {
     const {normCreature, sanitizeState, normPublicChar} = W.Szerzodes, sj = W.stableJson, hibak = [], irt = new Set();
