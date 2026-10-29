@@ -28,6 +28,7 @@ function szerkesztoEsemenyek() {
   document.addEventListener('input', e => { if (e.target.id === 'portraitUrl') setPortrait(e.target.value.trim()); });
   document.addEventListener('change', e => { if (e.target.name === 'kind' && e.target.closest('#edForm')) syncShareBox(); });
 }
+
 // ---------- szerkesztő ablak ----------
 let editCb = null;
 // a játékos app beállításai csak könyvtárbeli lénynél (share: true) látszanak; a típustól függ, mi jelenik meg
