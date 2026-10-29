@@ -46,7 +46,7 @@ let ORIG = {};
 function fresh() {
   Object.assign(W, ORIG);
   W.confirm = () => true; W.alert = () => {}; W.prompt = () => null;
-  A(`DB = null; authInfo = {status: 'unconfigured'}; clearTimeout(saveTimer); saveTimer = null;
+  A(`Tar.kapcsol(null); authInfo = {status: 'unconfigured'}; clearTimeout(saveTimer); saveTimer = null;
      S = {library: [], enc: {list: [], round: 1, active: null}, saved: [], settings: {groupInit: true, rollHp: false, sources: ['MM']}};
      selected = null; logLines = []; libTab = 'lib'; lastSaved = emptySaved();
      fiveIndex = null; fiveData = {}; fiveResults = []; backupWarn = ''; lootData = null; lootResult = null;
@@ -2287,7 +2287,7 @@ describe('Szabálykönyv és tárgy-import', () => {
     const back = H.joinChunks(chunks);
     for (const k of H.RB_KINDS) eq(back[k], rb[k], k);
     const f = makeFakeDb({'rules/meta': {chunks: ['old-0']}, 'rules/old-0': {data: '{}'}});
-    W.__fdb = f.db; A('DB = window.__fdb');
+    W.__fdb = f.db; A('Tar.kapcsol(window.__fdb)');
     const meta = await W.uploadRulebook(rb);
     eq(f.log.at(-1), 'set rules/meta'); ok(f.log.includes('del rules/old-0'));
     eq([meta.counts.spells, meta.counts.items, meta.counts.variants, meta.counts.classes, meta.counts.races, meta.format], [4, 6, 3, 1, 3, 2]);
@@ -3080,6 +3080,50 @@ describe('Telefonos karakterlap (karakter.html)', () => {
 
 // ======================================================================
 describe('Szerződés (szerzodes.js)', () => {
+  test('rétegek: az index.html nem hívja közvetlenül az adatbázist, és nem ismeri az útvonalakat (csak a js/adat/tar.js)', async () => {
+    const html = await (await fetch('../index.html', {cache: 'no-store'})).text();
+    // csak a sima <script> blokkok: a Firebase-modul (type="module") maga a port-illesztő, az szándékosan kimarad (docs/dontesek/0001)
+    const kod = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
+    ok(kod.length > 50000, 'megtalálta a szkriptet');
+    eq([...kod.matchAll(/\b(DB|UT|db)\.\w+/g)].map(m => m[0]), [], 'közvetlen adatbázis- vagy útvonal-hívás');
+    has(await (await fetch('../js/adat/tar.js', {cache: 'no-store'})).text(), 'db.set(', 'a Tar ír');
+  });
+  test('minden felhős írás átmegy a szerződés tisztítóján (mentés, lap, nyilvános rész, napi mentés)', async () => {
+    const {normCreature, sanitizeState, normPublicChar} = W.Szerzodes, sj = W.stableJson, hibak = [], irt = new Set();
+    const idoNelkul = d => { const o = structuredClone(d); delete o.updatedAt; delete o.updatedBy; return o; };
+    // a két érték eltérő mezőinek útvonala (a hibaüzenethez)
+    const elter = (a, b, ut = '') => sj(a) === sj(b) ? [] : a && b && typeof a === 'object' && typeof b === 'object'
+      ? [...new Set([...Object.keys(a), ...Object.keys(b)])].flatMap(k => elter(a[k], b[k], ut + '.' + k)) : [ut];
+    const ellenoriz = (p, d) => {
+      const [col, id] = p.split('/'); irt.add(col);
+      const [ki, be] = p === 'dmscreen/state' ? [(({enc, settings}) => ({enc, settings}))(sanitizeState(d, d.settings)), d]
+        : p === 'dmscreen/backups' ? [Array.isArray(d.items), true]
+        : col === 'dmscreen_backup' ? (o => [sanitizeState(o, o.settings).library, o.library])(JSON.parse(d.data))
+        : col === 'dmscreen_library' ? [{...normCreature(d), id}, d]
+        : col === 'dmscreen_saved' ? [sanitizeState({saved: [d]}).saved[0], d]
+        : col === 'characters' ? [{...normPublicChar(d), id}, d]
+        : p === 'access/players' ? [{emails: [...new Set(d.emails)].sort()}, d]
+        : col === 'sheets' ? [idoNelkul(W.Sheet.norm(d)), idoNelkul(d)]
+        : ['ismeretlen útvonal', p];
+      const e = elter(ki, be);
+      if (e.length) hibak.push(p + ' ' + e.join(', '));
+    };
+    // a lap a sablonból, de tisztítva (a sablon _leiras mezőjét a Sheet.norm elhagyja – az nem a DM Screen írása)
+    const f = makeFakeDb({...emptyState(), 'dmscreen_library/p1': pc('Rella', 1, {id: 'p1', owner: 'a@x.hu'}), 'sheets/p1': W.Sheet.norm(sheetDoc())});
+    const {set, update} = f.db;
+    f.db.set = async (p, d) => { ellenoriz(p, d); return set(p, d); };
+    f.db.update = async (p, d) => { await update(p, d); ellenoriz(p, f.store[p]); };
+    try {
+      await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(500);
+      A(`S.library.push(normCreature(${JSON.stringify(mk('Goblin', {id: 'g1'}))}), normCreature({id: 'n1', name: 'Őr', kind: 'npc', hp: {max: 20, cur: 8}, share: {vis: 'party', hp: 'label'}}))`);
+      A(`S.saved.push({id: 's1', name: 'Les', list: [S.library[1]]})`);
+      const [x] = W.addToEncounter(A('S.library[0]'), 1); W.addToEncounter(A('S.library[1]'), 2);
+      W.damage(x, 4); W.save(); await wait(500);
+      await W.addBackup('2026-10-29', 'teszt');
+    } finally { f.db.set = set; f.db.update = update; }
+    eq(hibak, [], 'a tisztítón átmenve megváltozna');
+    eq([...irt].sort(), ['access', 'characters', 'dmscreen', 'dmscreen_backup', 'dmscreen_library', 'dmscreen_saved', 'sheets'], 'minden fajta írás előfordult');
+  });
   test('minden felhős útvonal gyűjteményére van szabály a firestore.rules-ban', async () => {
     const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text(), UT = W.Szerzodes.UT;
     const utak = Object.values(UT).map(u => typeof u === 'function' ? u('x') : u);
@@ -3128,7 +3172,7 @@ describe('Szerződés (szerzodes.js)', () => {
   });
   test('a karakter.html a szerződés tisztítóját használja; az index.html nem tart saját másolatot', () => {
     ok(K.eval('normChar') === K.Szerzodes.normPublicChar, 'karakter.html: normChar');
-    for (const n of ['normCreature', 'normCombatant', 'sanitizeState', 'normInventory', 'blankCreature', 'splitEntry', 'safeId', 'str', 'TEMPLATE', 'SECTIONS', 'UT'])
+    for (const n of ['normCreature', 'normCombatant', 'sanitizeState', 'normInventory', 'blankCreature', 'splitEntry', 'safeId', 'str', 'TEMPLATE', 'SECTIONS'])
       ok(A(n) === W.Szerzodes[n], 'index.html: ' + n);
   });
 });

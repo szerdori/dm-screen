@@ -198,15 +198,16 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 <script src="kozos.js?v=3"></script>
 <script src="sheet.js?v=6"></script>
 <script src="szerzodes.js?v=1"></script>
+<script src="js/adat/tar.js?v=1"></script>
 <script>
 'use strict';
 // ---------- alapok ----------
 // a sheet.js közös segédei (a karakter.html is ezeket használja)
 const {ABIL, ABIL_FULL, SKILLS, skillLabel, EMAIL_RE, num, isObj, safeUrl, sgn, propOf} = Sheet;
 // a szerződés (szerzodes.js): útvonalak, a lények formátuma és a bejövő adatok tisztítói
-const {UT, HELYI, CSATORNA, SECTIONS, TEMPLATE, KINDS, str, safeId, blankCreature, splitEntry, normInventory, normCreature, normCombatant, sanitizeState} = Szerzodes;
+const {HELYI, CSATORNA, SECTIONS, TEMPLATE, KINDS, str, safeId, blankCreature, splitEntry, normInventory, normCreature, normCombatant, sanitizeState} = Szerzodes;
 // a közös fájlok várt változata (= a <script src> ?v= száma; régi, gyorsítótárazott példánynál a lapokra nem írunk – syncSheets)
-const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1};
+const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1, tar: 1};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 const regiFajl = () => typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0;
 const CONDITIONS = ['Blinded','Charmed','Deafened','Exhaustion','Frightened','Grappled','Incapacitated','Invisible','Paralyzed','Petrified','Poisoned','Prone','Restrained','Stunned','Unconscious'];
@@ -235,10 +236,10 @@ const nameOf = x => x.c.name + (x.num ? ' ' + x.num : '');
 const byId = id => S.enc.list.find(x => x.cid === id);
 
 // ---------- mentés: Firebase (Firestore), plusz másolat a böngészőben ----------
-// Firestore-ban: dmscreen/state (encounter + beállítások), dmscreen_library/{id}, dmscreen_saved/{id}.
-// A játékos appnak: characters/{könyvtár-id} (a karakter nyilvános része) és access/players (a játékosok e-mailjei).
+// A felhőbe a Tar (js/adat/tar.js) ír: állapot (encounter + beállítások), könyvtár, mentett encounterek, és a játékos appnak
+// a karakterek nyilvános része meg a játékosok e-mailjei. Az útvonalak és a formák: szerzodes.js / SZERZODES.md.
 // Mindig csak a megváltozott dokumentumokat írjuk.
-let DB = null, saveTimer = null, authInfo = {status: 'loading'};
+let saveTimer = null, authInfo = {status: 'loading'};
 const emptySaved = () => ({state: '', lib: {}, saved: {}, pub: {}, players: '[]'});
 let lastSaved = emptySaved();
 const setSaveState = t => $('#saveState').textContent = t;
@@ -246,33 +247,25 @@ function save() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 400); 
 function ensureIds() { S.saved.forEach(e => { if (!e.id) e.id = uid(); }); }
 // kulcssorrendtől független JSON (a Firestore más sorrendben adja vissza a mezőket)
 const stableJson = v => JSON.stringify(v, (k, x) => isObj(x) ? Object.fromEntries(Object.keys(x).sort().map(n => [n, x[n]])) : x);
-function syncCol(col, arr, key, ops, ser = JSON.stringify) {
+// egy gyűjtemény (Tar.konyvtar, Tar.mentett, Tar.karakterek) szinkronja: csak a változott és a törölt dokumentumok
+function syncCol(gyujt, arr, key, ops, ser = JSON.stringify) {
   const seen = {}, prev = lastSaved[key] || {};
   for (const it of arr) {
     const j = ser(it); seen[it.id] = j;
-    if (prev[it.id] !== j) ops.push(DB.set(col + '/' + it.id, JSON.parse(j)));
+    if (prev[it.id] !== j) ops.push(gyujt.ir(it.id, JSON.parse(j)));
   }
-  for (const id of Object.keys(prev)) if (!(id in seen)) ops.push(DB.del(col + '/' + id));
+  for (const id of Object.keys(prev)) if (!(id in seen)) ops.push(gyujt.torol(id));
   lastSaved[key] = seen;
 }
 // ---------- játékos app: ami a játékosok telefonján látszik ----------
-// Játékos karakter: a gazdája mindig látja; „csapat” láthatóságnál a többi játékos is.
-// NPC: csak „csapat” láthatóságnál jelenik meg, a HP pontosan vagy csak állapotként, az AC ki-be kapcsolható.
-// A titkos rész (statok, jegyzetek, akciók) a dmscreen_library-ben marad, azt csak a DM olvashatja.
-const hpStatus = Sheet.hpStatus;
-function publicChars() {
-  return S.library.filter(c => c.kind === 'pc' ? c.owner || c.share.vis === 'party' : c.kind === 'npc' && c.share.vis === 'party').map(c => {
-    const pc = c.kind === 'pc', cur = c.hp.cur ?? c.hp.max, exact = pc || c.share.hp === 'exact';
-    return {id: c.id, kind: c.kind, owner: c.owner || '', visibility: c.share.vis, name: c.name, portrait: c.portrait || '',
-      level: pc ? c.cr : '', ac: pc || c.share.ac ? c.ac : null,
-      hp: exact ? {cur, max: c.hp.max} : null, status: exact ? null : hpStatus(cur, c.hp.max)};
-  });
-}
+// a karakter nyilvános része (characters/{id}) a könyvtárból: js/adat/tar.js (Tar.karakterek.nyilvanosResz)
+const hpStatus = Sheet.hpStatus;  // ma csak a tesztek használják (W.hpStatus)
+function publicChars() { return Tar.karakterek.nyilvanosResz(S.library); }
 const playerEmails = () => [...new Set(S.library.filter(c => c.owner).map(c => c.owner))].sort();
 function syncSharing(ops) {
-  syncCol(UT.karakterek, publicChars(), 'pub', ops, stableJson);
+  syncCol(Tar.karakterek, publicChars(), 'pub', ops, stableJson);
   const pl = JSON.stringify(playerEmails());
-  if (pl !== lastSaved.players) { ops.push(DB.set(UT.jatekosok, {emails: JSON.parse(pl)})); lastSaved.players = pl; }
+  if (pl !== lastSaved.players) { ops.push(Tar.jatekosok.ir(JSON.parse(pl))); lastSaved.players = pl; }
 }
 const sharingDirty = () => { const now = publicChars(), prev = lastSaved.pub || {};
   return JSON.stringify(playerEmails()) !== lastSaved.players || now.length !== Object.keys(prev).length || now.some(p => prev[p.id] !== stableJson(p)); };
@@ -342,7 +335,7 @@ function syncSheets(ops) {
   // a böngésző gyorsítótárából régi közös fájl (sheet.js, kozos.js) jött: a lapokra nem írunk, amíg az oldal nem frissül (a könyvtári változás megmarad)
   if (regiFajl()) { if (!syncSheets.warned) log('⚠ Az oldal egy része régi változatból töltődött be: frissítsd (Ctrl + F5), addig a karakterlapokra nem írok.'); syncSheets.warned = true; return; }
   const now = new Date().toISOString(), by = authInfo.email || 'DM';
-  for (const id of sheetOps.del) { delete SHEETS[id]; delete shadow[id]; if (DB) ops.push(DB.del(UT.lap(id))); }
+  for (const id of sheetOps.del) { delete SHEETS[id]; delete shadow[id]; if (Tar.kapcsolva()) ops.push(Tar.lapok.torol(id)); }
   sheetOps.del.clear();
   for (const c of S.library) {
     const s = SHEETS[c.id]; if (!s || c.kind !== 'pc') continue;
@@ -380,10 +373,10 @@ function syncSheets(ops) {
     }
     Object.entries(patch).forEach(([p, v]) => setPath(s, p, structuredClone(v)));
     SHEETS[c.id] = Sheet.norm({...s, updatedAt: now, updatedBy: by});
-    if (DB && !sheetOps.set.has(c.id)) ops.push(DB.update(UT.lap(c.id), {...JSON.parse(JSON.stringify(patch)), updatedAt: now, updatedBy: by}));
+    if (Tar.kapcsolva() && !sheetOps.set.has(c.id)) ops.push(Tar.lapok.mezok(c.id, {...JSON.parse(JSON.stringify(patch)), updatedAt: now, updatedBy: by}));
   }
-  for (const id of sheetOps.set) if (SHEETS[id] && DB) ops.push(DB.set(UT.lap(id), JSON.parse(JSON.stringify({...SHEETS[id], updatedAt: now, updatedBy: by}))));
-  if (DB) sheetOps.set.clear();
+  for (const id of sheetOps.set) if (SHEETS[id] && Tar.kapcsolva()) ops.push(Tar.lapok.ir(id, JSON.parse(JSON.stringify({...SHEETS[id], updatedAt: now, updatedBy: by}))));
+  if (Tar.kapcsolva()) sheetOps.set.clear();
   try { localStorage.setItem(HELYI.lapok, JSON.stringify(SHEETS)); } catch {}
 }
 // élő figyelés: a teljes sheets gyűjtemény minden változáskor
@@ -473,12 +466,12 @@ async function doSave() {
   const ops = [];
   syncSheets(ops);
   try { localStorage.setItem(HELYI.allapot, JSON.stringify(S)); } catch {}
-  if (!DB) { setSaveState(authInfo.status === 'unconfigured' ? '✓ böngészőben mentve' : ''); return; }
+  if (!Tar.kapcsolva()) { setSaveState(authInfo.status === 'unconfigured' ? '✓ böngészőben mentve' : ''); return; }
   try {
     const state = JSON.stringify({enc: S.enc, settings: S.settings});
-    if (state !== lastSaved.state) { ops.push(DB.set(UT.allapot, JSON.parse(state))); lastSaved.state = state; }
-    syncCol(UT.konyvtar, S.library, 'lib', ops);
-    syncCol(UT.mentett, S.saved, 'saved', ops);
+    if (state !== lastSaved.state) { ops.push(Tar.allapot.ir(JSON.parse(state))); lastSaved.state = state; }
+    syncCol(Tar.konyvtar, S.library, 'lib', ops);
+    syncCol(Tar.mentett, S.saved, 'saved', ops);
     syncSharing(ops);
     if (!ops.length) return;
     setSaveState(navigator.onLine ? 'mentés…' : '⚠ nincs internet – a változások később töltődnek fel');
@@ -508,10 +501,10 @@ function loadLocal() {
   } catch {}
 }
 async function loadFromDb() {
-  const [st, lib, saved, pub, players, sheets] = await Promise.all([DB.get(UT.allapot), DB.list(UT.konyvtar), DB.list(UT.mentett),
-    DB.list(UT.karakterek), DB.get(UT.jatekosok),
+  const [st, lib, saved, pub, players, sheets] = await Promise.all([Tar.allapot.olvas(), Tar.konyvtar.lista(), Tar.mentett.lista(),
+    Tar.karakterek.lista(), Tar.jatekosok.olvas(),
     // ha a konzolban még a régi szabályok vannak, a lapok nélkül is betölt (a Menü szól)
-    DB.list(UT.lapok).then(l => { sheetsWarn = ''; return l; }, e => { sheetsWarn = e.code || e.message; return []; })]);
+    Tar.lapok.lista().then(l => { sheetsWarn = ''; return l; }, e => { sheetsWarn = e.code || e.message; return []; })]);
   lastSaved = emptySaved();
   pub.forEach(p => lastSaved.pub[p.id] = stableJson(p));
   if (Array.isArray(players?.emails)) lastSaved.players = JSON.stringify(players.emails);
@@ -539,21 +532,21 @@ const BACKUP_KEEP = 14, BACKUP_MAX = 900000, EXPORT_DAYS = 7;
 let backupWarn = '';
 const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const hasData = () => S.library.length || S.enc.list.length || S.saved.length;
-async function backupIndex() { const d = await DB.get(UT.mentesek); return Array.isArray(d?.items) ? d.items : []; }
+async function backupIndex() { const d = await Tar.mentesek.tartalom(); return Array.isArray(d?.items) ? d.items : []; }
 async function addBackup(id, note, idx) {
   idx = idx || await backupIndex();
   const data = JSON.stringify({library: S.library, saved: S.saved, enc: S.enc, settings: S.settings, sheets: sheetList()});
   if (data.length > BACKUP_MAX) { backupWarn = 'A felhős biztonsági mentés kimaradt, mert túl nagy az adat (valószínűleg sok feltöltött portré). Mentsd fájlba rendszeresen!'; return false; }
-  await DB.set(UT.mentes(id), {data});
+  await Tar.mentesek.ir(id, data);
   idx = [{id, note, createdAt: new Date().toISOString(), library: S.library.length, saved: S.saved.length}, ...idx.filter(b => b.id !== id)]
     .sort((a, b) => b.id.localeCompare(a.id));
-  for (const b of idx.slice(BACKUP_KEEP)) await DB.del(UT.mentes(b.id));
-  await DB.set(UT.mentesek, {items: idx.slice(0, BACKUP_KEEP)});
+  for (const b of idx.slice(BACKUP_KEEP)) await Tar.mentesek.torol(b.id);
+  await Tar.mentesek.tartalomIr(idx.slice(0, BACKUP_KEEP));
   backupWarn = '';
   return true;
 }
 async function dailyBackup() {
-  if (!DB || !hasData()) return;
+  if (!Tar.kapcsolva() || !hasData()) return;
   try {
     const idx = await backupIndex();
     if (!idx.some(b => b.id === localDate())) await addBackup(localDate(), 'napi', idx);
@@ -561,7 +554,7 @@ async function dailyBackup() {
 }
 const timeStamp = () => { const d = new Date(); return localDate(d) + '-' + String(d.getHours()).padStart(2, '0') + String(d.getMinutes()).padStart(2, '0'); };
 async function restoreBackup(id) {
-  const doc = await DB.get(UT.mentes(id));
+  const doc = await Tar.mentesek.olvas(id);
   if (typeof doc?.data !== 'string') throw new Error('a mentés nem található');
   const parsed = JSON.parse(doc.data);
   await addBackup(timeStamp() + '-elotte', 'visszaállítás előtt');  // a mostani állapotot is megőrizzük
@@ -594,22 +587,22 @@ window.DMApp = {
   async setAuth(a) {
     authInfo = a;
     if (a.status === 'signedIn') {
-      DB = a.db;
+      Tar.kapcsol(a.db);
       renderGate('Adatok betöltése…');
       try {
         await loadFromDb(); renderGate(null); dailyBackup();
-        sheetUnsub?.(); sheetUnsub = sheetsWarn ? null : DB.watch?.(UT.lapok, onSheets, () => {}) || null;
+        sheetUnsub?.(); sheetUnsub = sheetsWarn ? null : Tar.lapok.figyel(onSheets, () => {});
       }
       catch (e) {
-        DB = null;
+        Tar.kapcsol(null);
         renderGate(e.code === 'permission-denied'
           ? `Ez a Google-fiók (${esc(a.email)}) nem fér hozzá az adatokhoz.<br><button data-act="signOut">Másik fiókkal</button>`
           : `Nem sikerült betölteni az adatokat (${esc(e.code || e.message)}).<br><button data-act="reload">Újra</button>`);
         return;
       }
-    } else if (a.status === 'unconfigured') { DB = null; loadLocal(); renderGate(null); }
+    } else if (a.status === 'unconfigured') { Tar.kapcsol(null); loadLocal(); renderGate(null); }
     else if (a.status === 'signedOut') {
-      DB = null; sheetUnsub?.(); sheetUnsub = null;
+      Tar.kapcsol(null); sheetUnsub?.(); sheetUnsub = null;
       renderGate(`<b style="font-size:40px;color:var(--accent)">⚔</b><br>Lépj be a Google-fiókoddal, hogy elérd a DM Screen adataidat.<br>
         <button class="primary" data-act="signIn">Belépés Google-fiókkal</button>${a.error ? `<p style="color:var(--red)">${esc(a.error)}</p>` : ''}`);
     }
@@ -711,7 +704,7 @@ function addToEncounter(creature, count = 1) {
     delete c.hp.cur;
     const sheet = c.kind === 'pc' && SHEETS[c.libId];  // telefonos lapnál a lap szerinti HP és temp HP
     if (sheet) hp = sheet.hp.cur;
-    const x = {cid: uid(), num, c, hp, temp: sheet ? sheet.hp.temp : 0, init: null, cond: sheet ? condsFromSheet(sheet) : [], conc: !!sheet?.concentration, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group};
+    const x = {cid: uid(), num, c, hp, temp: sheet ? sheet.hp.temp : 0, init: null, cond: sheet ? condsFromSheet(sheet) : [], conc: !!sheet?.concentration, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group, hiddenP: false, publicName: ''};
     S.enc.list.push(x); added.push(x);
   }
   // harc közben hozzáadott ellenfelek azonnal dobnak
@@ -1292,12 +1285,12 @@ function openMenu() {
     <div class="lrow"><span class="nm">Mindenki eltávolítása az encounterből</span><button data-act="clearAll">Ürítés</button></div>
     <div class="lrow"><span class="nm">Teljes mentés letöltése fájlba (könyvtár + encounter)</span><button data-act="exportAll">Exportálás</button></div>
     <div class="lrow"><span class="nm">Teljes mentés visszatöltése fájlból (felülírja a mostanit)</span><button data-act="importAll">Importálás</button></div>
-    ${DB ? `<div class="lrow"><span class="nm">Felhős biztonsági mentések (naponta automatikusan, az utolsó ${BACKUP_KEEP} megmarad) – visszaállítás${backupWarn ? ` <span style="color:var(--orange)">⚠ ${esc(backupWarn)}</span>` : ''}</span><button data-act="openBackups">Megnyitás</button></div>` : ''}
+    ${Tar.kapcsolva() ? `<div class="lrow"><span class="nm">Felhős biztonsági mentések (naponta automatikusan, az utolsó ${BACKUP_KEEP} megmarad) – visszaállítás${backupWarn ? ` <span style="color:var(--orange)">⚠ ${esc(backupWarn)}</span>` : ''}</span><button data-act="openBackups">Megnyitás</button></div>` : ''}
     <div class="lrow"><span class="nm">Kitölthető sablon letöltése saját lényhez</span><button data-act="downloadTemplate">Sablon letöltése</button></div>
     <div class="lrow"><span class="nm">📖 Szabálykönyv a játékos appnak (varázslatok, tárgyak, featek) – frissítés az 5e.tools-ról${sheetsWarn ? ` <span style="color:var(--orange)">⚠ A telefonos karakterlapok nem olvashatók (${esc(sheetsWarn)}) – a Firebase konzolba be kell másolni a firestore.rules új változatát.</span>` : ''}</span><button data-act="rulebook">Megnyitás</button></div>
-  ${DB ? `<div class="lrow"><span class="nm">Belépve: <b>${esc(authInfo.email || '')}</b></span><button data-act="signOut">Kilépés</button></div>` : ''}
+  ${Tar.kapcsolva() ? `<div class="lrow"><span class="nm">Belépve: <b>${esc(authInfo.email || '')}</b></span><button data-act="signOut">Kilépés</button></div>` : ''}
   </div>
-  <p class="hint">${DB ? 'Az adatok automatikusan mentődnek a felhőbe (Firebase), így bármelyik gépről elérheted őket belépés után. Ha játék közben elmegy az internet, a program tovább működik, és később feltölti a változásokat.' : 'Az adatok csak ebben a böngészőben vannak elmentve.'}</p>`);
+  <p class="hint">${Tar.kapcsolva() ? 'Az adatok automatikusan mentődnek a felhőbe (Firebase), így bármelyik gépről elérheted őket belépés után. Ha játék közben elmegy az internet, a program tovább működik, és később feltölti a változásokat.' : 'Az adatok csak ebben a böngészőben vannak elmentve.'}</p>`);
 }
 function openInitMenu() {
   openModal(`<h2>Initiative dobás</h2><div class="rows">
@@ -2024,33 +2017,33 @@ async function buildRulebook(get = rbFetch) {
   return rb;
 }
 async function uploadRulebook(rb, step = () => {}) {
-  const chunks = Sheet.splitChunks(rb), old = await DB.get(UT.szabalyMeta);
-  for (const [i, c] of chunks.entries()) { step(`Feltöltés: ${i + 1} / ${chunks.length}`); await DB.set(UT.szabalyDarab(c.id), {data: c.data}); }
-  for (const id of old?.chunks || []) if (!chunks.some(c => c.id === id)) await DB.del(UT.szabalyDarab(id));
+  const chunks = Sheet.splitChunks(rb), old = await Tar.szabalyok.meta();
+  for (const [i, c] of chunks.entries()) { step(`Feltöltés: ${i + 1} / ${chunks.length}`); await Tar.szabalyok.darabIr(c.id, c.data); }
+  for (const id of old?.chunks || []) if (!chunks.some(c => c.id === id)) await Tar.szabalyok.darabTorol(id);
   // a meta utoljára: a telefonok csak akkor töltik le az újat, ha minden darab fent van
   const meta = {version: new Date().toISOString(), format: Sheet.RB_FORMAT, chunks: chunks.map(c => c.id), counts: Object.fromEntries(Sheet.RB_KINDS.map(k => [k, rb[k].length]))};
-  await DB.set(UT.szabalyMeta, meta);
+  await Tar.szabalyok.metaIr(meta);
   return meta;
 }
 // a Tárgyak fülnek: a felhőben lévő példány, ha nincs (vagy nincs belépés), közvetlenül a tükörből
 async function getRulebook() {
   if (rulebook) return rulebook;
   let r = null;
-  if (DB) try { r = await Sheet.loadRulebook(DB); } catch {}
+  if (Tar.kapcsolva()) try { r = await Tar.szabalyok.betolt(); } catch {}
   return (rulebook = r || {version: '', counts: {}, rb: await buildRulebook()});
 }
 const rbCounts = c => `${c.spells || 0} varázslat, ${(c.items || 0) + (c.baseItems || 0)} tárgy + ${c.variants || 0} variáns, ${c.feats || 0} feat, ${c.classes || 0} osztály ${c.subclasses || 0} alosztállyal, ${c.races || 0} faj, ${c.backgrounds || 0} háttér`;
 async function openRulebook() {
   openModal('<h2>📖 Szabálykönyv a játékos appnak</h2><p class="muted">Betöltés…</p>');
   let meta = null;
-  try { meta = DB ? await DB.get(UT.szabalyMeta) : null; } catch (e) { meta = {error: e.code || e.message}; }
+  try { meta = Tar.kapcsolva() ? await Tar.szabalyok.meta() : null; } catch (e) { meta = {error: e.code || e.message}; }
   $('#modalBox').innerHTML = `<h2>📖 Szabálykönyv a játékos appnak</h2>
     <p>A telefonos karakterlap ebből keresi a varázslatokat, tárgyakat és featek leírását. Források: <b>PHB, XGE, TCE</b> (tárgyaknál a <b>DMG 2014</b> is), a 2024-es könyvek nélkül.
     A frissítés letölti az 5e.tools-tükörből, és a privát felhődbe menti; a játékosok telefonja a következő megnyitáskor egyszer letölti, utána internet nélkül is megvan.</p>
-    ${!DB ? '<p style="color:var(--orange)">Feltöltéshez be kell lépni (felhő nélkül csak a Tárgyak fül tudja közvetlenül használni).</p>'
+    ${!Tar.kapcsolva() ? '<p style="color:var(--orange)">Feltöltéshez be kell lépni (felhő nélkül csak a Tárgyak fül tudja közvetlenül használni).</p>'
       : meta?.error ? `<p style="color:var(--red)">⚠ Nem olvasható a felhőből (${esc(meta.error)}). Ha ez „permission-denied”, a konzolban még a régi szabályok vannak – másold be a firestore.rules új változatát.</p>`
       : meta ? `<p>Jelenlegi változat: <b>${esc(new Date(meta.version).toLocaleString('hu-HU'))}</b> – ${esc(rbCounts(meta.counts || {}))}.</p>` : '<p class="muted">Még nincs feltöltve.</p>'}
-    <div class="toolbar"><button class="primary" data-act="rbUpdate" ${DB ? '' : 'disabled'}>⟳ Letöltés és feltöltés most</button><span id="rbMsg" class="hint"></span></div>`;
+    <div class="toolbar"><button class="primary" data-act="rbUpdate" ${Tar.kapcsolva() ? '' : 'disabled'}>⟳ Letöltés és feltöltés most</button><span id="rbMsg" class="hint"></span></div>`;
 }
 async function rulebookUpdate() {
   const msg = t => { const el = $('#rbMsg'); if (el) el.textContent = t; };

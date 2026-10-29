@@ -123,7 +123,11 @@ try {
   $proc = Start-Process -FilePath $chrome -ArgumentList $chromeArgs -RedirectStandardOutput $kimenet -RedirectStandardError $hibak -NoNewWindow -PassThru
   if (-not $proc.WaitForExit(240000)) { $proc.Kill(); Write-Host 'A tesztek nem fejeződtek be 4 percen belül.' -ForegroundColor Red; exit 2 }
 
-  $html = if (Test-Path $kimenet) { [IO.File]::ReadAllText($kimenet, [Text.Encoding]::UTF8) } else { '' }
+  # a Chrome egy segédfolyamata a kilépés után még pár pillanatig fogva tarthatja a kimeneti fájlt: néhányszor újrapróbáljuk
+  $html = ''
+  for ($i = 0; $i -lt 25 -and (Test-Path $kimenet); $i++) {
+    try { $html = [IO.File]::ReadAllText($kimenet, [Text.Encoding]::UTF8); break } catch [IO.IOException] { Start-Sleep -Milliseconds 200 }
+  }
   $m = [regex]::Match($html, '<pre id="report">([\s\S]*?)</pre>')
   $riport = [Net.WebUtility]::HtmlDecode($m.Groups[1].Value)
   if (-not $m.Success -or $riport -notmatch 'ÖSSZESEN: (\d+) sikeres, (\d+) hibás') {
