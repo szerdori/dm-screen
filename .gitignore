@@ -1,6 +1,7 @@
 # helyi adatmentések és beállítások (személyes adat, nem kerül a nyilvános tárolóba)
 adatok/
-.claude/
+.claude/*
+!.claude/agents/
 *.json.bak
 dmscreen-mentes-*.json
 
