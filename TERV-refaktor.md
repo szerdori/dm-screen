@@ -1,6 +1,6 @@
 # Refaktor: rétegek, szerződés, SOLID – terv
 
-*Készült: 2026-10-29. Állapot: **elfogadva 2026-10-29**, ág: `refaktor-retegek`; kész: 0–3. lépés. Előzmény: a kódtisztítás 1–4. lépése élesben (`bfb1a46`: `kozos.js`, az `index.html` a `sheet.js` segédeit használja). Ez a terv a felmérés 5–7. pontját (az `index.html` szétbontása, a `Sheet.calc` és a `convertDDB` felbontása) dolgozza ki, a SOLID elvek és egy contract-first munkamódszer mintája alapján.*
+*Készült: 2026-10-29. Állapot: **elfogadva 2026-10-29**, ág: `refaktor-retegek`; kész: 0–4. lépés. Előzmény: a kódtisztítás 1–4. lépése élesben (`bfb1a46`: `kozos.js`, az `index.html` a `sheet.js` segédeit használja). Ez a terv a felmérés 5–7. pontját (az `index.html` szétbontása, a `Sheet.calc` és a `convertDDB` felbontása) dolgozza ki, a SOLID elvek és egy contract-first munkamódszer mintája alapján.*
 
 A felhasználó döntései (2026-10-29): **rétegek szerinti szétbontás**; **szerződés kódban és leírásban**; **a tudás szétosztása** (CLAUDE.md / SZERZODES.md / döntési jegyzetek / tervek); **csak olvasó ellenőrző ügynök**.
 
@@ -37,24 +37,36 @@ port      DB (Firebase-modul az index.html végén, tesztben makeFakeDb)
 
 Mellette, minden réteg alatt: **`szerzodes.js`** (formátumok, tisztítás) és a **`sheet.js`** (a karakterlap formátuma és a szabálymotor), valamint a **`kozos.js`**.
 
-Szabály (mint a mintában): egy fájl csak a saját rétegét vagy az alatta lévőt használhatja. A felület nem hív `Tar`-t vagy `DB`-t közvetlenül, a logika nem nyúl a DOM-hoz. Ezt egy teszt figyeli (a forrásfájlok szövegét nézi: `js/logika/*` nem tartalmazhat `document.`/`$(`/`innerHTML`, a `js/felulet/*` nem tartalmazhat `DB.`/`Tar.`-hívást az `AKCIOK`-on kívül – a pontos szabályt a 3. lépés rögzíti).
+Szabály (mint a mintában): egy fájl csak a saját rétegét vagy az alatta lévőt használhatja. A felület nem hív `Tar`-t vagy `DB`-t közvetlenül, a logika nem nyúl a DOM-hoz. Ezt egy teszt figyeli („Szerződés” csoport, a forrásfájlok szövegét nézi); a pontos szabály: `docs/dontesek/0006` (Pontosítás, 2026-10-30).
 
-A tervezett fájlok (a mostani szakaszok alapján, ≈ sor):
+A fájlok (a 4. lépés után, 2026-10-30; betöltési sorrendben, ≈ sor):
 
-| Fájl | Mostani szakasz(ok) | Réteg |
+| Fájl | Mit tart | Réteg |
 |---|---|---|
-| `js/adat/tar.js` | mentés, biztonsági mentések adatrésze, szabálykönyv feltöltése, lapok írása | adat |
-| `szerzodes.js` | bejövő adatok tisztítása (97), `publicChars`, `publicView` | szerződés |
-| `js/logika/harc.js` | encounter (98), kocka (63), sebzés/gyógyítás, állapotok | logika |
-| `js/logika/nehezseg.js` | nehézség (183, a rajzolás nélkül) | logika |
-| `js/logika/loot.js` | zsákmány (138, a rajzolás nélkül) | logika |
-| `js/logika/csapat.js` | Csapat nézet számolásai (129-ből) | logika |
-| `js/logika/import-5etools.js`, `import-ddb.js`, `import-json.js` | 5e.tools (227), D&D Beyond (151), JSON (44) | logika |
-| `js/logika/lapszinkron.js` | telefonos karakterlapok (254) | logika |
-| `js/logika/szabalykonyv.js` | szabálykönyv letöltése és átalakítása (320) | logika |
-| `js/felulet/*.js` | megjelenítés, modal, könyvtár, szerkesztő, csapat, nehézség-ablak, loot-ablak, játékos képernyő küldése | felület |
-| `js/felulet/akciok.js` | események (288) → `AKCIOK` nyilvántartás | felület |
-| `js/indulas.js` | indulás, `DMApp.setAuth` | – (utolsó) |
+| `szerzodes.js` | útvonalak, lényformátum, tisztítók | szerződés |
+| `js/adat/tar.js` | felhős olvasás/írás gyűjteményenként (`Tar.*`) | adat |
+| `js/logika/alap.js` (30) | a közös fájlok segédei, az állapot (`S`), kis segédek, `regiFajl` | logika |
+| `js/logika/harc.js` (145) | kocka, initiative-sorrend, encounter, körök, sebzés/gyógyítás | logika |
+| `js/logika/nehezseg.js` (35) | XP-küszöbök, `difficulty()` | logika |
+| `js/logika/loot.js` (100) | kincstáblák, zsákmány dobása, összesítés | logika |
+| `js/logika/csapat.js` (40) | Csapat nézet számolásai, felszerelés szövegként | logika |
+| `js/logika/import-5etools.js` (185), `import-ddb.js` (130), `import-json.js` (20) | 5e.tools, D&D Beyond, JSON | logika |
+| `js/logika/szabalykonyv.js` (310) | szabálykönyv letöltése, átalakítása, feltöltése; `szabalyMeta`, `addItemTo` | logika |
+| `js/logika/lapszinkron.js` (195) | telefonos karakterlapok szinkronja | logika |
+| `js/logika/mentes.js` (140) | mentés, betöltés, napi mentések; `felhoben` | logika |
+| `js/logika/konyvtar.js` (25) | `upsertLibrary`, szekciók szövegként, `summarize` | logika |
+| `js/felulet/harcter.js` (200) | fő képernyő: csempék, adatlap, napló, dobáslinkek, nehézség, mentésjelző, belépő-ablak | felület |
+| `js/felulet/jatekos-kepernyo.js` (25) | `publicView`, `broadcast`, csatorna | felület |
+| `js/felulet/modal.js` (75) | modális ablak, Menü, Initiative-menü, mentések, szabálykönyv ablak, letöltés | felület |
+| `js/felulet/konyvtar-ablak.js` (190) | Könyvtár ablak és fülei, fájlbetöltés (`fajlBetoltesEsemenyek`) | felület |
+| `js/felulet/szerkeszto.js` (120) | lényszerkesztő, portré (`szerkesztoEsemenyek`) | felület |
+| `js/felulet/ablakok.js` (140) | zsákmány és Csapat nézet ablaka | felület |
+| `js/felulet/akciok.js` (300) | a gombok és mezők eseményei (`akciokEsemenyek`) → 5. lépés: `AKCIOK` | felület |
+| `js/indulas.js` (50) | `DMApp.setAuth`, a figyelők felkapcsolása, első `render()` | – (utolsó: csak ez kapcsol fel eseményfigyelőt és rajzol) |
+
+Az `index.html`-ben a HTML-váz, a stílus, egy inline `<script>` a `VART_MODULOK`-kal (szándékosan inline és a fájlok előtt, lásd `docs/dontesek/0005`), a `<script src>` sorok és a Firebase-modul maradt. A felületi fájlok eseményfigyelői `…Esemenyek()` függvényekben vannak, az `indulas.js` kapcsolja fel őket a régi sorrendben.
+
+**A 4. lépés után nyitva maradt (az 5–6. lépésre):** a logikai fájlok még hívják a felület értesítőit (`render`, `log`, `setSaveState`, `renderGate`, `closeModal`, `aktivCsempeMutat`, `konyvtarFrissit`, `confirm`) – az 5. lépésben az `AKCIOK` kezelője rajzol a logika helyett; az `importAny` maga hívja az `importSheet`-et (`confirm`) és az `upsertLibrary`-t (mentés) – a 6. lépésben az importáló csak átalakít; a `fiveResults` (keresési találatok) felületi állapot a logikában; a `localStorage` (helyi másolat) a logikában van, később a `Tar` alá kerülhet.
 
 A `karakter.html` (≈ 900 sor szkript) ugyanígy bontható, de **később** (7. lépés), mert a 3. fázis épp oda fejleszt.
 
@@ -91,7 +103,7 @@ Mindegyik külön commit, külön jóváhagyással, és **mindegyik után éles�
 | 1 | **Verzióőr általánosítása + tesztfuttató** | A `sheet.js`-es `VERSION`-ellenőrzés helyett közös modul-nyilvántartás a `kozos.js`-ben: minden fájl bejelenti a változatát (`modul('harc', 3)`), induláskor az oldal összeveti a várt értékekkel; eltérésnél figyelmeztető sáv és **nincs írás** (mint most a régi `sheet.js`-nél). A `teszt.ps1` a lefedettséghez magától összegyűjti a `*.js` fájlokat. | kicsi |
 | 2 | **Szerződés** *(kész 2026-10-29)* | `szerzodes.js` + `SZERZODES.md`; a tisztítók, az útvonalak, a böngésző-tároló kulcsai és a csatorna átköltöztek; a `karakter.html` `normChar`-ja a közös tisztítót használja; szerződés-tesztek. | kicsi–közepes |
 | 3 | **Adattár (`Tar`)** *(kész 2026-10-29)* | Minden `DB.*`-hívás a `js/adat/tar.js` nevesített függvényein át; a `publicChars` összeállítása a `Tar`-ban (`Tar.karakterek.nyilvanosResz`); a `publicView` az `index.html`-ben maradt (nem felhős adat – a 4. lépésben a felülettel költözik); egy mentési kör minden írását teszt ellenőrzi a szerződés tisztítóján; rétegszabály-teszt (az `index.html` nem hív `DB.`/`UT.`-t). Közben: a harcba vett lény a tisztított formában jön létre (`hiddenP`, `publicName`), a `teszt.ps1` újrapróbálja a fogva tartott eredményfájl olvasását. | közepes |
-| 4 | **`index.html` szétbontása** | Szakaszonként egy fájl, a logikai fájlok előbb (DOM nélkül), aztán a felület, végül `indulas.js`. **Egy fájl = egy commit**, mindegyik után teszt. Az `index.html`-ben a végén csak a HTML-váz, a stílus és a `<script src>` sorok maradnak. | közepes (gyorsítótár → 1. lépés védi) |
+| 4 | **`index.html` szétbontása** *(kész 2026-10-30)* | Szakaszonként egy fájl, a logikai fájlok előbb (DOM nélkül), aztán a felület, végül `indulas.js` – 20 fájl, 20 commit, mindegyik után teszt és ellenőrző ügynök (lásd a fájltáblázatot fent). Az `index.html`-ben a HTML-váz, a stílus, a `VART_MODULOK`, a `<script src>` sorok és a Firebase-modul maradt. Közben: a `stripHtml` (D&D Beyond) `DOMParser`-rel bont, így a beillesztett HTML képei nem töltődnek be és a kódja nem fut (teszt); a felület a `Tar` helyett a `felhoben()` / `szabalyMeta()` segédet kérdezi; a rétegteszt az új fájlokat nézi, és egy teszt figyeli, hogy az `index.html`-ben nem maradt kód. Lefedettség utána: 97,7% sor / 95,5% függvény (292 teszt). | közepes (gyorsítótár → 1. lépés védi) |
 | 5 | **Gombok nyilvántartása (`AKCIOK`)** | A 229 soros kattintáskezelő `if`-lánca helyett `data-act="nev"` + `AKCIOK.nev = (el, e) => …`. A Shift/Ctrl-kezelés egy közös segédben. | közepes |
 | 6 | **Importálók egységesítése** | `IMPORTEROK = [{nev, felismer(o), atalakit(o)}]`; a beillesztés/fájl ebből választ. A `convertDDB` részfüggvényekre: képességek, mentők/skillek, felszerelés, spellek, támadások. LSP-teszt minden importálóra. | közepes |
 | 7 | **`Sheet.calc` lépésekre** | A már meglévő belső szakaszok mentén (faj és háttér → osztályok → választások → hatások → expertise → felszerelés → HP → AC → speed → támadások → erőforrások → varázslás): `CALC_LEPESEK = [...]`, mindegyik `(ctx) => void`, közös `ctx`. Előtte „aranymintás” teszt: 6–8 jellegzetes lap (multiclass, Unarmored Defense, Customizing Your Origin…) teljes `calc` kimenete rögzítve, és a felbontás után bájtra egyezik. | közepes–nagy (a legkényesebb kód) |
@@ -140,7 +152,7 @@ Mivel a `.claude/` mappa git-ignorált, a `.gitignore`-ba kivétel kerül (`!.cl
 ## Kész, ha
 
 - a 0–7. lépés elkészült (a 8. külön döntés), mindegyik élesítve;
-- az `index.html` szkriptje csak `<script src>` sorokból és a Firebase-modulból áll;
+- az `index.html` szkriptje csak `<script src>` sorokból, a `VART_MODULOK`-ból és a Firebase-modulból áll *(kész a 4. lépéssel)*;
 - egyik függvény sem hosszabb ~60 sornál a `Sheet.calc`, a kattintáskezelő és a `convertDDB` helyén;
 - minden teszt sikeres, a lefedettség ≥ 97,6% sor / 95,4% függvény, és a szerződés- és rétegtesztek is futnak;
 - a CLAUDE.md a fenti felosztás szerint rövidebb, a döntések és formátumok a saját helyükön vannak.
