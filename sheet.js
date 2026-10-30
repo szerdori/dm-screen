@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 6;
+  const VERSION = 7;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -59,6 +59,14 @@ window.Sheet = (() => {
       .map(([k, x]) => [k, typeof x === 'string' ? str(x, 200) : num(x)]));
     return null;
   }
+  // a tanult varázslatok osztályonként (refek: 'Név|FORRÁS'); null = a lap varázslatai még nincsenek besorolva (adoptSpells)
+  const SPELL_KINDS = ['cantrips', 'known', 'book'];
+  function normBuildSpells(sp, levels) {
+    if (!isObj(sp)) return null;
+    const refs = l => [...new Set(arr(l, 120).filter(x => typeof x === 'string' && CH_KEY.test(x)))];
+    return Object.fromEntries(Object.entries(sp).filter(([k, v]) => levels.some(l => l.c === k) && isObj(v))
+      .map(([k, v]) => [k, Object.fromEntries(SPELL_KINDS.map(t => [t, refs(v[t])]).filter(([, l]) => l.length))]));
+  }
   function normBuild(b) {
     const base = isObj(b.base) ? b.base : {}, sub = isObj(b.sub) ? b.sub : {}, ch = isObj(b.ch) ? b.ch : {}, org = isObj(b.origin) ? b.origin : {};
     const levels = arr(b.levels, 20).filter(isObj).map(l => ({c: findClass(l.c) || str(l.c, 60).trim(), hp: l.hp == null || l.hp === '' ? null : int(l.hp, 1, 1, 12)})).filter(l => l.c);
@@ -68,8 +76,16 @@ window.Sheet = (() => {
       base: Object.fromEntries(ABIL.map(a => [a, int(base[a], 10, 1, 30)])), levels,
       sub: Object.fromEntries(Object.entries(sub).filter(([k, v]) => levels.some(l => l.c === k) && typeof v === 'string' && v.trim()).map(([k, v]) => [k, str(v, 200)])),
       ch: Object.fromEntries(Object.entries(ch).filter(([k]) => CH_KEY.test(k)).slice(0, 300).map(([k, v]) => [k, chVal(v)]).filter(([, v]) => v !== null)),
-      origin: Object.keys(origin).length ? origin : null
+      origin: Object.keys(origin).length ? origin : null,
+      spells: normBuildSpells(b.spells, levels)
     };
+  }
+  const isoTime = v => typeof v === 'string' && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(v) ? v : '';
+  // szintlépés-engedély: a DM írja, a játékos a célszint elérésekor törli (to = legfeljebb erre a szintre léphet, a köztes szinteken megmarad)
+  function normLevelUp(v) {
+    if (!isObj(v)) return null;
+    const to = int(v.to, 0, 0, 20);
+    return to >= 2 ? {to, by: str(v.by, 200), at: isoTime(v.at), mc: !!v.mc} : null;
   }
   // felülírható kulcsok: ab:str, save:dex (0/1), skill:stealth (0 / 0.5 / 1 / 2), hpMax, init, ac, speed
   function normOv(o) {
@@ -134,7 +150,7 @@ window.Sheet = (() => {
         used: Array.from({length: 9}, (_, i) => int(used[i], 0, 0, int(slots[i], 0, 0, 9))),
         pact: {level: int(pact.level, 0, 0, 5), max: pactMax, used: int(pact.used, 0, 0, pactMax)}
       },
-      spells: named(d.spells, 400, x => ({name: str(x.name, 120).trim(), level: int(x.level, 0, 0, 9), prepared: !!x.prepared, always: !!x.always, note: str(x.note, 500), ref: str(x.ref, 200), ...AUTO(x)})),
+      spells: named(d.spells, 400, x => ({name: str(x.name, 120).trim(), level: int(x.level, 0, 0, 9), prepared: !!x.prepared, always: !!x.always, note: str(x.note, 500), ref: str(x.ref, 200), ...AUTO(x), ...(x.cls && typeof x.cls === 'string' ? {cls: str(x.cls, 60)} : {}), ...(x.book ? {book: true} : {})})),
       resources: named(d.resources, 50, x => { const m = int(x.max, 1, 0, 99); return {name: str(x.name, 100).trim(), max: m, used: int(x.used, 0, 0, m), reset: RESETS.includes(x.reset) ? x.reset : 'long', ...AUTO(x)}; }),
       attacks: named(d.attacks, 50, x => ({name: str(x.name, 100).trim(), hit: str(x.hit, 20), dmg: str(x.dmg, 120), note: str(x.note, 500), ...AUTO(x)})),
       features: named(d.features, 200, x => ({name: str(x.name, 120).trim(), text: str(x.text, 8000), src: str(x.src, 80), ...AUTO(x)})),
@@ -147,8 +163,9 @@ window.Sheet = (() => {
       effOff: [...new Set(arr(d.effOff, 40).map(c => str(c, 60).trim()).filter(Boolean))],
       profs: {armor: str(pr.armor, 500), weapons: str(pr.weapons, 500), tools: str(pr.tools, 500), languages: str(pr.languages, 500)},
       senses: str(d.senses, 300), resist: str(d.resist, 300), notes: str(d.notes, 20000),
-      updatedAt: typeof d.updatedAt === 'string' && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(d.updatedAt) ? d.updatedAt : '',
-      updatedBy: str(d.updatedBy, 200)
+      updatedAt: isoTime(d.updatedAt),
+      updatedBy: str(d.updatedBy, 200),
+      levelUp: normLevelUp(d.levelUp)
     };
     if (!s.classes.length) s.classes = [{name: '', subclass: '', level: 1, hitDie: 8}];
     // szabálymotor (2. fázis): a régi, kézi lapon nincs build, és az auto is ki van kapcsolva
@@ -158,6 +175,12 @@ window.Sheet = (() => {
     s.todoDone = [...new Set(arr(d.todoDone, 300).map(x => str(x, 200)).filter(Boolean))];
     s.cache = s.auto && isObj(d.cache) ? normCache(d.cache) : null;
     return s;
+  }
+  // előzmény (sheets/{id}/hist/{időbélyeg}): a lap pillanatképe egy szintlépés vagy visszaállítás előtt; hp: hogyan lett meg a szint HP-ja
+  function normHist(d) {
+    d = isObj(d) ? d : {};
+    return {at: isoTime(d.at), by: str(d.by, 200), reason: ['levelup', 'manual', 'restore'].includes(d.reason) ? d.reason : 'manual',
+      from: int(d.from, 0, 0, 20), to: int(d.to, 0, 0, 20), hp: ['avg', 'roll', 'manual'].includes(d.hp) ? d.hp : '', sheet: norm(d.sheet)};
   }
 
   // ---------- számolt értékek (1. fázis: a lapon tárolt választásokból; a szabálymotor a 2. fázisban jön) ----------
@@ -1182,7 +1205,7 @@ window.Sheet = (() => {
   if (typeof modul === 'function') modul('sheet', VERSION);
 
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
-    num, str, isObj, mod, sgn, safeUrl, propOf, norm, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
+    num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,

@@ -3497,7 +3497,8 @@ describe('Szerződés (szerzodes.js)', () => {
   test('minden felhős útvonal gyűjteményére van szabály a firestore.rules-ban', async () => {
     const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text(), UT = W.Szerzodes.UT;
     const utak = Object.values(UT).map(u => typeof u === 'function' ? u('x') : u);
-    eq(utak.length, 13, 'az útvonalak száma (új útvonalnál a teszt is bővül)');
+    eq(utak.length, 15, 'az útvonalak száma (új útvonalnál a teszt is bővül)');
+    has(rules, 'match /hist/{h} ', 'a lapok előzménye (alkollekció)');
     for (const u of utak) {
       const col = u.split('/')[0], doc = u.split('/')[1];
       const van = col.startsWith('dmscreen') ? rules.includes("col.matches('dmscreen.*')")
@@ -3513,6 +3514,50 @@ describe('Szerződés (szerzodes.js)', () => {
     localStorage.removeItem(HELYI.allapot); A('doSave()');
     await until(() => JSON.parse(localStorage.getItem(HELYI.allapot) || 'null')?.settings?.sources, 2000, 'helyi mentés a HELYI.allapot kulcson');
     has(await (await fetch('../player.html', {cache: 'no-store'})).text(), `new BroadcastChannel('${CSATORNA}')`, 'player.html csatornája');
+  });
+  test('szintlépés mezői a lapon: levelUp, build.spells, spells.cls / book tisztítva; az előzmény (normHist); XSS-kód csak szövegként', () => {
+    const H = W.Sheet, XSS = '<img src=x onerror=alert(1)>';
+    eq(H.norm({}).levelUp, null);
+    for (const to of [1, 0, -3, 'x', null]) eq(H.norm({levelUp: {to}}).levelUp, null, 'érvénytelen cél: ' + to);
+    eq(H.norm({levelUp: {to: 99, by: XSS, at: 'tegnap', mc: 1, extra: 5}}).levelUp, {to: 20, by: XSS, at: '', mc: true});
+    eq(H.norm({levelUp: {to: 6, by: 'dm', at: '2026-11-02T18:00:00.000Z'}}).levelUp, {to: 6, by: 'dm', at: '2026-11-02T18:00:00.000Z', mc: false});
+    const b = H.norm({auto: true, build: {levels: [{c: 'Wizard'}], spells: {Wizard: {cantrips: ['Light|PHB', 'Light|PHB', 5, XSS], book: ['Shield|PHB'], kitalalt: ['X|Y']}, Bard: {known: ['Sleep|PHB']}, Fighter: 'szöveg'}}}).build;
+    eq(b.spells, {Wizard: {cantrips: ['Light|PHB'], book: ['Shield|PHB']}}, 'csak a felépítés osztályai, csak érvényes refek');
+    eq(H.norm({auto: true, build: {levels: []}}).build.spells, null, 'null = még nincs besorolva');
+    eq(H.norm({auto: true, build: {levels: [{c: 'Bard'}], spells: {}}}).build.spells, {}, 'a besorolt, de üres lista nem null');
+    const sp = H.norm({spells: [{name: 'A', cls: 'Wizard', book: 1}, {name: 'B', cls: {x: 1}}]}).spells;
+    eq([sp[0].cls, sp[0].book, 'cls' in sp[1], 'book' in sp[1]], ['Wizard', true, false, false]);
+    const h = H.normHist({at: '2026-11-02T18:00:00.000Z', by: 'a@x.hu', reason: 'levelup', from: 5, to: 6, hp: 'roll', sheet: {name: XSS, levelUp: {to: 6}}});
+    eq([h.reason, h.from, h.to, h.hp, h.sheet.name, h.sheet.levelUp.to], ['levelup', 5, 6, 'roll', XSS, 6]);
+    eq([H.normHist({reason: 'x', hp: 'x'}).reason, H.normHist({hp: 'x'}).hp, H.normHist(null).sheet.name], ['manual', '', 'Névtelen']);
+    for (const x of [H.norm({levelUp: {to: 6, by: XSS}, spells: [{name: 'A', cls: 'Wizard', book: true, auto: true}], auto: true, build: {levels: [{c: 'Wizard'}], spells: {Wizard: {book: ['A|B']}}}}), h])
+      eq(JSON.parse(JSON.stringify(x.sheet ? H.normHist(x) : H.norm(x))), JSON.parse(JSON.stringify(x)), 'még egyszer tisztítva nem változik');
+  });
+  // a firestore.rules játékos-feltételeinek tükre (a szabályszöveget magát a konzol ellenőrzi; a teszt a szöveg kulcssorait is rögzíti)
+  const szabalyTukor = (old, now) => {
+    const lv = d => d.build == null ? 0 : (d.build.levels || []).length, lu = old.levelUp ?? null, nlu = now.levelUp ?? null;
+    const levelsOk = (lv(old) === 0 || lv(now) > 0) && (lv(old) === 0 || lv(now) <= lv(old) || (lu != null && lv(now) <= lu.to));
+    const levelUpOk = fmt(nlu) === fmt(lu) || nlu == null || (lv(now) < lv(old) && nlu.to <= lv(old));
+    return levelsOk && levelUpOk;
+  };
+  test('szabályok: a játékos nem adhat magának szintet és engedélyt, a régi lapot nem zárja ki; a visszavonás visszakapja az engedélyt', async () => {
+    const L = (n, levelUp) => ({build: {levels: Array(n).fill({c: 'Rogue'})}, levelUp});
+    const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text();
+    for (const sor of ['(buildLv(old) == 0 || buildLv(now) > 0)', "buildLv(old) == 0 || buildLv(now) <= buildLv(old) || (lu != null && buildLv(now) <= lu.to)", "b == null ? 0 : b.get('levels', []).size()", 'allow read, create: if isDM() || ownSheet();', 'allow delete: if isDM();', "lu == old.get('levelUp', null) || lu == null || (buildLv(now) < buildLv(old) && lu.to <= buildLv(old))",
+      'levelsOk(resource.data, request.resource.data) && levelUpOk(resource.data, request.resource.data)']) has(rules, sor, 'a tükör a szabály szövegét követi');
+    ok(szabalyTukor(L(5, null), L(5, null)), 'sima írás');
+    ok(!szabalyTukor(L(5, null), L(6, null)), 'engedély nélkül nincs új szint');
+    ok(szabalyTukor(L(5, {to: 6}), L(6, null)), 'engedéllyel lép, és törli');
+    ok(szabalyTukor(L(5, {to: 7}), L(6, {to: 7})), 'két szintre szóló engedélynél az első után megmarad');
+    ok(!szabalyTukor(L(5, {to: 6}), L(7, null)), 'az engedélyen túl nem');
+    ok(!szabalyTukor(L(5, null), L(5, {to: 6})), 'engedélyt nem adhat magának');
+    ok(!szabalyTukor(L(5, {to: 6}), L(5, {to: 7})), 'az engedélyt nem emelheti');
+    ok(szabalyTukor(L(6, null), L(5, {to: 6})), 'visszavonás: az engedély visszajön');
+    ok(!szabalyTukor(L(6, null), L(5, {to: 7})), 'visszavonásnál sem magasabbra');
+    ok(szabalyTukor({levelUp: null}, L(5, null)), 'a kézi lap átállítható (nincs felépítése)');
+    ok(szabalyTukor({}, {name: 'x'}), 'a mezők nélküli régi lap írható');
+    ok(!szabalyTukor(L(5, null), {build: null, levelUp: null}), 'a felépítést nem veheti le (utána bármekkorát írhatna)');
+    ok(!szabalyTukor(L(5, null), L(0, null)), 'üresre sem');
   });
   test('a tisztítók kimenete stabil: még egyszer tisztítva nem változik (lény, harc, állapot, nyilvános karakterrész)', () => {
     const {normCreature, normCombatant, sanitizeState, normPublicChar} = W.Szerzodes;
