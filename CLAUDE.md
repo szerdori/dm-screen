@@ -50,7 +50,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 
 ## Állapot
 - **Játékos app:** a 0–2. fázis és a 3. fázis 0. lépésének kódja a `main`-en (79cbc10 és utána); a 3. fázis (szintlépés-varázsló) a refaktor után folytatódik – `TERV-jatekos-app.md`.
-- **Refaktor:** `TERV-refaktor.md` (elfogadva 2026-10-29), ág: `refaktor-retegek`. Kész és élesben: 0–4. lépés (a 4.: az `index.html` szétbontása, 2026-10-30). Kész az ágon, élesítésre vár: 5. (`AKCIOK`, 2026-10-30). Következik: 6. (importálók).
+- **Refaktor:** `TERV-refaktor.md` (elfogadva 2026-10-29), ág: `refaktor-retegek`. Kész és élesben: 0–5. lépés (az 5.: `AKCIOK`, 2026-10-30). Következik: 6. (importálók).
 
 ## Nyitott / félretett ügyek (2026-10-29)
 - **1. fázis élesítése:** a `firestore.rules` a konzolban és a szabálykönyv feltöltve (a felhasználó szerint, 2026-10-29). Még hátra: a többi játékos lapjának létrehozása (Könyvtár → 📱, vagy Claude-dal megírt JSON importja; az állás a `CLAUDE.local.md`-ben), és ellenőrzés egy játékos telefonján.
