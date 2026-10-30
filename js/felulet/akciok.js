@@ -165,6 +165,58 @@ const AKCIOK = {
   showTemplate: () => { $('#jsonIn').value = JSON.stringify(TEMPLATE, null, 2); },
   downloadTemplate: () => download('dmscreen-sablon.json', TEMPLATE),
   importFile: () => { fileMode = 'creatures'; $('#fileIn').click(); },
+
+  // belépés
+  signIn: () => window.DMAuth?.signIn(),
+  signOut: () => { closeModal(); window.DMAuth?.signOut(); },
+  reload: () => location.reload(),
+
+  // mentett encounterek
+  encSave: () => {
+    const list = S.enc.list.filter(y => y.c.kind !== 'pc').map(y => y.c);
+    if (!list.length) { alert('Nincs nem-játékos lény az encounterben.'); return; }
+    S.saved.push({id: uid(), name:$('#encName').value.trim() || 'Encounter ' + (S.saved.length + 1), list: structuredClone(list)});
+    save(); renderLib();
+  },
+  encLoad: el => {
+    const enc = S.saved[+el.closest('[data-enc]').dataset.enc];
+    const groups = {};
+    enc.list.forEach(c => (groups[c.name] = groups[c.name] || []).push(c));
+    Object.values(groups).forEach(g => addToEncounter(g[0], g.length));
+    log(`⚔ ${esc(enc.name)} betöltve`); closeModal();
+  },
+  encDel: el => { if (confirm('Törlöd ezt a mentett encountert?')) { S.saved.splice(+el.closest('[data-enc]').dataset.enc, 1); save(); renderLib(); } },
+
+  // menü
+  newFight: () => {
+    S.enc.list = S.enc.list.filter(y => y.c.kind === 'pc');
+    S.enc.list.forEach(y => { y.init = null; y.cond = []; y.conc = false; y.leg = 0; });
+    S.enc.round = 1; S.enc.active = null; selected = null;
+    log('— Új harc —', 'round'); closeModal(); save(); render();
+  },
+  clearAll: () => {
+    if (confirm('Mindenkit eltávolítasz az encounterből?')) { S.enc = {list: [], round: 1, active: null}; selected = null; closeModal(); save(); render(); }
+  },
+  exportAll: () => {
+    S.settings.lastExport = localDate();
+    download(`dmscreen-mentes-${localDate()}.json`, {...S, sheets: sheetList()});
+    save(); render();
+  },
+  importAll: () => { fileMode = 'all'; $('#fileIn').click(); },
+
+  // biztonsági mentések
+  openBackups: () => openBackups(),
+  backupNow: async () => {
+    try { if (await addBackup(timeStamp() + '-kezi', 'kézi mentés')) log('💾 Biztonsági mentés elkészült a felhőben'); }
+    catch (err) { backupWarn = 'Nem sikerült a mentés (' + (err.code || err.message) + ').'; }
+    openBackups();
+  },
+  backupRestore: async el => {
+    const id = el.closest('[data-backup]').dataset.backup;
+    if (!confirm('Visszaállítod ezt a mentést? A mostani állapotról előbb automatikusan mentés készül.')) return;
+    try { await restoreBackup(id); closeModal(); log('↺ Biztonsági mentés visszaállítva'); }
+    catch (err) { alert('A visszaállítás nem sikerült: ' + (err.code || err.message)); }
+  },
 };
 
 // ---------- események ----------
@@ -206,54 +258,7 @@ document.addEventListener('click', async e => {
 
   const el = t.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
-  if (Object.hasOwn(AKCIOK, act)) { await AKCIOK[act](el, e); return; }
-
-  switch (act) {
-    case 'signIn': window.DMAuth?.signIn(); break;
-    case 'signOut': closeModal(); window.DMAuth?.signOut(); break;
-    case 'reload': location.reload(); break;
-    case 'encSave': {
-      const list = S.enc.list.filter(y => y.c.kind !== 'pc').map(y => y.c);
-      if (!list.length) { alert('Nincs nem-játékos lény az encounterben.'); break; }
-      S.saved.push({id: uid(), name:$('#encName').value.trim() || 'Encounter ' + (S.saved.length + 1), list: structuredClone(list)});
-      save(); renderLib(); break;
-    }
-    case 'encLoad': {
-      const enc = S.saved[+el.closest('[data-enc]').dataset.enc];
-      const groups = {};
-      enc.list.forEach(c => (groups[c.name] = groups[c.name] || []).push(c));
-      Object.values(groups).forEach(g => addToEncounter(g[0], g.length));
-      log(`⚔ ${esc(enc.name)} betöltve`); closeModal(); break;
-    }
-    case 'encDel': if (confirm('Törlöd ezt a mentett encountert?')) { S.saved.splice(+el.closest('[data-enc]').dataset.enc, 1); save(); renderLib(); } break;
-
-    // menü
-    case 'newFight':
-      S.enc.list = S.enc.list.filter(y => y.c.kind === 'pc');
-      S.enc.list.forEach(y => { y.init = null; y.cond = []; y.conc = false; y.leg = 0; });
-      S.enc.round = 1; S.enc.active = null; selected = null;
-      log('— Új harc —', 'round'); closeModal(); save(); render(); break;
-    case 'clearAll':
-      if (confirm('Mindenkit eltávolítasz az encounterből?')) { S.enc = {list: [], round: 1, active: null}; selected = null; closeModal(); save(); render(); }
-      break;
-    case 'exportAll':
-      S.settings.lastExport = localDate();
-      download(`dmscreen-mentes-${localDate()}.json`, {...S, sheets: sheetList()});
-      save(); render(); break;
-    case 'openBackups': openBackups(); break;
-    case 'backupNow':
-      try { if (await addBackup(timeStamp() + '-kezi', 'kézi mentés')) log('💾 Biztonsági mentés elkészült a felhőben'); }
-      catch (err) { backupWarn = 'Nem sikerült a mentés (' + (err.code || err.message) + ').'; }
-      openBackups(); break;
-    case 'backupRestore': {
-      const id = el.closest('[data-backup]').dataset.backup;
-      if (!confirm('Visszaállítod ezt a mentést? A mostani állapotról előbb automatikusan mentés készül.')) break;
-      try { await restoreBackup(id); closeModal(); log('↺ Biztonsági mentés visszaállítva'); }
-      catch (err) { alert('A visszaállítás nem sikerült: ' + (err.code || err.message)); }
-      break;
-    }
-    case 'importAll': fileMode = 'all'; $('#fileIn').click(); break;
-  }
+  if (Object.hasOwn(AKCIOK, act)) await AKCIOK[act](el, e);
 });
 
 document.addEventListener('change', e => {
