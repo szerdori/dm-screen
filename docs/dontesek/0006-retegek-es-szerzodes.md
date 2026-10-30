@@ -33,3 +33,10 @@ Az `index.html` egyetlen ≈2500 soros szkript volt, amely egyszerre kezelte a F
 - **Az importáló csak átalakít**, nem ment és nem kérdez: `normCreature`-on (a lapnál `Sheet.norm`-on) átment adatot ad, teszt nézi minden importálóra. A kérdés és a mentés a felületi `importAny`-ban van (`js/felulet/konyvtar-ablak.js`), amely elemenként dolgozik: a tömb második azonos nevű lapja látja az elsőt, és egy hibás elem előtt létrejött lapok megmaradnak.
 - **Nem a nyilvántartásból választ** a D&D Beyond fül (`ddbImportText`) és az 5e.tools találat (`fiveTalalat`): itt a forrás már ismert, és a D&D Beyond fülnek el kell utasítania minden mást.
 - **Aranyminta:** a `convertDDB` kimenete rögzítve van (`tests/arany-ddb.js`, szintetikus mintákból). Csak akkor írd át, ha az átalakítás szándékosan változik.
+
+## Pontosítás (2026-10-30, a 7. lépés: `Sheet.calc`)
+- **Új számolási lépés** = új `(ctx) => void` függvény a `sheet.js`-ben és új bejegyzés a `CALC_LEPESEK`-ben, a helyén (a sorrendet teszt rögzíti). A lépés a `const {…} = ctx` kibontással olvas, és a saját eredményét a `ctx`-be írja. A rossz sorrend hibára fut, vagy csendben `undefined`-ot olvas, ezért számít a sorrend.
+- **A választások kulcsai nem változhatnak.** Az ütköző kulcs a felvétel sorrendje szerint kap sorszámot (`…:skills2`), és a lapon ezek alatt vannak a játékosok választásai. Az `addFx`-hívások sorrendjét csak akkor szabad módosítani, ha a régi lapok választásai is átkerülnek.
+- **`ctx` és `kor`:** a `ctx` a `calc` közös állapota; az osztály és szint neve helyi változóként `kor`. A hatásrekordok és a `choices[]` `ctx` mezőneve nem változott, mert a `choices` a kimenet része.
+- **Aranyminta:** 19 kitalált lap teljes kimenete (`tests/arany-calc.js`, bemenet: `aranyLapok()` a `tests.js`-ben), `JSON.stringify` szerint bájtra egyezik. Az `undefined` értékű és a hiányzó kulcsot nem különbözteti meg. Csak akkor írd át, ha a számolás szándékosan változik, és a különbséget előbb nézd át.
+- **Verzió:** a `Sheet.CALC_LEPESEK` új név, de csak a tesztek használják, és a kimenet nem változott, ezért a `Sheet.VERSION` maradt: egy régi, gyorsítótárazott `sheet.js` az oldalaknak ártalmatlan.
