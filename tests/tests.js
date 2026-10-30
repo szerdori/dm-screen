@@ -2292,6 +2292,163 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
   });
 });
 
+// Az aranyminta bemenete: kitalált szabálykönyv és lapok (nem valódi adat, nincs benne szabályszöveg). Szándékosan nem az rb3-at használja, hogy annak bővítése ne írja át a mintát (az R20, ASI, lv, inv, mkS segédek közösek).
+const rbArany = () => ({
+  classes: [
+    {n: 'Barbarian', s: 'PHB', hd: 12, saves: ['str', 'con'], fx: [{armor: ['light', 'medium', 'shields']}, {weapon: ['simple', 'martial']}], mc: {fx: [{armor: ['shields']}, {weapon: ['simple', 'martial']}]},
+      subLvl: 3, asi: ASI, cols: [{l: 'Rages', v: R20(l => l < 3 ? 2 : l < 6 ? 3 : 4)}],
+      feats: [{n: 'Rage', lvl: 1}, {n: 'Unarmored Defense', lvl: 1}, {n: 'Ability Score Improvement', lvl: 4}, {n: 'Fast Movement', lvl: 5}]},
+    {n: 'Monk', s: 'PHB', hd: 8, saves: ['str', 'dex'], fx: [{weapon: ['simple weapons', 'shortswords']}], mc: {fx: [{weapon: ['simple', 'shortswords']}]}, subLvl: 3, asi: ASI,
+      cols: [{l: 'Martial Arts', v: R20(l => l < 5 ? '1d4' : l < 11 ? '1d6' : '1d8')}, {l: 'Ki Points', v: R20(l => l < 2 ? 0 : l)}, {l: 'Unarmored Movement', v: R20(l => l < 2 ? 0 : l < 6 ? 10 : 15)}],
+      feats: [{n: 'Unarmored Defense', lvl: 1}, {n: 'Martial Arts', lvl: 1}, {n: 'Ki', lvl: 2}, {n: 'Unarmored Movement', lvl: 2}, {n: 'Diamond Soul', lvl: 14}]},
+    {n: 'Fighter', s: 'PHB', hd: 10, saves: ['str', 'con'], fx: [{armor: ['light', 'medium', 'heavy', 'shields']}, {weapon: ['simple', 'martial']}], mc: {fx: [{armor: ['light', 'medium', 'shields']}, {weapon: ['simple', 'martial']}]},
+      subLvl: 3, asi: [4, 6, 8, 12, 14, 16, 19], opt: [{n: 'Fighting Style', t: ['FS:F'], p: R20(() => 1)}],
+      feats: [{n: 'Second Wind', lvl: 1}, {n: 'Opcionális', lvl: 1, opt: true}, {n: 'Action Surge', lvl: 2}, {n: 'Martial Archetype', lvl: 3, sub: true}, {n: 'Martial Archetype feature', lvl: 7, sub: true}, {n: 'Indomitable', lvl: 9}]},
+    {n: 'Rogue', s: 'PHB', hd: 8, saves: ['dex', 'int'], fx: [{armor: ['light']}, {weapon: ['simple', 'rapiers']}, {tool: ["thieves' tools"]}, {skillChoose: {from: ['acrobatics', 'perception', 'stealth', 'sleight-of-hand', 'arcana'], n: 4}}],
+      mc: {fx: [{armor: ['light']}, {skillChoose: {from: ['stealth', 'perception'], n: 1}}]}, subLvl: 3, asi: [4, 8, 10, 12, 16, 19], feats: [{n: 'Expertise', lvl: 1}, {n: 'Slippery Mind', lvl: 15}]},
+    {n: 'Wizard', s: 'PHB', hd: 6, saves: ['int', 'wis'], caster: 'full', ab: 'int', prep: 'lvl+int', cantrips: R20(() => 3), subLvl: 2, asi: ASI, feats: [{n: 'Arcane Recovery', lvl: 1}]},
+    {n: 'Cleric', s: 'PHB', hd: 8, saves: ['wis', 'cha'], fx: [{armor: ['light', 'medium', 'shields']}, {skillChoose: {from: ['history', 'insight', 'medicine'], n: 2}}], mc: {fx: [{armor: ['light', 'medium', 'shields']}]},
+      caster: 'full', ab: 'wis', cantrips: R20(l => l), prep: 'lvl+wis', subLvl: 1, asi: ASI, feats: [{n: 'Channel Divinity', lvl: 2}]},
+    {n: 'Bard', s: 'PHB', hd: 8, saves: ['dex', 'cha'], fx: [{skillChoose: {from: 'any', n: 3}}], mc: {fx: [{skillChoose: {from: 'any', n: 1}}]}, caster: 'full', ab: 'cha', cantrips: R20(() => 2), known: R20(l => l + 3), subLvl: 3, asi: ASI,
+      feats: [{n: 'Bardic Inspiration', lvl: 1}, {n: 'Jack of All Trades', lvl: 2}, {n: 'Expertise', lvl: 3}]},
+    {n: 'Paladin', s: 'PHB', hd: 10, saves: ['wis', 'cha'], fx: [{armor: ['light', 'medium', 'heavy', 'shields']}, {weapon: ['simple', 'martial']}], mc: {fx: [{armor: ['light', 'medium', 'shields']}]}, caster: 'half', ab: 'cha', prep: 'lvl/2+cha',
+      subLvl: 3, asi: ASI, feats: [{n: 'Divine Sense', lvl: 1}, {n: 'Lay on Hands', lvl: 1}, {n: 'Aura of Protection', lvl: 6}], opt: [{n: 'Fighting Style', t: ['FS:P'], p: R20(l => l >= 2 ? 1 : 0)}]},
+    {n: 'Warlock', s: 'PHB', hd: 8, saves: ['wis', 'cha'], fx: [{armor: ['light']}], caster: 'pact', ab: 'cha', cantrips: R20(l => l), known: R20(l => l + 1), subLvl: 1, asi: ASI,
+      opt: [{n: 'Eldritch Invocations', t: ['EI'], p: R20(l => l < 2 ? 0 : l < 3 ? 2 : 3)}], feats: [{n: 'Mystic Arcanum (6th level)', lvl: 11}]},
+    {n: 'Sorcerer', s: 'PHB', hd: 6, saves: ['con', 'cha'], caster: 'full', ab: 'cha', cantrips: R20(() => 4), known: R20(l => l + 1), subLvl: 1, asi: ASI,
+      cols: [{l: 'Sorcery Points', v: R20(l => l < 2 ? 0 : l)}], feats: [{n: 'Font of Magic', lvl: 2}]},
+    {n: 'Ranger', s: 'PHB', hd: 10, saves: ['str', 'dex'], caster: 'half', ab: 'wis', subLvl: 3, asi: ASI, feats: [{n: 'Favored Enemy', lvl: 1}]},
+    {n: 'Próbaosztály', s: 'HB', hd: 7, saves: [], subLvl: 2, asi: [],
+      cols: [{l: 'Korlát', v: R20(() => 'Unlimited')}, {l: 'Mozgás', v: R20(l => l * 5)}, {l: 'Szöveg', v: R20(() => '3 alkalom')}],
+      mc: {fx: [{res: {n: 'Szám', max: 2, reset: 'rossz'}}, {res: {n: 'Oszlop', max: 'col:Korlát', reset: 'short'}}, {res: {n: 'Szöveges oszlop', max: 'col:Szöveg', reset: 'none'}},
+        {res: {n: 'Pb', max: 'pb'}}, {res: {n: 'Szint', max: 'lvl', add: 1}}, {res: {n: 'Szint×', max: 'lvl*3'}}, {res: {n: 'Nulla', max: 0}}, {res: {n: 'Mod', max: 'mod:int', min: 1, shortAt: 3}},
+        {res: {n: 'Lépcső', max: {lv: {1: 1, 3: 2, 9: 5}}}}, {res: {n: 'Kétszer', max: 1}}, {res: {n: 'Kétszer', max: 3, reset: 'short'}}, {res: {n: 'Kétszer', max: 3, reset: 'long'}}, {res: {n: 'Kétszer', max: 2}}, {res: {max: 5}},
+        {speed: {v: 'col:Mozgás'}}, {speed: {v: 0}}, {weapon: ['dag']}, {abSet: {wis: 15}}, {abSet: {wis: 12}}, {saveBonus: {ab: 'int', min: 2}}, {saveBonus: {ab: 'nincs'}}, {hpPerClassLevel: 2}, {passive: {perception: 2, insight: 3}},
+        {init: 2}, {dv: 30}, {dv: 120}, {resist: ['fire', 'Fire', 'cold']}, {mamCap: 1}, {rangedAtk: 1}, {rangedAtk: 1}, {duelDmg: 1}, {duelDmg: 3}, {lang: ['Common', 'common', 'Égi']},
+        {spells: [{t: 'known', lvl: 1, sp: ['detect magic', 'kitalált varázs']}, {t: 'expanded', lvl: 1, sp: ['revivify']}, {t: 'innate', lvl: 9, sp: ['túl magas szint']}, 'nem objektum']}, {todo: 'Kétszer felsorolt teendő'}, {todo: 'Kétszer felsorolt teendő'}]},
+      feats: []}],
+  subclasses: [
+    {n: 'Champion', short: 'Champion', cls: 'Fighter', s: 'PHB'},
+    {n: 'Battle Master', short: 'Battle Master', cls: 'Fighter', s: 'PHB', opt: [{n: 'Maneuvers', t: ['MV'], p: R20(l => l < 3 ? 0 : 3)}]},
+    {n: 'Life Domain', short: 'Life', cls: 'Cleric', s: 'PHB', fx: [{spells: [{t: 'prepared', lvl: 1, sp: ['bless', 'cure wounds']}, {t: 'prepared', lvl: 3, sp: ['spiritual weapon']}, {t: 'prepared', lvl: 7, sp: ['revivify']}]}]},
+    {n: 'Knowledge Domain', short: 'Knowledge', cls: 'Cleric', s: 'PHB'},
+    {n: 'Oath of Devotion', short: 'Devotion', cls: 'Paladin', s: 'PHB', fx: [{spells: [{t: 'prepared', lvl: 3, sp: ['Bless', 'shield of faith']}]}]},
+    {n: 'The Fiend', short: 'Fiend', cls: 'Warlock', s: 'PHB', fx: [{spells: [{t: 'expanded', lvl: 1, sp: ['burning hands']}]}]},
+    {n: 'Draconic Bloodline', short: 'Draconic', cls: 'Sorcerer', s: 'PHB'},
+    {n: 'Próbamágus', short: 'Próbamágus', cls: 'Próbaosztály', s: 'HB', caster: 'third', ab: 'cha', cantrips: R20(l => l), known: R20(l => l + 2)}, {n: 'Hibás', short: 'Hibás', cls: 'Ranger', s: 'HB', caster: 'third'}],
+  features: [{n: 'Rage', cls: 'Barbarian', lvl: 1, s: 'PHB', tx: 'Próbaszöveg: düh.'}, {n: 'Improved Critical', cls: 'Fighter', sub: 'Champion', ss: 'PHB', lvl: 3, s: 'PHB', tx: 'Próbaszöveg: kritikus.'},
+    {n: 'Remarkable Athlete', cls: 'Fighter', sub: 'Champion', ss: 'PHB', lvl: 7, s: 'PHB', tx: 'Próbaszöveg: atléta.'}, {n: 'Combat Superiority', cls: 'Fighter', sub: 'Battle Master', ss: 'PHB', lvl: 3, s: 'PHB'},
+    {n: 'Student of War', cls: 'Fighter', sub: 'Battle Master', ss: 'PHB', lvl: 3, s: 'PHB'}, {n: 'Bonus Proficiency', cls: 'Cleric', sub: 'Life', ss: 'PHB', lvl: 1, s: 'PHB'},
+    {n: 'Blessings of Knowledge', cls: 'Cleric', sub: 'Knowledge', ss: 'PHB', lvl: 1, s: 'PHB'}, {n: 'Draconic Resilience', cls: 'Sorcerer', sub: 'Draconic', ss: 'PHB', lvl: 1, s: 'PHB'},
+    {n: 'Dragon Ancestor', cls: 'Sorcerer', sub: 'Draconic', ss: 'PHB', lvl: 1, s: 'PHB'}, {n: 'Későbbi képesség', cls: 'Sorcerer', sub: 'Draconic', ss: 'PHB', lvl: 18, s: 'PHB'}],
+  races: [
+    {n: 'Dwarf', s: 'PHB', sp: {walk: 25}, fx: [{ab: {con: 2}}, {lang: ['Common', 'Dwarvish']}, {dv: 60}, {resist: ['poison']}], traits: [{n: 'Stonecunning', tx: 'Próbaszöveg: kő.'}], subs: 1},
+    {n: 'Human', s: 'PHB', sp: {walk: 30}, fx: [{lang: ['Common']}], subs: 2},
+    {n: 'Elf', s: 'PHB', sp: {walk: 30}, fx: [{ab: {dex: 2}}, {dv: 60}, {skill: {perception: 1}}, {save: ['nem-kepesseg']}], subs: 2},
+    {n: 'Half-Orc', s: 'PHB', fx: [{ab: {str: 2, con: 1}}, {dv: 60}, {skill: {intimidation: true, 'nincs ilyen': 1}}], traits: [{n: 'Relentless Endurance', tx: 'Próbaszöveg.'}]},
+    {n: 'Dragonborn', s: 'PHB', fx: [{ab: {str: 2, cha: 1}}], traits: [{n: 'Draconic Ancestry'}, {n: 'Breath Weapon'}]},
+    {n: 'Próbafaj', s: 'HB', sp: {walk: 40, fly: 50, climb: 20, burrow: 10, swim: 0}, fx: ['nem objektum', null, {skillChoose: {from: 'any', n: 1}}, {skillChoose: {from: 'any', n: 1}}, {spells: [{t: 'innate', lvl: 1, sp: ['detect magic']}, {t: 'innate', lvl: 19, sp: ['túl magas faji']}]}]}],
+  subraces: [
+    {n: 'Hill', race: 'Dwarf', s: 'PHB', fx: [{ab: {wis: 1}}], traits: [{n: 'Dwarven Toughness', tx: 'Próbaszöveg.'}]},
+    {n: 'Human (alap)', race: 'Human', s: 'PHB', fx: [{ab: {str: 1, dex: 1, con: 1, int: 1, wis: 1, cha: 1}}]},
+    {n: 'Variant', race: 'Human', s: 'PHB', fx: [{abChoose: {from: ['str', 'dex', 'con', 'int', 'wis', 'cha'], n: 2, amt: 1}}, {feat: {n: 1}}], ow: ['ab', 'abChoose']},
+    {n: 'Wood', race: 'Elf', s: 'PHB', sp: {walk: 35}, fx: [{ab: {wis: 1}}]},
+    {n: 'Sea', race: 'Elf', s: 'PHB', sp: {swim: 30}, fx: [{ab: {con: 1}}]},
+    {n: 'Felülíró', race: 'Elf', s: 'HB', fx: [{ab: {int: 1}}], ow: ['ab']}],
+  backgrounds: [
+    {n: 'Acolyte', s: 'PHB', fx: [{skill: {insight: true, religion: true}}, {langChoose: {n: 2}}], feature: {n: 'Próbamenedék', tx: 'Próbaszöveg.'}},
+    {n: 'Criminal', s: 'PHB', fx: [{skill: {deception: true, stealth: true, perception: true}}, {toolChoose: {from: ["Thieves' Tools", 'dice set'], n: 1}}], feature: {n: 'Próbakapcsolat'}}],
+  feats: [
+    {n: 'Alert', s: 'PHB', tx: 'Próbaszöveg.'}, {n: 'Tough', s: 'PHB'}, {n: 'Mobile', s: 'PHB'}, {n: 'Observant', s: 'PHB', fx: [{ab: {wis: 1}}]}, {n: 'Lucky', s: 'PHB'}, {n: 'Medium Armor Master', s: 'PHB'},
+    {n: 'Próbafeat', s: 'HB', fx: [{feat: {n: 1}}, {ab: {dex: 1}}]}, {n: 'Beágyazott', s: 'HB', fx: [{feat: {n: 1}}, {ab: {str: 1}}]}, {n: 'Túl mély', s: 'HB', fx: [{ab: {cha: 1}}]},
+    {n: 'Resilient', s: 'HB', fx: [{abChoose: {from: ['con', 'wis'], n: 3, amt: 1}}, {saveChoose: {from: ['con', 'wis'], n: 3}}]}, {n: 'Linguist', s: 'HB', fx: [{langChoose: {from: ['Elvish', 'Giant'], n: 2}}, {saveAll: true}, {feat: {n: 2}}, {skillChoose: {n: 1}}]}],
+  optfeatures: [
+    {n: 'Defense', s: 'PHB', t: ['FS:F', 'FS:P'], tx: 'Próba.'}, {n: 'Archery', s: 'PHB', t: ['FS:F']}, {n: 'Dueling', s: 'PHB', t: ['FS:F', 'FS:P']},
+    {n: 'Agonizing Blast', s: 'PHB', t: ['EI']}, {n: 'Beguiling Influence', s: 'PHB', t: ['EI'], fx: [{skillChoose: {from: ['deception', 'persuasion'], n: 2}}]}, {n: 'Későbbi', s: 'PHB', t: ['EI'], lv: 5}, {n: 'Pontos szint', s: 'PHB', t: ['EI'], lv: 2},
+    {n: 'Evasive Footwork', s: 'PHB', t: ['MV']}, {n: 'Riposte', s: 'PHB', t: ['MV']}],
+  baseItems: [
+    {n: 'Leather Armor', s: 'PHB', tc: 'LA', ac: 11}, {n: 'Studded Leather', s: 'PHB', tc: 'LA', ac: 12}, {n: 'Half Plate', s: 'PHB', tc: 'MA', ac: 15}, {n: 'Chain Mail', s: 'PHB', tc: 'HA', ac: 16, str: '13'}, {n: 'Plate', s: 'PHB', tc: 'HA', ac: 18, str: '15'},
+    {n: 'Shield', s: 'PHB', tc: 'S', ac: 2},
+    {n: 'Longsword', s: 'PHB', tc: 'M', wc: 'martial', dmg: '1d8 slashing', d2: '1d10', pr: 'versatile', m: {weapon: true}},
+    {n: 'Greatsword', s: 'PHB', tc: 'M', wc: 'martial', dmg: '2d6 slashing', pr: 'heavy, two-handed', m: {weapon: true}},
+    {n: 'Rapier', s: 'PHB', tc: 'M', wc: 'martial', dmg: '1d8 piercing', pr: 'finesse', m: {weapon: true}},
+    {n: 'Shortsword', s: 'PHB', tc: 'M', wc: 'martial', dmg: '1d6 piercing', pr: 'finesse, light', m: {weapon: true}},
+    {n: 'Quarterstaff', s: 'PHB', tc: 'M', wc: 'simple', dmg: '1d6 bludgeoning', d2: '1d8', pr: 'versatile', m: {weapon: true}},
+    {n: 'Dagger', s: 'PHB', tc: 'M', wc: 'simple', dmg: '1d4 piercing', pr: 'finesse, light, thrown', rg: '20/60', m: {weapon: true}},
+    {n: 'Longbow', s: 'PHB', tc: 'R', wc: 'martial', dmg: '1d8 piercing', pr: 'heavy, two-handed', rg: '150/600', m: {weapon: true}},
+    {n: 'Light Crossbow', s: 'PHB', tc: 'R', wc: 'simple', dmg: '1d8 piercing', pr: 'loading', rg: '80/320', m: {weapon: true}},
+    {n: 'Greatclub', s: 'PHB', tc: 'M', wc: 'simple', dmg: '1d8 bludgeoning', pr: 'two-handed', m: {weapon: true}}, {n: 'Kötél', s: 'PHB'}, {n: 'Dobás nélküli bot', s: 'HB', tc: 'M', wc: 'simple'}],
+  items: [
+    {n: 'Cloak of Protection', s: 'DMG', att: 'requires attunement', bAc: 1, bS: 1}, {n: 'Ring of Protection', s: 'DMG', att: 'requires attunement', bAc: 1, bS: 1},
+    {n: 'Gauntlets of Ogre Power', s: 'DMG', att: 'requires attunement', abS: {str: 19}}, {n: 'Amulet of Health', s: 'DMG', att: 'requires attunement', abS: {con: 19}},
+    {n: 'Bracers of Defense', s: 'DMG', bAc: 2}, {n: 'Shield +2', s: 'DMG', tc: 'S', ac: 2, bAc: 2}, {n: 'Plate +1', s: 'DMG', tc: 'HA', ac: 18, str: '15', bAc: 1}],
+  variants: [{n: '+1 Weapon', s: 'DMG', pre: '+1 ', bW: 1, req: [{weapon: true}]}],
+  spells: [{n: 'Bless', s: 'PHB', l: 1}, {n: 'Cure Wounds', s: 'PHB', l: 1}, {n: 'Detect Magic', s: 'PHB', l: 1}, {n: 'Spiritual Weapon', s: 'PHB', l: 2}, {n: 'Revivify', s: 'PHB', l: 3}], conditions: []
+});
+const rolled = (c, ...hp) => hp.map(h => ({c, hp: h}));
+const BASE_A = {str: 10, dex: 16, con: 14, int: 14, wis: 12, cha: 8};
+// név → [lap, szabálykönyv]; minden új lapnál az aranymintát is rögzíteni kell (a módszer a tests/arany-calc.js elején)
+const aranyLapok = () => {
+  const H = W.Sheet;
+  return {
+    ures: [H.norm({}), null],
+    konyvNelkul: [mkS({race: 'Dwarf|PHB', subrace: 'Hill|PHB', background: 'Acolyte|PHB', base: {str: 14, dex: 12, con: 13, int: 16, wis: 8, cha: 14},
+      levels: [...lv('Fighter', 4), ...rolled('Warlock', 6, 1), {c: 'Artificer'}, ...lv('Paladin', 2)], sub: {Fighter: 'Eldritch Knight|PHB'}, ch: {'Fighter:4:asi': {feat: 'Alert|PHB'}}}, {inventory: inv('Chain Mail', 'Longsword')}), null],
+    hianyosKonyv: [mkS({race: 'Nincs|X', subrace: 'Nincsalfaj|X', background: 'Nincsháttér|X', levels: lv('Barbarian', 4), sub: {Barbarian: 'Nincsalosztály|X'}, ch: {'Barbarian:4:asi': {feat: 'Nincsfeat|X'}}},
+      {inventory: inv('Plate')}), {races: [], subraces: [], backgrounds: [], feats: []}],
+    multiclass: [mkS({race: 'Elf|PHB', subrace: 'Wood|PHB', background: 'Criminal|PHB', base: BASE_A, levels: [...lv('Rogue', 2), ...rolled('Rogue', 7), ...rolled('Fighter', 9, null, 2), ...lv('Wizard', 2)], sub: {Fighter: 'Battle Master|PHB'},
+      ch: {'Rogue:1:skills': ['stealth', 'Sleight of Hand', 'perception', 'acrobatics', 'arcana', 'nincs'], 'Rogue:1:expertise': ['stealth', 'sleight-of-hand', 'arcana'], 'bg:tool': ['dice set', 'nem választható'],
+        'Fighter:opt:Fighting Style': ['Archery|PHB'], 'Fighter:Battle Master:opt:Maneuvers': ['Riposte|PHB', 'Riposte|PHB', 'Evasive Footwork|PHB', 'Nincs|PHB'], 'Fighter:3:tool': ["smith's tools"]}},
+      {inventory: inv('Studded Leather', '+1 Rapier', 'Longbow', 'Light Crossbow', {name: 'Greatsword', equipped: false})}), rbArany()],
+    pancelNelkulPajzzsal: [mkS({race: 'Dwarf|PHB', subrace: 'Hill|PHB', base: {str: 16, dex: 14, con: 15, wis: 16}, levels: [...lv('Barbarian', 5), ...lv('Monk', 6)], ch: {'Barbarian:4:asi': {con: 1, dex: 1}}},
+      {inventory: inv('Shield', 'Quarterstaff', 'Shortsword', {name: 'Chain Mail', equipped: false})}), rbArany()],
+    szerzetes: [mkS({race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {str: 10, dex: 16, con: 12, wis: 16}, levels: lv('Monk', 14)}, {inventory: inv('Shortsword', 'Dagger', 'Greatsword', 'Light Crossbow', 'Quarterstaff', 'Longsword', 'Greatclub')}), rbArany()],
+    szerzetesVarazsPajzzsal: [mkS({race: 'Elf|PHB', subrace: 'Sea|PHB', base: {str: 8, dex: 10, wis: 18}, levels: lv('Monk', 1)}, {inventory: inv('Shield +2', 'Dobás nélküli bot', 'Kötél')}), rbArany()],
+    originVariant: [mkS({race: 'Human|PHB', subrace: 'Variant|PHB', origin: {str: 2, con: 1}, base: {str: 13, dex: 14, con: 14, cha: 15}, levels: [...rolled('Sorcerer', 3), ...lv('Sorcerer', 5)], sub: {Sorcerer: 'Draconic|PHB'},
+      ch: {'subrace:feat': ['Próbafeat|HB'], 'feat:Próbafeat|HB:feat': ['Beágyazott|HB'], 'feat:Beágyazott|HB:feat': ['Túl mély|HB'], 'subrace:ability': ['str', 'dex']}}, {inventory: inv('Bracers of Defense')}), rbArany()],
+    originElf: [mkS({race: 'Elf|PHB', subrace: 'Wood|PHB', origin: {cha: 2}, base: {dex: 10, wis: 14}, levels: lv('Cleric', 1), sub: {Cleric: 'Life|PHB'}, ch: {'Cleric:1:skills': ['history']}}, {inventory: inv('Leather Armor')}), rbArany()],
+    utkozoKulcsok: [mkS({race: 'Próbafaj|HB', background: 'Acolyte|PHB', base: {str: 12, dex: 12, con: 12, int: 12, wis: 15, cha: 12}, levels: [...lv('Cleric', 12), ...lv('Bard', 4)], sub: {Cleric: 'Knowledge|PHB'},
+      ch: {'race:skills': ['arcana'], 'race:skills2': ['Nature'], 'bg:lang': ['Elvish', 'elvish ', '', 5], 'Cleric:1:skills': ['history', 'history', 'athletics'], 'Cleric:1:lang': ['Giant'], 'Cleric:1:skills2': ['arcana', 'nature'], 'Cleric:1:expertise': ['arcana', 'athletics'],
+        'Cleric:4:asi': {feat: 'Próbafeat|HB'}, 'feat:Próbafeat|HB:feat': ['Beágyazott|HB'], 'feat:Beágyazott|HB:feat': ['Túl mély|HB'], 'Cleric:8:asi': {feat: 'Próbafeat|HB'}, 'feat:Próbafeat|HB:feat2': ['Resilient|HB', 'Alert|PHB'],
+        'feat:Resilient|HB:ability': ['wis', 'con', 'wis'], 'feat:Resilient|HB:saves': ['wis', 'con', 'str'], 'Cleric:12:asi': {str: 3}, 'Bard:4:asi': {feat: 'Linguist|HB'}, 'feat:Linguist|HB:lang': ['Giant', 'Orc'], 'feat:Linguist|HB:feat': ['', 7], 'feat:Linguist|HB:skills': ['medicine'], 'Bard:mc:skills': ['survival'], 'Bard:3:expertise': ['survival']}}), rbArany()],
+    felszereles: [mkS({race: 'Half-Orc|PHB', base: {str: 15, dex: 18, con: 10, wis: 11}, levels: lv('Fighter', 9), sub: {Fighter: 'Champion|PHB'}, ch: {'Fighter:4:asi': {feat: 'Medium Armor Master|PHB'}, 'Fighter:6:asi': {feat: 'Tough|PHB'}, 'Fighter:8:asi': {feat: 'Lucky|PHB'}, 'Fighter:opt:Fighting Style': ['Dueling|PHB']}},
+      {inventory: inv('Half Plate', 'Shield +2', {name: 'Cloak of Protection', attuned: true}, 'Ring of Protection', {name: 'Gauntlets of Ogre Power', attuned: true}, {name: 'Amulet of Health', attuned: true}, 'Bracers of Defense',
+        '+1 Longsword', 'Greatsword', 'Longbow', {name: 'Saját bot', ref: 'Quarterstaff|PHB'}, 'Ismeretlen tárgy')}), rbArany()],
+    nehezPancelGyengen: [mkS({race: 'Dragonborn|PHB', base: {str: 10, dex: 18, cha: 14}, levels: [...lv('Paladin', 6), {c: 'Fighter'}], sub: {Paladin: 'Devotion|PHB'}, ch: {'Paladin:4:asi': 'szöveg', 'Paladin:opt:Fighting Style': ['Defense|PHB'], 'Fighter:opt:Fighting Style': ['Archery|PHB']}},
+      {inventory: inv('Plate +1', 'Shield', 'Longbow', 'Quarterstaff')}), rbArany()],
+    nehezPancelTorpe: [mkS({race: 'Dwarf|PHB', subrace: 'Hill|PHB', base: {str: 10}, levels: lv('Barbarian', 5), sub: {Barbarian: 'Nincs|PHB'}}, {inventory: inv('Chain Mail')}), rbArany()],
+    felulirasok: [mkS({race: 'Elf|PHB', subrace: 'Wood|PHB', base: {str: 25, dex: 20, con: 8, wis: 18}, levels: [...lv('Bard', 6), ...lv('Fighter', 7)], sub: {Fighter: 'Champion|PHB'},
+      ch: {'Bard:1:skills': ['history', 'arcana', 'nature'], 'Fighter:4:asi': {feat: 'Observant|PHB'}, 'Fighter:6:asi': {feat: 'Mobile|PHB'}, 'Fighter:mc:skills': []}},
+      {inventory: inv({name: 'Amulet of Health', attuned: true}), todoDone: ['nem létező', '✋ Favored Enemy (Ranger 1)'],
+        ov: {'ab:wis': 13, 'ab:cha': 10, 'save:wis': 1, 'save:str': 0, 'skill:arcana': 0.5, 'skill:stealth': 2, 'skill:athletics': 0, 'skill:acrobatics': 0.5, 'skill:survival': 1, hpMax: 77, init: 9, ac: 21, speed: '45 ft.'}}), rbArany()],
+    remarkableJackNelkul: [mkS({base: {str: 19, dex: 15}, levels: [...lv('Fighter', 7), {c: 'Paladin'}], sub: {Fighter: 'Champion|PHB'}}, {inventory: inv({name: 'Gauntlets of Ogre Power', attuned: true})}), rbArany()],
+    hatarertekek: [mkS({base: {str: 15, dex: 14, wis: 10}, levels: lv('Monk', 1)}, {inventory: inv({name: 'Plate', equipped: false})}), rbArany()],
+    pontosEro: [mkS({base: {str: 15}, levels: lv('Fighter', 1)}, {inventory: inv('Plate')}), rbArany()],
+    alfajFelulirja: [mkS({race: 'Elf|PHB', subrace: 'Felülíró|HB', levels: lv('Fighter', 1), ch: {'Fighter:opt:Fighting Style': ['Defense|PHB']}}), rbArany()],
+    varazslok: [mkS({race: 'Próbafaj|HB', base: {str: 8, dex: 14, con: 14, int: 13, wis: 14, cha: 16}, levels: [...lv('Cleric', 7), ...lv('Paladin', 3), ...lv('Warlock', 2), ...lv('Próbaosztály', 3), {c: 'Ranger'}], sub: {Cleric: 'Life|PHB', Paladin: 'Devotion|PHB', Warlock: 'Fiend|PHB', 'Próbaosztály': 'Próbamágus|HB', Ranger: 'Hibás|HB'},
+      ch: {'Warlock:opt:Eldritch Invocations': ['Későbbi|PHB', 'Pontos szint|PHB', 'Beguiling Influence|PHB', 'Agonizing Blast|PHB'], 'opt:Beguiling Influence:skills': ['deception', 'nature'], 'Cleric:4:asi': {feat: 7}, 'Paladin:opt:Fighting Style': []}}, {inventory: inv('Dagger'), todoDone: ['✋ Favored Enemy (Ranger 1)']}), rbArany()]
+  };
+};
+describe('Szabálymotor: aranyminta (a Sheet.calc teljes kimenete)', () => {
+  test('minden mintalap kimenete bájtra az aranyminta (tests/arany-calc.js), és a calc nem módosítja a bemenetet', () => {
+    const lapok = aranyLapok();
+    eq(Object.keys(lapok), Object.keys(ARANY_CALC));
+    for (const [nev, [s, rb]] of Object.entries(lapok)) {
+      const elotte = fmt([s, rb]);
+      eq(W.Sheet.calc(s, rb), ARANY_CALC[nev], nev);
+      eq(fmt([s, rb]), elotte, nev + ': a bemenet nem változhat');
+    }
+  });
+  test('a választások kulcsai (a lapon ezek alatt vannak a játékosok választásai): az ütköző kulcs sorszámot kap, sorrendben', () => {
+    const [s, rb] = aranyLapok().utkozoKulcsok, kulcsok = W.Sheet.calc(s, rb).choices.map(c => c.key);
+    for (const k of ['race:skills', 'race:skills2', 'Cleric:1:skills', 'Cleric:1:skills2', 'feat:Próbafeat|HB:feat', 'feat:Próbafeat|HB:feat2']) ok(kulcsok.includes(k), 'hiányzik: ' + k);
+    ok(kulcsok.indexOf('Cleric:1:skills') < kulcsok.indexOf('Cleric:1:skills2'), 'az osztály saját választása az első');
+    eq(new Set(kulcsok).size, kulcsok.length, 'minden kulcs egyedi');
+    const [v, rbV] = aranyLapok().varazslok, c = W.Sheet.calc(v, rbV);
+    ok(c.choices.some(x => x.key === 'opt:Beguiling Influence:skills'), 'a választott optional feature választása is bekerül (a ciklus közben)');
+  });
+});
+
 describe('Választó-modul: további választástípusok (sheet.js)', () => {
   test('skill: a forrás listája vagy minden skill; a máshonnan jártas tiltva, a saját választás nem', () => {
     const H = W.Sheet, cr = {skills: {stealth: {prof: 1}, arcana: {prof: 1}}, choices: []};
