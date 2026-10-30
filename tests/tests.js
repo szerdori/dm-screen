@@ -648,6 +648,18 @@ describe('D&D Beyond átalakítás', () => {
 
 // ======================================================================
 describe('Importálás', () => {
+  test('a D&D Beyond átalakítás kimenete tartalomra az aranyminta (tests/arany-ddb.js)', () => {
+    const ki = d => { const c = structuredClone(W.convertDDB(d)); delete c.id; delete c.importedAt; return c; };
+    eq(W.stableJson(ki(DDB)), W.stableJson(ARANY_DDB.ddb), 'DDB');
+    eq(W.stableJson(ki(ddbParty())), W.stableJson(ARANY_DDB.party), 'ddbParty');
+  });
+  test('minden importáló a szerződés szerinti lényt adja: normCreature(ki) ≡ ki', async () => {
+    stubFive();
+    const n = W.normCreature, sj = W.stableJson;
+    const lenyek = [W.convertDDB(DDB), W.convertDDB(ddbParty()), W.convert5e(FIVE.brute), W.convert5e(FIVE.scout),
+      W.convert5e(await W.resolveCopy(structuredClone(FIVE.chief))), n({...A('TEMPLATE'), id: 'sablon'}), n({name: 'Pók', id: 'pok'})];
+    for (const c of lenyek) eq(sj(n(structuredClone(c))), sj(c), c.name);
+  });
   test('formátum felismerése: saját, 5e.tools, D&D Beyond, tömb, {creatures}', async () => {
     stubFive();
     const r1 = await W.importAny([A('TEMPLATE'), FIVE.brute, DDB]);
