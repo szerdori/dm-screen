@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 2);
+modul('akciok', 3);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -88,6 +88,9 @@ const AKCIOK = {
   portraitClear: () => { setPortrait(''); $('#portraitUrl').value = ''; },
 
   // Csapat nézet
+  partySzintAd: el => { szintlepesAd(el.dataset.pc); rerenderParty(); },
+  partySzintVissza: el => { szintlepesVissza(el.dataset.pc); rerenderParty(); },
+  partySzintMind: () => { partyMembers().forEach(c => szintlepesAd(c.id)); rerenderParty(); },
   partyRemove: el => { setPartyMember(el.dataset.pc, false); rerenderParty(); },
   partySortReset: () => { partySort.s = {col: null, dir: 1}; rerenderParty(); },
   libParty: el => { const lib = konyvtari(el); setPartyMember(lib.id, !partyMembers().some(c => c.id === lib.id)); filterLib(); },
@@ -125,6 +128,8 @@ const AKCIOK = {
       S.library = S.library.filter(c => c !== lib); save(); filterLib();
     }
   },
+  libSzintAd: el => { szintlepesAd(el.dataset.pc); filterLib(); },
+  libSzintVissza: el => { szintlepesVissza(el.dataset.pc); filterLib(); },
   libSheet: el => {
     const lib = konyvtari(el);
     if (SHEETS[lib.id]) window.open('karakter.html#lap/' + lib.id, '_blank');

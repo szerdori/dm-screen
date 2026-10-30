@@ -1200,10 +1200,10 @@ describe('Online (csak  .\\teszt.ps1 -Online  esetén)', () => {
 // ál-adatbázis a felhős funkciókhoz (a Firestore-adapter felületét utánozza)
 function makeFakeDb(initial = {}) {
   const store = structuredClone(initial), log = [], watchers = [];
-  const list = col => Object.entries(store).filter(([k]) => k.startsWith(col + '/')).map(([k, v]) => ({...structuredClone(v), id: k.split('/')[1]}));
+  const list = col => Object.entries(store).filter(([k]) => k.startsWith(col + '/')).map(([k, v]) => ({...structuredClone(v), id: k.slice(col.length + 1)}));
   return {store, log, emit: col => watchers.filter(w => w.col === col).forEach(w => w.cb(list(col))), db: {
     get: async p => store[p] ? structuredClone(store[p]) : null,
-    list: async col => list(col),
+    list: async col => list(col).filter(x => !x.id.includes('/')),
     set: async (p, d) => { JSON.stringify(d); store[p] = structuredClone(d); log.push('set ' + p); },
     // mezőnkénti írás, mint a Firestore updateDoc: 'hp.cur' = beágyazott mező; a naplóba a mezőnevek kerülnek (updatedAt/By nélkül)
     update: async (p, d) => {
@@ -2396,6 +2396,9 @@ const rbVarazs = () => {
   rb.subclasses.push({n: 'Eldritch Knight', short: 'Eldritch Knight', cls: 'Fighter', s: 'PHB', caster: 'third', ab: 'int', cantrips: R20(l => l < 3 ? 0 : 2), known: R20(l => l < 3 ? 0 : l + 1)},
     {n: 'Arcane Trickster', short: 'Arcane Trickster', cls: 'Rogue', s: 'PHB', caster: 'third', ab: 'int', cantrips: R20(l => l < 3 ? 0 : 3), known: R20(l => l < 3 ? 0 : l)},
     {n: 'College of Lore', short: 'Lore', cls: 'Bard', s: 'PHB'});
+  rb.classes.find(c => c.n === 'Warlock').opt.push({n: 'Pact Boon', t: ['PB'], p: R20(l => l >= 3 ? 1 : 0)});
+  rb.classes.find(c => c.n === 'Sorcerer').opt = [{n: 'Metamagic', t: ['MM'], p: R20(l => l < 3 ? 0 : l < 10 ? 2 : 3)}];
+  rb.optfeatures.push({n: 'Pact of the Blade', s: 'PHB', t: ['PB']}, {n: 'Pact of the Chain', s: 'PHB', t: ['PB']}, {n: 'Quickened Spell', s: 'PHB', t: ['MM']}, {n: 'Twinned Spell', s: 'PHB', t: ['MM']}, {n: 'Subtle Spell', s: 'PHB', t: ['MM']});
   return rb;
 };
 const rolled = (c, ...hp) => hp.map(h => ({c, hp: h}));
@@ -2577,6 +2580,103 @@ describe('Szintlépés: varázslat-választások (sheet.js)', () => {
     const c = H.calc(s, rb), ch = c.choices.find(x => x.key === 'Wizard:book');
     eq(ch.ok, ['Shield|PHB']);
     eq(H.spellKept(ch, H.choiceOptions(ch, c, rb), rb), ['Fireball|PHB', 'Törölt|X'], 'a Fireball most túl magas, a Törölt nincs a könyvben');
+  });
+});
+
+describe('Szintlépés: terv és mentés (sheet.js)', () => {
+  const H = () => W.Sheet;
+  const terv = (s, rb, cls) => H().levelUpPlan(s, rb, H().levelUpBuild(s, cls));
+  const kulcs = l => l.map(x => x.c.key);
+  test('Rogue 3 → 4: ASI, új jellemző nélkül, HP-bontás; a meglévő választások nem jönnek elő', () => {
+    const rb = rbVarazs(), s = mkS({base: {dex: 16, con: 14}, levels: lv('Rogue', 3), ch: {'Rogue:1:skills': ['stealth', 'perception', 'arcana', 'acrobatics'], 'Rogue:1:expertise': ['stealth', 'arcana']}, sub: {Rogue: 'Thief|PHB'}});
+    const p = terv(s, rb, 'Rogue');
+    eq(kulcs(p.choices), ['Rogue:4:asi']);
+    eq([p.choices[0].uj, p.choices[0].missing], [true, 1]);
+    eq([p.cls, p.classLevel, p.spells], ['Rogue', 4, []]);
+    eq(p.hp, {hd: 8, avg: 5, die: 5, rest: 2, gain: 7, from: 24, to: 31}, 'átlag 5 + CON 2');
+  });
+  test('Fighter 2 → 3: alosztály elöl; Cleric 1 → 2: nincs választás, Channel Divinity új erőforrás és jellemző', () => {
+    const rb = rbVarazs();
+    let p = terv(mkS({levels: lv('Fighter', 2), ch: {'Fighter:opt:Fighting Style': ['Defense|PHB']}}), rb, 'Fighter');
+    eq(kulcs(p.choices), ['Fighter:sub']);
+    p = terv(mkS({base: {wis: 16}, levels: lv('Cleric', 1), sub: {Cleric: 'Life|PHB'}, spells: {Cleric: {cantrips: ['Light|PHB']}}, ch: {'Cleric:1:skills': ['history', 'insight']}}), rb, 'Cleric');
+    eq(p.choices.map(x => x.c.key), []);
+    eq(p.spells.map(x => [x.c.key, x.uj, x.missing]), [['Cleric:cantrips', true, 1]]);
+    eq(p.resources, [{name: 'Channel Divinity', from: 0, to: 1}]);
+    eq(p.features.map(f => f.name), ['Channel Divinity']);
+    eq([p.nw.casting[0].prepared, p.nw.casting[0].maxSpell], [5, 1]);
+  });
+  test('Wizard 4 → 5: spellbook +2, 3. szintű is; a meglévők zárolva, nincs csere', () => {
+    const rb = rbVarazs(), book = ['Shield', 'Magic Missile', 'Sleep', 'Thunderwave', 'Grease', 'Find Familiar', 'Burning Hands', 'Web'].map(n => n + '|PHB');
+    const s = mkS({base: {int: 16}, levels: lv('Wizard', 4), ch: {'Wizard:4:asi': {int: 2}}, spells: {Wizard: {cantrips: ['Light|PHB', 'Fire Bolt|PHB', 'Mage Hand|PHB'], book}}});
+    const p = terv(s, rb, 'Wizard'), b = p.spells.find(x => x.c.key === 'Wizard:book');
+    eq([b.c.n, b.c.ok.length, b.uj, b.csere, b.locked.length, b.missing], [14, 8, true, false, 8, 1], 'a helyek 6 + 2 × 4; a teszt-könyvben csak 1 maradt');
+    ok(H().choiceOptions(b.c, p.nw, rb).opts.some(x => x.l === 'Fireball'), 'már 3. szintű is');
+    eq(p.old.casting[0].maxSpell + 1, p.nw.casting[0].maxSpell);
+    eq(p.nw.casting[0].maxSpell, 3);
+  });
+  test('Warlock 2 → 3: Pact Boon, invocation-csere (a darabszám is nő); known: új hely és csere', () => {
+    const rb = rbVarazs(), s = mkS({base: {cha: 16}, levels: lv('Warlock', 2), sub: {Warlock: 'Fiend|PHB'}, ch: {'Warlock:opt:Eldritch Invocations': ['Agonizing Blast|PHB', 'Pontos szint|PHB']}, spells: {Warlock: {cantrips: ['Mage Hand|PHB'], known: ['Hex|PHB', 'Burning Hands|PHB', 'Hex|PHB']}}});
+    const p = terv(s, rb, 'Warlock');
+    eq(kulcs(p.choices), ['Warlock:opt:Eldritch Invocations', 'Warlock:opt:Pact Boon']);
+    eq(p.choices[0].locked, ['Agonizing Blast|PHB', 'Pontos szint|PHB']);
+    eq(p.choices.map(x => x.csere), [true, false]);
+    const k = p.spells.find(x => x.c.key === 'Warlock:known');
+    eq([k.uj, k.csere], [true, true]);
+    const azonos = mkS({base: {cha: 16}, levels: lv('Warlock', 3), sub: {Warlock: 'Fiend|PHB'}, ch: {'Warlock:opt:Eldritch Invocations': ['Agonizing Blast|PHB', 'Pontos szint|PHB', 'Beguiling Influence|PHB'], 'opt:Beguiling Influence:skills': ['deception', 'persuasion'], 'Warlock:opt:Pact Boon': ['Pact of the Blade|PHB']}, spells: {Warlock: {cantrips: ['Mage Hand|PHB'], known: ['Hex|PHB', 'Burning Hands|PHB']}}});
+    const q = terv(azonos, rb, 'Warlock');
+    eq(q.choices.map(x => [x.c.key, x.uj, x.csere]), [['Warlock:4:asi', true, false], ['Warlock:opt:Eldritch Invocations', false, true]], 'a darabszám nem nő, de cserélhet; a Pact Boon nem jön elő');
+    eq(q.choices[1].missing, 0, 'a csere nem kötelező');
+  });
+  test('Sorcerer 2 → 3: 2 metamagic, known +1 és csere; a metamagic nem cserélhető; a feat saját választása a plan-be kerül', () => {
+    const rb = rbVarazs(), s = mkS({base: {cha: 16}, levels: lv('Sorcerer', 2), sub: {Sorcerer: 'Draconic|PHB'}, spells: {Sorcerer: {cantrips: ['Light|PHB', 'Fire Bolt|PHB', 'Mage Hand|PHB'], known: ['Shield|PHB', 'Sleep|PHB', 'Grease|PHB']}}});
+    let p = terv(s, rb, 'Sorcerer');
+    eq(p.choices.map(x => [x.c.key, x.c.n, x.csere, x.missing]), [['Sorcerer:opt:Metamagic', 2, false, 2]]);
+    const kn = p.spells.find(x => x.c.key === 'Sorcerer:known');
+    eq([kn.c.n, kn.locked.length, kn.csere, kn.missing], [4, 3, true, 1]);
+    // ASI → feat: a feat választása új kulcs, és megjelenik
+    const f = mkS({levels: lv('Fighter', 3), sub: {Fighter: 'Champion|PHB'}, ch: {'Fighter:opt:Fighting Style': ['Defense|PHB']}});
+    const b = {...H().levelUpBuild(f, 'Fighter')}; b.ch = {...b.ch, 'Fighter:4:asi': {feat: 'Resilient|HB'}};
+    p = H().levelUpPlan(f, rb, b);
+    eq(kulcs(p.choices), ['Fighter:4:asi', 'feat:Resilient|HB:ability', 'feat:Resilient|HB:saves']);
+    eq(p.choices[0].missing, 0, 'az ASI kész');
+  });
+  test('korábbról nyitott választás megjelenik, de nem kötelező; ha nincs miből választani, a hely nem akad el', () => {
+    const rb = rbVarazs(), s = mkS({levels: lv('Fighter', 3), sub: {}});
+    const p = terv(s, rb, 'Fighter');
+    eq(p.choices.map(x => [x.c.key, x.uj, x.missing]), [['Fighter:sub', false, 0], ['Fighter:4:asi', true, 1], ['Fighter:opt:Fighting Style', false, 0]]);
+    const ures = {...rb, optfeatures: []}, w = mkS({base: {cha: 16}, levels: lv('Warlock', 2), ch: {}, sub: {Warlock: 'Fiend|PHB'}, spells: {}});
+    eq(terv(w, ures, 'Warlock').choices.map(x => x.missing), [0, 0], 'nincs Pact Boon a könyvben');
+    const sz = {...rb, subclasses: rb.subclasses.filter(x => x.cls !== 'Monk')}, m = mkS({levels: lv('Monk', 2)});
+    eq(terv(m, sz, 'Monk').choices.map(x => [x.c.key, x.missing]), [['Monk:sub', 0]], 'alosztály nélküli könyvnél sem akad el');
+  });
+  test('levelUpApply: egy írásban a számolt mezők, a jelenlegi HP a növekedéssel nő, a használt marad; az engedély a célszintnél törlődik, köztes szinten marad; szabálykönyv-mentes felülírás', () => {
+    const rb = rbVarazs(), s = mkS({base: {con: 14}, levels: lv('Barbarian', 3)}, {levelUp: {to: 4}, hp: {max: 30, cur: 12}, resources: [{name: 'Rage', max: 3, used: 2, auto: true}]});
+    const b = H().levelUpBuild(s, 'Barbarian'); b.levels[3].hp = 9;
+    let p = H().levelUpApply(s, rb, b);
+    eq(p.levelUp, null);
+    eq(p.classes[0].level, 4);
+    eq([p.hp.max, p.hp.cur], [12 + 7 * 2 + 9 + 8, 12 + (12 + 7 * 2 + 9 + 8 - 30)]);
+    eq((p.resources || s.resources).find(r => r.name === 'Rage').used, 2);
+    eq(H().levelUpApply({...s, levelUp: {to: 6, by: 'dm', at: '', mc: false}}, rb, b).levelUp.to, 6, 'két szintre szóló engedély');
+    const ovS = mkS({base: {con: 14, str: 10}, levels: lv('Barbarian', 3)}, {ov: {hpMax: 40, 'ab:str': 16, ac: 18}, hp: {max: 40, cur: 40}});
+    const ob = H().levelUpBuild(ovS, 'Barbarian'); ob.ch = {'Barbarian:4:asi': {str: 2}};
+    p = H().levelUpApply(ovS, rb, ob);
+    eq([p.ov.hpMax, p.ov['ab:str'], p.ov.ac, p.abilities.str, p.hp.max, p.hp.cur], [40 + 9, 18, 18, 18, 49, 49], 'a max HP és a képesség felülírása mozdul, az AC-é marad');
+    eq(H().levelUpPlan(ovS, rb, ob).hp.to, 49, 'a tervben is');
+  });
+  test('restorePatch: a felépítés és a számolt mezők vissza, a felszerelés, a pénz, a jegyzet, a HP marad; engedély visszajön; saját varázslat a pillanatkép szerint', () => {
+    const rb = rbVarazs(), s = mkS({base: {con: 14}, levels: lv('Barbarian', 3)}, {levelUp: {to: 4}, hp: {max: 40, cur: 40}, notes: 'régi', inventory: [{name: 'Régi'}], spells: [{name: 'Saját', level: 1}], resources: [{name: 'Rage', max: 3, used: 1, auto: true}]});
+    const b = H().levelUpBuild(s, 'Barbarian'), up = H().norm({...s, ...H().levelUpApply(s, rb, b), notes: 'új', inventory: [{name: 'Új'}], currency: {gp: 9}, resources: [{name: 'Rage', max: 3, used: 2, auto: true}]});
+    const h = {reason: 'levelup', from: 3, to: 4, sheet: s};
+    const p = H().restorePatch(up, h, rb, {by: 'a@x.hu', at: '2026-11-02T18:00:00.000Z'}), n = H().norm({...up, ...p});
+    eq([n.build.levels.length, H().level(n), n.notes, n.inventory[0].name, n.currency.gp], [3, 3, 'új', 'Új', 9]);
+    eq(p.levelUp, {to: 4, by: 'a@x.hu', at: '2026-11-02T18:00:00.000Z', mc: false});
+    eq(n.resources.find(r => r.name === 'Rage').used, 2);
+    ok(n.hp.cur <= n.hp.max);
+    eq(H().restorePatch({...up, levelUp: {to: 6}}, h, rb).levelUp, {to: 6}, 'az érvényes engedély marad');
+    eq(H().restorePatch(up, {reason: 'restore', from: 4, to: 3, sheet: s}, rb).levelUp, null, 'visszaállítás visszavonása nem ad engedélyt');
+    ok(n.spells.some(x => x.name === 'Saját'));
   });
 });
 
@@ -2903,6 +3003,62 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(300);
     ok($('#gate').hidden); eq(A('S.library').length, 1);
     W.openMenu(); has($('#modalBox').textContent, 'firestore.rules');
+  });
+});
+
+describe('Szintlépés-engedély a DM Screenben', () => {
+  const lapos = (id, nev, extra = {}) => { A(`S.library.push(normCreature(${JSON.stringify({...pc(nev, 5), id, owner: 'a@x.hu'})}))`); W.createSheet(id, {name: nev, classes: [{name: 'Rogue', level: 5}], ...extra}); };
+  test('Könyvtár: ⬆ +1 szint (többször is), ✕ vissza; csak lappal rendelkezőnél; felhőbe a levelUp megy; 20. szinten nincs', async () => {
+    const f = makeFakeDb(); A('Tar').kapcsol(f.db);
+    A(`S.library.push(normCreature(${JSON.stringify({...pc('Lap nélkül', 5), id: 'nl'})}))`);
+    lapos('p1', 'Lapos');
+    await A('doSave()');
+    await until(() => f.store['sheets/p1'], 2000, 'a lap a felhőben');
+    f.log.length = 0;
+    W.openLib('lib');
+    ok(!$('[data-lib="nl"] [data-act="libSzintAd"]'), 'lap nélkül nincs gomb');
+    click('[data-lib="p1"] [data-act="libSzintAd"]');
+    has($('[data-lib="p1"]').textContent, '6. szintre vár');
+    eq(A('SHEETS.p1.levelUp.to'), 6);
+    click('[data-lib="p1"] [data-act="libSzintAd"]');
+    has($('[data-lib="p1"]').textContent, '7. szintre vár');
+    await until(() => f.store['sheets/p1']?.levelUp?.to === 7, 2000, 'a felhőbe is');
+    ok(f.log.some(l => l === 'update sheets/p1 levelUp'), f.log.join(';'));
+    click('[data-lib="p1"] [data-act="libSzintVissza"]');
+    eq(A('SHEETS.p1.levelUp.to'), 6);
+    click('[data-lib="p1"] [data-act="libSzintVissza"]');
+    eq(A('SHEETS.p1.levelUp'), null);
+    ok(!$('[data-lib="p1"] [data-act="libSzintVissza"]'), 'nincs több visszavonás');
+    await until(() => f.store['sheets/p1']?.levelUp === null, 2000, 'a felhőben is törölve');
+    W.createSheet('p1', {name: 'Lapos', classes: [{name: 'Rogue', level: 20}]});
+    W.filterLib(); ok($('[data-lib="p1"] [data-act="libSzintAd"]').disabled, '20. szinten tiltva');
+    eq(A(`szintlepesAd('p1')`), false);
+  });
+  test('Csapat: egyenként és ⬆ Mindenki; régi közös fájl mellett nem ír; gonosz név nem fut', () => {
+    lapos('p1', 'Egy'); lapos('p2', '<img src=x onerror=alert(1)>');
+    W.openParty();
+    click('[data-pcard="p1"] [data-act="partySzintAd"]');
+    has($('[data-pcard="p1"]').textContent, '6. szintre vár');
+    click('[data-act="partySzintMind"]');
+    eq([A('SHEETS.p1.levelUp.to'), A('SHEETS.p2.levelUp.to')], [7, 6]);
+    click('[data-pcard="p2"] [data-act="partySzintVissza"]');
+    eq(A('SHEETS.p2.levelUp'), null);
+    assertNoXss();
+    A('VART_MODULOK.sheet += 100');
+    try { eq([A(`szintlepesAd('p2')`), A(`szintlepesVissza('p1')`), A('SHEETS.p2.levelUp')], [false, false, null], 'régi közös fájl mellett nem ír'); } finally { A('VART_MODULOK.sheet -= 100'); }
+  });
+  test('előzmények: csak a legfrissebb 20 marad az engedély adásakor; lap törlésekor mind törlődik; hiba nem akasztja meg', async () => {
+    const f = makeFakeDb(); A('Tar').kapcsol(f.db);
+    lapos('p1', 'Lapos');
+    for (let i = 10; i < 35; i++) f.store[`sheets/p1/hist/2026-11-${i}`] = {reason: 'levelup'};
+    A(`szintlepesAd('p1')`);
+    await until(() => Object.keys(f.store).filter(k => k.includes('/hist/')).length === 20, 2000, 'takarítás');
+    ok(f.store['sheets/p1/hist/2026-11-34'] && !f.store['sheets/p1/hist/2026-11-14'], 'a régiek mentek');
+    A(`sheetOps.del.add('p1'); doSave()`);
+    await until(() => !Object.keys(f.store).some(k => k.startsWith('sheets/p1')), 2000, 'lappal együtt');
+    const hibas = {...f.db, list: async () => { throw new Error('tilos'); }};
+    A('Tar').kapcsol(hibas);
+    await A(`elozmenyTakarit('p1')`);
   });
 });
 

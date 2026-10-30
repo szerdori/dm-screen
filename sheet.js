@@ -1013,6 +1013,62 @@ window.Sheet = (() => {
     for (const h of helyek) if (fel[h.key]) (spells[h.ctx.cls] = spells[h.ctx.cls] || {})[h.kind] = fel[h.key];
     return normBuild({...s.build, spells});
   }
+  // ---------- szintlépés: a varázsló egy ideiglenes felépítésen dolgozik; a „mi változott” a motor két futásának különbsége ----------
+  const levelUpBuild = (s, cls) => normBuild({...s.build, levels: [...s.build.levels, {c: cls, hp: null}]});
+  const LU_ORDER = {subclass: 0, asi: 1, feat: 2, ability: 2, saves: 2, skills: 3, expertise: 3, lang: 3, tool: 3, opt: 4};
+  // a felülírás a számolt érték változásával együtt mozdul, különben a max HP nem nőne, és az ASI nem hatna (a többi felülírás marad)
+  function levelUpOv(s, rb, build) {
+    const a = calc(s, rb), ov = {...s.ov}, b0 = calc({...s, build}, rb);
+    for (const x of ABIL) if ('ab:' + x in ov) ov['ab:' + x] += b0.abilities[x].calc - a.abilities[x].calc;
+    if ('hpMax' in ov) ov.hpMax += calc({...s, build, ov}, rb).hpMax.calc - a.hpMax.calc;
+    return normOv(ov);
+  }
+  // egy hely lehetséges kitöltése elfogyott-e: ha kevesebb a választható, mint a hely, nem akadhat el a varázsló
+  function choiceMissing(c, cr, rb) {
+    if (c.kind === 'asi' || c.kind === 'subclass') return c.done ? 0 : (c.kind === 'asi' || subclassesOf(c.key.replace(/:sub$/, ''), rb).length ? 1 : 0);
+    const o = choiceOptions(c, cr, rb);
+    if (o.free) return c.done ? 0 : c.n - c.ok.length;
+    const free = o.opts.filter(x => !x.dis && !c.ok.includes(x.v)).length;
+    return c.done ? 0 : Math.min(c.n - c.ok.length, free);
+  }
+  // build: a piszkozat (levelUpBuild + a választások). Választások = ami most nyílt (új kulcs, vagy nagyobb darabszám), a korábbról nyitottak külön (elmaradt: nem kötelező);
+  // a meglévő választások zárolva maradnak, kivéve a szintenkénti 1 cserét (known caster, Warlock invocation; Battle Master: csak ha új maneuvert tanul).
+  function levelUpPlan(s, rb, build) {
+    const ov = levelUpOv(s, rb, build), old = calc(s, rb), nw = calc({...s, build, ov}, rb), regi = new Map(old.choices.map(c => [c.key, c])), cls = build.levels.at(-1).c;
+    const item = c => {
+      const r = regi.get(c.key), uj = !r || c.n > r.n;
+      const known = c.kind === 'known' && c.ctx?.cls === cls, inv = c.kind === 'opt' && c.ctx?.cls === cls && /Invocation/.test(c.key), man = c.kind === 'opt' && /Maneuver/.test(c.key) && uj;
+      return {c, uj, locked: r ? r.ok.filter(v => typeof v === 'string') : [], csere: !!r && (known || inv || man), missing: uj ? choiceMissing(c, nw, rb) : 0};
+    };
+    const all = nw.choices.filter(c => c.kind !== 'subrace').map(item);
+    const shown = all.filter(x => x.uj || x.csere || !x.c.done);
+    const key = f => `${f.name}|${f.src}`, oldF = new Set(old.features.map(key)), oldT = new Set(old.todos.map(t => t.key));
+    const hd = classInfo(cls, rb).hd, l = build.levels.at(-1), die = l.hp ?? hd / 2 + 1, gain = nw.hpMax.calc - old.hpMax.calc;
+    return {old, nw, cls, ov, classLevel: nw.classes.find(c => c.name === cls).level,
+      choices: shown.filter(x => !SPELL_KINDS.includes(x.c.kind)).sort((a, b) => (LU_ORDER[a.c.kind] ?? 9) - (LU_ORDER[b.c.kind] ?? 9)),
+      spells: shown.filter(x => SPELL_KINDS.includes(x.c.kind)),
+      features: nw.features.filter(f => !oldF.has(key(f))),
+      manual: nw.todos.filter(t => t.kind === 'manual' && !oldT.has(t.key)),
+      resources: nw.resources.map(r => ({name: r.name, from: old.resources.find(x => x.name === r.name)?.max ?? 0, to: r.max})).filter(r => r.from !== r.to),
+      hp: {hd, avg: hd / 2 + 1, die, rest: gain - die, gain, from: old.hpMax.v, to: nw.hpMax.v}};
+  }
+  // a mentés: a varázsló minden hibalehetősége után egyben számolt mezők; a max HP növekedésével a jelenlegi HP is nő, a használt erőforrások maradnak
+  function levelUpApply(s, rb, build) {
+    const to = build.levels.length, levelUp = s.levelUp && s.levelUp.to > to ? s.levelUp : null;
+    const next = norm({...s, build, ov: levelUpOv(s, rb, build), levelUp}), m = materialize(next, calc(next, rb)), n = norm({...next, ...m});
+    const gain = Math.max(0, n.hp.max - s.hp.max);
+    return {...m, build: n.build, ov: n.ov, levelUp, hp: {...n.hp, cur: Math.min(n.hp.max, s.hp.cur + gain)}};
+  }
+  // visszaállítás egy előzményből: a felépítés és a számolt mezők jönnek vissza; a felszerelés, a pénz, a jegyzet, az állapotok és a jelenlegi HP (a maximumra vágva) marad.
+  // Az engedély: a mostani marad, ha még érvényes; szintlépés visszavonásakor visszajön (így újra lehet lépni)
+  function restorePatch(cur, h, rb, {by = '', at = ''} = {}) {
+    const snap = h.sheet, lv = snap.build?.levels?.length || level(snap);
+    const levelUp = cur.levelUp && cur.levelUp.to > lv ? cur.levelUp : h.reason === 'levelup' && h.to > lv ? {to: h.to, by, at, mc: false} : null;
+    const p = {auto: snap.auto, build: snap.build, ov: snap.ov, todoDone: snap.todoDone, spells: snap.spells, features: snap.features, levelUp,
+      resources: snap.resources.map(r => ({...r, used: Math.min(cur.resources.find(x => x.name === r.name)?.used || 0, r.max)}))};
+    const next = norm({...cur, ...p});
+    return {...p, ...(next.auto && rb?.classes?.length ? materialize(next, calc(next, rb)) : {})};
+  }
   // ---------- faji és feat-képességbónusz a kézi lapon (a beírt értékekhez adva) ----------
   // fixed: azonnal hozzáadható; choose: a játékos választ (pl. Half-Elf 2× +1, Resilient)
   function abBonusOf(fx) {
@@ -1301,7 +1357,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS,
+    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, levelUpBuild, levelUpPlan, levelUpApply, restorePatch,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine};
