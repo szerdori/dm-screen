@@ -10,6 +10,7 @@ const harcos = el => byId(el.closest('[data-cid]')?.dataset.cid);
 const hpMezo = el => el.closest('.tile').querySelector('.hpin').value;
 const harcMod = (el, fn) => { fn(harcos(el)); save(); render(); };  // a gomb harcosán változtat, aztán ment és rajzol
 const konyvtari = el => { const libEl = el.closest('[data-lib]'); return libEl && S.library.find(c => c.id === libEl.dataset.lib); };
+const darab = el => Math.max(1, +(el.closest('.lrow')?.querySelector('.cnt')?.value) || 1);
 
 const AKCIOK = {
   // harc
@@ -100,6 +101,43 @@ const AKCIOK = {
     catch { el.textContent = 'A böngésző nem engedte'; }
   },
   lootLog: el => { log('🎁 ' + esc(lootText(lootResult)).replace(/\n/g, '<br>')); el.textContent = '✓ Naplóban'; },
+
+  // lényszerkesztő
+  newCreature: () => openEditor(blankCreature(), c => { upsertLibrary(c, false); log(`📚 ${esc(c.name)} létrehozva`); }, 'Új lény', {share: true}),
+  edSave: () => {
+    const ow = $('#edForm').elements.owner?.value.trim();
+    if (ow && $('#edForm').elements.kind.value === 'pc' && !EMAIL_RE.test(ow.toLowerCase())) { alert('A játékos Google-fiókja nem érvényes e-mail-cím.'); return; }
+    const c = readEditor(); const cb = editCb; closeModal(); cb && cb(c); save(); render();
+  },
+  edCancel: () => closeModal(),
+
+  // könyvtár
+  libAdd: el => { const lib = konyvtari(el), n = darab(el); addToEncounter(lib, n); log(`＋ ${n}× ${esc(lib.name)}`); },
+  libEdit: el => { const lib = konyvtari(el); openEditor(lib, c => { c.id = lib.id; upsertLibrary(c, false); setTimeout(() => openLib('lib')); }, undefined, {share: true}); },
+  libExport: el => { const lib = konyvtari(el); download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', SHEETS[lib.id] || lib); },
+  libDel: el => {
+    const lib = konyvtari(el);
+    if (confirm(`Törlöd a könyvtárból: ${lib.name}?${SHEETS[lib.id] ? '\nA telefonos karakterlapja is törlődik (a felhős biztonsági mentésekből visszahozható).' : ''}`)) {
+      if (SHEETS[lib.id]) sheetOps.del.add(lib.id);
+      S.library = S.library.filter(c => c !== lib); save(); filterLib();
+    }
+  },
+  libSheet: el => {
+    const lib = konyvtari(el);
+    if (SHEETS[lib.id]) window.open('karakter.html#lap/' + lib.id, '_blank');
+    else if (confirm(`Telefonos karakterlapot hozol létre ${lib.name} számára a könyvtári adatokból?\nEzután a lap a játékosé: amit a telefonján átír, az ide is átjön. Az osztályt, spell slotokat érdemes a lapon ellenőrizni.`)) {
+      createSheet(lib.id, creatureToSheet(lib)); filterLib(); log(`📱 ${esc(lib.name)}: karakterlap létrehozva`);
+    }
+  },
+
+  // szabálykönyv
+  rulebook: () => openRulebook(),
+  rbUpdate: async el => { el.disabled = true; await rulebookUpdate(); el.disabled = false; },
+  itemAdd: el => {
+    const it = itemResults[+el.closest('[data-item]').dataset.item], to = $('#itemTo')?.value, n = darab(el);
+    const c = it && to && addItemTo(to, it, n);
+    if (c) { el.textContent = '✓ ' + c.name; log(`🗡 ${n}× ${esc(it.n)} → ${esc(c.name)}`); }
+  },
 };
 
 // ---------- események ----------
@@ -146,37 +184,6 @@ document.addEventListener('click', async e => {
   const cnt = () => Math.max(1, +(el.closest('.lrow')?.querySelector('.cnt')?.value) || 1);
 
   switch (act) {
-    case 'newCreature': openEditor(blankCreature(), c => { upsertLibrary(c, false); log(`📚 ${esc(c.name)} létrehozva`); }, 'Új lény', {share: true}); break;
-    case 'edSave': {
-      const ow = $('#edForm').elements.owner?.value.trim();
-      if (ow && $('#edForm').elements.kind.value === 'pc' && !EMAIL_RE.test(ow.toLowerCase())) { alert('A játékos Google-fiókja nem érvényes e-mail-cím.'); break; }
-      const c = readEditor(); const cb = editCb; closeModal(); cb && cb(c); save(); render(); break; }
-    case 'edCancel': closeModal(); break;
-
-    // könyvtár
-    case 'libAdd': addToEncounter(lib, cnt()); log(`＋ ${cnt()}× ${esc(lib.name)}`); break;
-    case 'libEdit': openEditor(lib, c => { c.id = lib.id; upsertLibrary(c, false); setTimeout(() => openLib('lib')); }, undefined, {share: true}); break;
-    case 'libExport': download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', SHEETS[lib.id] || lib); break;
-    case 'libDel':
-      if (confirm(`Törlöd a könyvtárból: ${lib.name}?${SHEETS[lib.id] ? '\nA telefonos karakterlapja is törlődik (a felhős biztonsági mentésekből visszahozható).' : ''}`)) {
-        if (SHEETS[lib.id]) sheetOps.del.add(lib.id);
-        S.library = S.library.filter(c => c !== lib); save(); filterLib();
-      }
-      break;
-    case 'libSheet':
-      if (SHEETS[lib.id]) window.open('karakter.html#lap/' + lib.id, '_blank');
-      else if (confirm(`Telefonos karakterlapot hozol létre ${lib.name} számára a könyvtári adatokból?\nEzután a lap a játékosé: amit a telefonján átír, az ide is átjön. Az osztályt, spell slotokat érdemes a lapon ellenőrizni.`)) {
-        createSheet(lib.id, creatureToSheet(lib)); filterLib(); log(`📱 ${esc(lib.name)}: karakterlap létrehozva`);
-      }
-      break;
-    case 'rulebook': openRulebook(); break;
-    case 'rbUpdate': el.disabled = true; await rulebookUpdate(); el.disabled = false; break;
-    case 'itemAdd': {
-      const it = itemResults[+el.closest('[data-item]').dataset.item], to = $('#itemTo')?.value;
-      const c = it && to && addItemTo(to, it, cnt());
-      if (c) { el.textContent = '✓ ' + c.name; log(`🗡 ${cnt()}× ${esc(it.n)} → ${esc(c.name)}`); }
-      break;
-    }
     case 'downloadSheetTemplate': download('karakterlap-sablon.json', Sheet.TEMPLATE); break;
     case 'showSheetTemplate': $('#jsonIn').value = JSON.stringify(Sheet.TEMPLATE, null, 2); break;
     case 'addAllPcs': {
