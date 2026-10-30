@@ -1,7 +1,7 @@
 // Könyvtár ablak (felület): a fülek (könyvtár, 5e.tools, D&D Beyond, tárgyak, JSON, mentett encounterek) és a fájlbetöltés.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('konyvtar-ablak', N) és az index.html-ben a konyvtar-ablak.js?v=N és a VART_MODULOK.
 'use strict';
-modul('konyvtar-ablak', 2);
+modul('konyvtar-ablak', 3);
 
 let libTab = 'lib';
 // ---------- könyvtár ----------
@@ -158,6 +158,18 @@ function jsonTabHtml() {
     <div class="toolbar"><button data-act="downloadSheetTemplate">⬇ Karakterlap-sablon letöltése</button><button data-act="showSheetTemplate">Karakterlap-sablon betöltése ide</button></div>
     <textarea id="jsonIn" rows="16" placeholder='{ "name": "...", "ac": 13, "hp": {"max": 22}, ... }'></textarea>
     <div class="toolbar"><button class="primary" data-act="jsonImport">Importálás a könyvtárba</button><span id="jsonMsg" class="hint"></span></div>`;
+}
+// import a JSON fülről vagy fájlból: az importáló átalakít, a kérdés és a mentés itt van. Azonos nevű játékosnál rákérdez, hogy annak a lapját cserélje-e.
+async function importAny(obj) {
+  const out = [], sheets = [];
+  for (const o of importElemek(obj)) {
+    const imp = IMPORTEROK.find(i => i.felismer(o)), ki = await imp.atalakit(o);
+    if (!imp.lap) { out.push(ki); continue; }
+    let lib = lapNevtars(ki);
+    if (lib && !confirm(`Már van „${lib.name}” nevű játékos a könyvtárban. Az ő karakterlapját cseréled le az importáltra?\n(Mégse = új karakterként veszi fel)`)) lib = null;
+    sheets.push(importSheet(ki, lib));
+  }
+  return [...sheets, ...out.map(c => upsertLibrary(c))];
 }
 let fileMode = 'creatures';
 // a rejtett fájlválasztó (#fileIn): lények JSON-ból vagy teljes mentésfájl (fileMode); induláskor kapcsoljuk fel

@@ -662,8 +662,9 @@ describe('Importálás', () => {
       const valasztott = imp.find(i => i.felismer(m));
       eq(valasztott.nev, nev);
       const ki = await valasztott.atalakit(structuredClone(m));
-      eq(sj(n(structuredClone(ki))), sj(ki), nev);
+      eq(sj((valasztott.lap ? W.Sheet.norm : n)(structuredClone(ki))), sj(ki), nev);
     }
+    eq([A('S.library').length, Object.keys(A('SHEETS')).length], [0, 0], 'az importáló csak átalakít, nem ment');
     for (const c of [W.convertDDB(ddbParty()), W.convert5e(FIVE.brute), W.convert5e(FIVE.scout), n({...A('TEMPLATE'), id: 'sablon'})]) eq(sj(n(structuredClone(c))), sj(c), c.name);
   });
   test('az importálók sorrendje dönt; a lap a lények elé kerül az eredményben; hibás elemnél elutasít', async () => {
@@ -674,6 +675,20 @@ describe('Importálás', () => {
     const r = await W.importAny([{name: 'A'}, W.Sheet.TEMPLATE]);
     eq(r.map(c => c.name), [W.Sheet.TEMPLATE.name, 'A']);
     let hiba = null; try { await W.importAny([null]); } catch (e) { hiba = e; } ok(hiba, 'null elem');
+  });
+  test('több azonos nevű lap: a második látja az elsőt és rákérdez; hiba egy elem közben: ami addig bejött, marad', async () => {
+    const lap = W.Sheet.TEMPLATE, urit = () => A('S.library = []; SHEETS = {}');
+    let kerdes = 0, valasz = false;
+    W.confirm = () => { kerdes++; return valasz; };
+    await W.importAny([lap, lap]);
+    eq([kerdes, A('S.library').length], [1, 2], 'Mégse = új játékos');
+    urit(); kerdes = 0; valasz = true;
+    await W.importAny([lap, lap]);
+    eq([kerdes, A('S.library').length], [1, 1], 'OK = a meglévő lapja cserélődik');
+    urit();
+    let hiba = null; try { await W.importAny([lap, {name: 'A'}, null]); } catch (e) { hiba = e; }
+    ok(hiba, 'a hibás elem elutasít');
+    eq(A('S.library').map(c => c.name), [lap.name], 'a lap bent marad, a lény nem kerül be');
   });
   test('formátum felismerése: saját, 5e.tools, D&D Beyond, tömb, {creatures}', async () => {
     stubFive();
@@ -3180,14 +3195,14 @@ describe('Szerződés (szerzodes.js)', () => {
       if (felulet.includes(f)) eq(talal(kod, TAR_RE), [], f + ': a felület nem hívja a Tar-t');
     }
     has(await szoveg('js/adat/tar.js'), 'db.set(', 'a Tar ír');
-    // a logika nem hívja a felület függvényeit, csak az Ertesito-n át szól (kivétel a 6. lépésig: az importSheet kérdése)
+    // a logika nem hívja a felület függvényeit, csak az Ertesito-n át szól
     const nevek = new Set(['confirm', 'alert', 'prompt']);
     for (const f of felulet) for (const m of (await szoveg(f)).matchAll(/^(?:async )?function (\w+)|^const (\w+) = /gm)) nevek.add(m[1] || m[2]);
     ok(nevek.has('render') && nevek.has('log') && nevek.has('setSaveState') && nevek.has('closeModal'), 'megtalálta a felület neveit');
     const HIVAS_RE = new RegExp(`(?<![\\w.$])(${[...nevek].join('|')})\\(`, 'g');
     for (const f of logika) {
       const kod = (await szoveg(f)).replace(/^\s*\/\/.*$/gm, '');
-      eq(talal(kod, HIVAS_RE), f === 'js/logika/lapszinkron.js' ? ['confirm('] : [], f + ': a logika nem hívja a felületet');
+      eq(talal(kod, HIVAS_RE), [], f + ': a logika nem hívja a felületet');
     }
   });
   test('Értesítő: a logika üzenetei eljutnak a felületre (napló, mentésjelző, telefonos lap változása)', () => {

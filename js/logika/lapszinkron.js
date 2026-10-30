@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 2);
+modul('lapszinkron', 3);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -182,11 +182,10 @@ function creatureToSheet(c) {
     inventory: c.inventory, currency: c.currency, profs: {tools: c.tools, languages: c.languages},
     senses: c.senses.replace(/,?\s*passive Perception \d+/i, '').trim(), resist: c.resist});
 }
-// JSON-import: Claude által megírt vagy letöltött karakterlap; azonos nevű játékosnál rákérdez, hogy annak a lapját cserélje-e
-function importSheet(o) {
-  const s = Sheet.norm(o);
-  let lib = S.library.find(c => c.kind === 'pc' && c.name.trim().toLowerCase() === s.name.toLowerCase());
-  if (lib && !confirm(`Már van „${lib.name}” nevű játékos a könyvtárban. Az ő karakterlapját cseréled le az importáltra?\n(Mégse = új karakterként veszi fel)`)) lib = null;
+// JSON-import: Claude által megírt vagy letöltött karakterlap. Azonos nevű játékosnál a felület kérdez rá, hogy annak a lapját cserélje-e.
+const lapNevtars = s => S.library.find(c => c.kind === 'pc' && c.name.trim().toLowerCase() === s.name.toLowerCase());
+// s: Sheet.norm-on átment lap; lib: a játékos, akinek a lapját cseréli (ha nincs, új játékos jön létre)
+function importSheet(s, lib) {
   if (!lib) { lib = normCreature({id: uid(), kind: 'pc', name: s.name, owner: s.owner}); S.library.push(lib); }
   else if (!lib.owner && s.owner) Object.assign(lib, normCreature({...lib, owner: s.owner}));
   createSheet(lib.id, s);
