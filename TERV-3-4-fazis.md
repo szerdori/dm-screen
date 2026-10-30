@@ -53,7 +53,7 @@ build: {
   tce: {'Ranger|Deft Explorer': true}   // 4. fázis: bekapcsolt TCE opcionális feature-ök
 },
 spells: [{name, level, prepared, always, ref, cls: 'Wizard', auto: true, book: true}, …]   // cls és book új
-// sheets/{id}/hist/{ts}: {at, by, reason: 'levelup' | 'manual' | 'restore', from, to, sheet: {…teljes lap…}}
+// sheets/{id}/hist/{ts}: {at, by, reason: 'levelup' | 'manual' | 'restore', from, to, hp: 'avg' | 'roll' | 'manual' | '', sheet: {…teljes lap…}}
 ```
 
 `Sheet.norm` mindkét új mezőt tisztítja (`levelUp.to` 2–20 egész, refek `CH_KEY`-szerűen), XSS-teszttel.
@@ -75,7 +75,7 @@ spells: [{name, level, prepared, always, ref, cls: 'Wizard', auto: true, book: t
 5. **Új jellemzők** – a szint új feature-jei szöveggel (összecsukható), az új erőforrások (pl. „Ki: 5 → 6”).
 6. **Összegzés** – régi → új: szint, PB, max HP, Hit Dice, képességek, AC, mentők, slotok, spell DC osztályonként, új jellemzők, erőforrások, nyitva maradt teendők. **Mentés**.
 
-**Mentés:** (1) pillanatkép a `hist`-be, (2) egy írásban: `build` + `levelUp: null` + újraszámolt mezők (`materialize`), (3) `hp.cur` a max HP növekedésével együtt nő, a `used` értékek maradnak, a Hit Dice új kockája szabad. Ha az előzmény írása nem sikerül (pl. internet nélkül), a mentés megvárja – a pillanatkép nélküli szintlépés nem visszavonható.
+**Mentés:** egy írásban (`writeBatch`): pillanatkép a `hist`-be, `build` + újraszámolt mezők (`materialize`) + `levelUp` (a célszint elérésekor `null`, addig marad); `hp.cur` a max HP növekedésével együtt nő, a `used` értékek maradnak, a Hit Dice új kockája szabad. Internet nélkül a mentés nem indul el – a pillanatkép nélküli szintlépés nem visszavonható.
 
 **Visszavonás:** Alapadatok → „Előzmények”: lista (dátum, „5 → 6”). Visszaállításkor a felépítés és a számolt mezők jönnek vissza (`build`, `ov`, `todoDone`, `spells`, `features`, `resources` maximumai), **nem** jön vissza a felszerelés, a pénz, a jegyzet, az állapotok, a jelenlegi HP (a maximumra vágva). A visszaállítás előtt is pillanatkép készül. A szintlépés-engedély visszajön (`levelUp.to`), így újra lehet lépni.
 
@@ -123,6 +123,7 @@ spells: [{name, level, prepared, always, ref, cls: 'Wizard', auto: true, book: t
 2. **Engedély és előzmény:** `levelUp` mező, DM-gomb a Könyvtárban és a Csapatnál, sáv a telefonon, `hist` alkollekció írása / olvasása, `firestore.rules`. Tesztek: a játékos nem tud szintet adni magának (szabálytükör), az engedély mentéskor törlődik, a pillanatkép megvan.
 3. **Varázsló-felület:** a 6 lépés a `ChoiceUI`-val, piszkozat, HP-dobás rögzítve, összegzés, mentés. 320 px-en is (teszt). Tesztek a fenti esetekre a felületen át.
 4. **Előzmények és visszaállítás** a felületen (játékos / DM jogosultság szerint, lásd 4. nyitott kérdés).
+*(A 3. fázis 1–5. lépése kész 2026-10-30, a `claude/fazis-3-szintlepes-varazslo-06749a` ágon. Felfedezett hiba a robot-tesztből: a szabálykönyv az opcionális feature-ök objektum alakú progressziójában (Metamagic, Maneuvers) összeadta a darabszámokat, pedig azok teljes számok, ezért élesítéskor a szabálykönyvet újra kell tölteni.)* – sehol nem akadhat el, nem maradhat érvénytelen választás, a slotok és erőforrások a PHB táblái szerint (kézzel ellenőrzött mintaszinteken). Online teszt a valódi szabálykönyvvel. CLAUDE.md, README, élesítési teendők.
 5. **Robot-teszt és lezárás:** mind a 13 osztály 1 → 20 a varázsló logikájával, minden választást az első érvényes opcióval kitöltve – sehol nem akadhat el, nem maradhat érvénytelen választás, a slotok és erőforrások a PHB táblái szerint (kézzel ellenőrzött mintaszinteken). Online teszt a valódi szabálykönyvvel. CLAUDE.md, README, élesítési teendők.
 
 ### 4. fázis
@@ -198,6 +199,14 @@ newChar: {
 6. **HP-dobás:** egyszeri, rögzített dobás; a *Kézi* érték is mindenkinek elérhető (pl. asztali kockához), de a DM az előzményben látja, melyiket választották? *Javaslat: igen.*
 7. **Multiclass-feltétel elengedése:** a DM az engedélyben felülbírálhatja? *Javaslat: igen.*
 8. **Spellcsere a Felépítés-fülön** (szintlépésen kívül): szabadon szerkeszthető (bizalom), vagy csak a varázslóban? *Javaslat: szabadon, a DM látja az előzményben.*
+
+**A 3. fázis kódjának felmérésekor előjött döntések (2026-10-30, mind a javaslat):**
+
+- **Engedély visszavonáskor:** a szabály engedi, hogy a `levelUp` visszajöjjön, ha a szint közben csökken, és az engedély legfeljebb a korábbi szintre szól (különben a játékos a saját visszavonása után nem tudna újra lépni).
+- **✎ felülírások szintlépéskor:** az `ov.hpMax` és az `ov.ab:*` annyival mozdul, amennyit a szintlépés a számolt értéken változtat; a többi felülírás marad, az összegzés ✎ jellel mutatja.
+- **Régi lapok varázslatai:** betöltéskor egyszer magától besorolódik, ami egyértelmű (`Sheet.adoptSpells`, `build.spells` `null` → objektum); a többi „saját” varázslat marad. A korábbról elmaradt helyek a Teendők közé kerülnek, a szintlépést nem akadályozzák.
+- **Magical Secrets, EK/AT:** a választóban annyi listán (iskolán) kívüli varázslat választható, amennyi jár; a 10/14/18. szinti Magical Secrets a Bard known számába beleszámít, a Lore 6. szintije nem (a PHB szerint), ezért az utóbbi 2-vel növeli a helyek számát.
+- **Mentés:** a szintlépés és az előzmény egy írásban (`writeBatch`), a mentéshez internet kell; a piszkozat addig a telefonon marad. A varázsló az adott szint választásait kéri kötelezően, és csak ha van miből választani.
 
 **Az 5. fázishoz (új karakter):**
 

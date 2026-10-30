@@ -1,7 +1,7 @@
 // Zsákmány és Csapat nézet ablaka (felület): rajzolás, rendezés, keresés, csapatdobás.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('ablakok', N) és az index.html-ben az ablakok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('ablakok', 1);
+modul('ablakok', 2);
 
 // ---------- zsákmány (megjelenítés) ----------
 function openLoot() {
@@ -65,12 +65,21 @@ function rerenderParty() {
   if (q && $('#partySearch')) { $('#partySearch').value = q; filterPartyItems(q); }
   $('#modalBox').scrollTop = top;
 }
+// szintlépés-engedély egy lappal rendelkező játékosnak: ⬆ = +1 szint, ✕ = visszavonás; a felirat mutatja, hányadik szintre vár
+function szintlepesGomb(id, hol) {
+  const a = szintlepesAllas(id);
+  if (!a) return '';
+  const ad = `class="small ${a.to ? 'on' : ''}" data-pc="${esc(id)}" ${a.szint >= 20 || a.to >= 20 ? 'disabled' : ''} title="Szintlépés engedélyezése (+1 szint): a játékos telefonján indul a varázsló">⬆${a.to ? ` ${esc(a.to)}. szintre vár` : ' Szintlépés'}</button>`;
+  const vissza = `class="small" data-pc="${esc(id)}" title="Az engedély visszavonása (egy szinttel)">✕</button>`;
+  return hol === 'lib' ? `<button data-act="libSzintAd" ${ad}${a.to ? `<button data-act="libSzintVissza" ${vissza}` : ''}` : `<button data-act="partySzintAd" ${ad}${a.to ? `<button data-act="partySzintVissza" ${vissza}` : ''}`;
+}
 function partyMembersBar(pcs) {
   const inParty = new Set(pcs.map(c => c.id));
   const cand = S.library.filter(c => !inParty.has(c.id)).sort((a, b) => (KINDS.indexOf(b.kind) - KINDS.indexOf(a.kind)) || byName(a, b));
   return `<div class="toolbar"><b>Tagok:</b>
     ${pcs.map(c => `<span class="chip" data-act="partyRemove" data-pc="${esc(c.id)}" title="Kivétel a csapatból">${esc(c.name)} ✕</span>`).join('') || '<span class="muted">senki</span>'}
-    ${cand.length ? `<select id="partyAddSel"><option value="">＋ Hozzáadás a könyvtárból…</option>${cand.map(c => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(KIND_HU[c.kind])})</option>`).join('')}</select>` : ''}</div>`;
+    ${cand.length ? `<select id="partyAddSel"><option value="">＋ Hozzáadás a könyvtárból…</option>${cand.map(c => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(KIND_HU[c.kind])})</option>`).join('')}</select>` : ''}
+    ${pcs.some(c => szintlepesAllas(c.id)) ? '<button class="small" data-act="partySzintMind" title="Minden lappal rendelkező játékos +1 szintet léphet">⬆ Mindenki</button>' : ''}</div>`;
 }
 function partyHtml() {
   const pcs = partyMembers();
@@ -114,7 +123,7 @@ function partyHtml() {
       <h4>Eszközök, hangszerek</h4><div>${esc(c.tools || '–')}</div>
       ${c.notes ? `<h4>Jegyzet</h4><div style="white-space:pre-wrap">${esc(c.notes)}</div>` : ''}
       <div class="hint" style="margin-top:6px">${c.importedAt ? `D&D Beyond import: ${esc(c.importedAt)} – frissítéshez importáld újra a könyvjelzővel.` : ''}
-        <button class="small" data-act="partyEdit" data-pc="${esc(c.id)}">✎ Szerkesztés</button></div>
+        <button class="small" data-act="partyEdit" data-pc="${esc(c.id)}">✎ Szerkesztés</button> ${szintlepesGomb(c.id, 'party')}</div>
     </div>`;
   };
   const total = {}; pcs.forEach(c => COINS.forEach(k => total[k] = (total[k] || 0) + (c.currency[k] || 0)));

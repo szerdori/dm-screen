@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 3);
+modul('lapszinkron', 4);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -68,7 +68,7 @@ function syncSheets(ops) {
   // a böngésző gyorsítótárából régi közös fájl (sheet.js, kozos.js) jött: a lapokra nem írunk, amíg az oldal nem frissül (a könyvtári változás megmarad)
   if (regiFajl()) { if (!syncSheets.warned) Ertesito.naplo('⚠ Az oldal egy része régi változatból töltődött be: frissítsd (Ctrl + F5), addig a karakterlapokra nem írok.'); syncSheets.warned = true; return; }
   const now = new Date().toISOString(), by = authInfo.email || 'DM';
-  for (const id of sheetOps.del) { delete SHEETS[id]; delete shadow[id]; if (Tar.kapcsolva()) ops.push(Tar.lapok.torol(id)); }
+  for (const id of sheetOps.del) { delete SHEETS[id]; delete shadow[id]; if (Tar.kapcsolva()) ops.push(Tar.lapok.torol(id), elozmenyTakarit(id, 0)); }
   sheetOps.del.clear();
   for (const c of S.library) {
     const s = SHEETS[c.id]; if (!s || c.kind !== 'pc') continue;
@@ -132,6 +132,36 @@ function createSheet(id, s) {
   SHEETS[id] = Sheet.norm({...s, owner: lib?.owner || s.owner});
   sheetOps.set.add(id); sheetOps.del.delete(id);
   applySheet(id); save();
+}
+// ---------- szintlépés-engedély: a DM ad (egy nyomás = +1 szint), a játékos telefonján a varázsló indul; a DM addig vonhatja vissza, amíg a játékos nem mentett ----------
+const ELOZMENY_MAX = 20;
+// az előzményekből a legfrissebb `marad` darab marad (a játékos nem törölhet; az azonosító időbélyeg, ezért a sorrend ábécérend). A Firestore az alkollekciót nem törli a lappal együtt.
+async function elozmenyTakarit(id, marad = ELOZMENY_MAX) {
+  try {
+    const lista = (await Tar.lapok.elozmenyek(id)).map(h => h.id).sort().reverse();
+    await Promise.all(lista.slice(marad).map(h => Tar.lapok.elozmenyTorol(id, h)));
+  } catch (e) { console.warn('az előzmények takarítása nem sikerült:', e.code || e.message); }
+}
+function engedelyIr(id, levelUp) {
+  const now = new Date().toISOString(), by = authInfo.email || 'DM';
+  SHEETS[id] = Sheet.norm({...SHEETS[id], levelUp});
+  if (!Tar.kapcsolva()) return;
+  Tar.lapok.mezok(id, {levelUp, updatedAt: now, updatedBy: by}).catch(e => Ertesito.naplo(`⚠ A szintlépés-engedély mentése nem sikerült (${esc(e.code || e.message)}).`, 'warn'));
+}
+// a lap állása: {szint, to}; to = null, ha nincs engedély
+const szintlepesAllas = id => { const s = SHEETS[id]; return s ? {szint: Sheet.level(s), to: s.levelUp && s.levelUp.to > Sheet.level(s) ? s.levelUp.to : null} : null; };
+function szintlepesAd(id) {
+  const a = szintlepesAllas(id);
+  if (!a || regiFajl() || (a.to || a.szint) >= 20) return false;
+  engedelyIr(id, {to: (a.to || a.szint) + 1, by: authInfo.email || 'DM', at: new Date().toISOString(), mc: false});
+  if (Tar.kapcsolva()) elozmenyTakarit(id);
+  return true;
+}
+function szintlepesVissza(id) {
+  const a = szintlepesAllas(id);
+  if (!a?.to || regiFajl()) return false;
+  engedelyIr(id, a.to - 1 > a.szint ? {...SHEETS[id].levelUp, to: a.to - 1} : null);
+  return true;
 }
 // mentésfájlból / felhős mentésből: a lapok is visszaállnak (ami a mentésben nincs, az törlődik)
 function restoreSheets(list) {

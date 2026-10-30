@@ -146,6 +146,17 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 .chbox select,.chbox input:not([type=checkbox]){width:100%;margin-top:4px}
 .chopts{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:4px 10px}
 .chopts label{display:flex;align-items:center;gap:6px;font-size:14px}
+.chopts label[hidden]{display:none}
+.lubar{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--accent);border-radius:8px;padding:8px 10px;margin:8px 0}
+button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:700}
+.lusteps{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 12px}
+.lusteps span{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--panel);color:var(--muted)}
+.lusteps span.on{background:var(--accent);color:#1a1405;font-weight:700}
+.lunav{margin:16px 0;position:sticky;bottom:0;background:var(--bg);padding:8px 0}
+.lutab{width:100%;border-collapse:collapse;table-layout:fixed}
+.lutab td{padding:4px 6px;border-bottom:1px solid var(--line);overflow-wrap:break-word}
+.lutab td:first-child{width:38%}
+.lutab td:last-child{text-align:right}
 .okk{color:var(--green);font-weight:700}
 .parts{margin:6px 0 0;padding-left:18px;font-size:13px;color:#d6d3cb}
 .lvrow{display:flex;gap:8px;align-items:center}
@@ -164,8 +175,8 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=6"></script>
-<script src="szerzodes.js?v=1"></script>
+<script src="sheet.js?v=7"></script>
+<script src="szerzodes.js?v=2"></script>
 <script>
 'use strict';
 // Játékos app: belépés Google-fiókkal; a saját karakter teljes telefonos lapja (sheets/{id}) és a csapat nyilvános lapjai (characters/{id}).
@@ -173,7 +184,7 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 6, szerzodes: 1};
+const VART_MODULOK = {kozos: 3, sheet: 7, szerzodes: 2};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -300,6 +311,7 @@ function renderSheet(s) {
     <div class="hero">${avatar(s.portrait, s.name)}<div class="main"><div class="name">${esc(s.name)}</div>
       <div class="sub">${esc([s.race, H.classLabel(s) || 'Szint ' + L].filter(Boolean).join(' · '))}</div></div></div>
     <div class="hpline">${hpBar(s.hp, 'slim')}${s.hp.temp ? `<span class="tmp">+${esc(s.hp.temp)} temp</span>` : ''}${s.hp.cur === 0 ? '<span class="tmp" style="color:var(--red)">halálmentők a Harc fül alján</span>' : ''}</div>
+    ${ed ? luBar(s) : ''}
     ${ed && calcOf(s)?.todos.length ? `<button class="todobar" data-act="todoGo">📋 Teendők (${calcOf(s).todos.length})</button>` : ''}
     ${s.concentration ? `<div class="concbar">🌀 Koncentráció: <b>${esc(s.concentration)}</b><span class="grow"></span>${ed ? '<button class="small" data-act="concEnd">Megszakítás</button>' : ''}</div>` : ''}
     ${fxBar(s)}
@@ -400,7 +412,7 @@ function spellRow(sp, i, ed, s) {
   const ch = ed && sp.level && castOpen === i ? castChoices(s, sp, r) : null;
   const pick = ch ? `<div class="row castpick">${ch.map(c => `<button class="small" data-act="cast" data-i="${i}" data-how="${esc(c.how)}">${esc(c.text)}</button>`).join('')
     || '<span class="hint">Nincs szabad slot ehhez a szinthez.</span>'}<button class="small" data-act="castOpen" data-i="${i}">Mégse</button></div>` : '';
-  return det('sp:' + sp.name, sum, `${r ? `<div class="tx">${esc(r.tx)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>'}${ed ? `<div class="row" style="margin-top:8px"><button class="small" data-act="spellRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`) + pick;
+  return det('sp:' + sp.name, sum, `${r ? `<div class="tx">${esc(r.tx)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>'}${ed && !sp.auto ? `<div class="row" style="margin-top:8px"><button class="small" data-act="spellRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`) + pick;
 }
 function tabVar(s, ed) {
   const sc = s.spellcasting, dis = ed ? '' : 'disabled', ab = H.spellAbility(s);
@@ -577,9 +589,29 @@ function calcOf(s) {
 const chId = k => 'ch-' + String(k).replace(/[^A-Za-z0-9_-]/g, '_');
 const optList = (opts, cur) => `<option value="">(válassz)</option>${cur && !opts.some(x => x.v === cur) ? `<option value="${esc(cur)}" selected>${esc(H.refName(cur))} (saját)</option>` : ''}`
   + opts.map(x => `<option value="${esc(x.v)}" ${x.v === cur ? 'selected' : ''} ${x.dis && x.v !== cur ? 'disabled' : ''}>${esc(x.l)}${x.note ? ' – ' + esc(x.note) : ''}</option>`).join('');
-// egy választási hely szerkesztője (a 3. fázis szintlépés-varázslója is ezt használja)
-function choiceBox(c, cr) {
-  const o = H.choiceOptions(c, cr, RB()), K = esc(c.key);
+// varázslat-választó: fölül a választottak, alatta keresés és szintenként összecsukva a többi (egy Wizard-lista több száz sor)
+const chSearch = {};
+const spellHidden = (key, x) => { const q = (chSearch[key] || '').trim().toLowerCase(); return q && !x.l.toLowerCase().includes(q); };
+function spellPicker(c, o, lock) {
+  const K = esc(c.key), sel = new Set(c.ok), full = !o.over && sel.size >= c.n, zar = lockedFn(c, lock);
+  const item = x => `<label ${spellHidden(c.key, x) ? 'hidden' : ''} data-chl="${esc(x.l.toLowerCase())}"><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${zar(x.v) || (!sel.has(x.v) && (full || x.dis)) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`;
+  const rest = o.opts.filter(x => !sel.has(x.v)), szintek = [...new Set(rest.map(x => x.lvl))];
+  const off = c.ctx.off ? `<p class="hint" style="margin:4px 0">Ebből ${esc(c.ctx.off)} lehet a rendes listán kívül („kivétel”).</p>` : '';
+  return `${off}${sel.size ? `<div class="chopts">${o.opts.filter(x => sel.has(x.v)).map(item).join('')}</div>` : ''}
+    <input data-chq="${K}" value="${esc(chSearch[c.key] || '')}" placeholder="Keresés név szerint (angolul)…" autocomplete="off">
+    ${szintek.map(l => det('chl:' + c.key + ':' + l, `<b>${l ? esc(H.ORD[l]) + ' level' : 'Cantrip'}</b> <span class="hint">(${rest.filter(x => x.lvl === l).length})</span>`,
+      `<div class="chopts" style="margin-top:6px">${rest.filter(x => x.lvl === l).map(item).join('')}</div>`)).join('')}
+    ${o.opts.length ? '' : '<p class="hint">Nincs választható varázslat.</p>'}`;
+}
+// szintlépéskor a korábbi választás zárolva van (lock: Sheet.levelUpPlan tétele), kivéve a szintenkénti 1 cserét
+const lockedFn = (c, lock) => {
+  if (!lock) return () => false;
+  const can = lock.csere && lock.locked.every(v => c.ok.includes(v));
+  return v => lock.locked.includes(v) && c.ok.includes(v) && !can;
+};
+// egy választási hely szerkesztője (a szintlépés-varázsló is ezt használja)
+function choiceBox(c, cr, lock = null) {
+  const o = H.choiceOptions(c, cr, RB()), K = esc(c.key), zar = lockedFn(c, lock);
   const head = `<div class="chhead"><b>${esc(c.src)}</b><span class="hint">${esc(H.FX_LABEL[c.kind] || c.kind)}${c.n > 1 ? ` (${c.ok.length} / ${c.n})` : ''}</span><span class="grow"></span>${c.done ? '<span class="okk">✓</span>' : '<span class="warn">⚠</span>'}</div>`;
   let body;
   if (c.kind === 'asi') {
@@ -590,20 +622,21 @@ function choiceBox(c, cr) {
       + (mode === 'feat' ? `<select data-ch="${K}" data-asi="feat">${optList(o.opts, feat)}</select>`
         : [0, 1].map(j => `<select data-ch="${K}" data-asi="a${j}"><option value="">(+1: válassz képességet)</option>${H.ABIL.map(a => `<option value="${a}" ${picks[j] === a ? 'selected' : ''}>+1 ${a.toUpperCase()} (${esc(cr.abilities[a].v)})</option>`).join('')}</select>`).join('')
           + (picks.length === 1 ? '<p class="hint" style="margin:4px 0 0">Még 1 pont kiosztható.</p>' : ''));
-  } else if (o.multi) {
+  } else if (H.SPELL_KINDS.includes(c.kind)) body = spellPicker(c, o, lock);
+  else if (o.multi) {
     const sel = new Set(c.ok.map(String)), full = sel.size >= c.n;
-    body = `<div class="chopts">${o.opts.map(x => `<label><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${!sel.has(x.v) && (full || x.dis) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`).join('')}</div>`
+    body = `<div class="chopts">${o.opts.map(x => `<label><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${zar(x.v) || (!sel.has(x.v) && (full || x.dis)) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`).join('')}</div>`
       + (!o.opts.length ? '<p class="hint">Nincs választható (pl. expertise-hez előbb jártasság kell).</p>' : '');
   } else {
     const vals = Array.isArray(c.value) ? c.value.map(String) : c.value ? [String(c.value)] : [];
     body = Array.from({length: c.n}, (_, j) => o.free ? `<input data-ch="${K}" value="${esc(vals[j] || '')}" placeholder="${esc(H.FX_LABEL[c.kind] || '')}">`
       // ugyanazon választás másik legördülőjében már kiválasztott érték itt nem választható
-      : `<select data-ch="${K}">${optList(o.opts.map(x => vals.includes(x.v) && vals[j] !== x.v ? {...x, dis: true} : x), vals[j] || '')}</select>`).join('');
+      : `<select data-ch="${K}" ${zar(vals[j]) ? 'disabled' : ''}>${optList(o.opts.map(x => vals.includes(x.v) && vals[j] !== x.v ? {...x, dis: true} : x), vals[j] || '')}</select>`).join('');
   }
   return `<div class="chbox ${c.done ? '' : 'need'}" id="${chId(c.key)}">${head}${body}</div>`;
 }
 function choicePicked(t) {
-  const s = cur(), key = t.dataset.ch, c = calcOf(s)?.choices.find(x => x.key === key);
+  const s = cur(), key = t.dataset.ch, c = (lu ? H.levelUpPlan(s, RB(), lu.build).nw : calcOf(s))?.choices.find(x => x.key === key);
   if (!c) return;
   const els = [...document.querySelectorAll('[data-ch]')].filter(e => e.dataset.ch === key);
   let v;
@@ -611,10 +644,220 @@ function choicePicked(t) {
     if (t.dataset.asi === 'mode') { asiMode[key] = t.value; v = {}; }
     else if (t.dataset.asi === 'feat') v = t.value ? {feat: t.value} : {};
     else { v = {}; for (const e of els.filter(e => /^a\d$/.test(e.dataset.asi) && e.value)) v[e.value] = (v[e.value] || 0) + 1; }
+  } else if (H.SPELL_KINDS.includes(c.kind)) {
+    // a pipa levétele a varázslat jegyzetét is viszi: telefonon egy véletlen koppintástól ne vesszen el
+    const noted = !t.checked && s.spells.find(x => x.auto && x.ref === t.value && x.note);
+    if (noted && !confirm(`Leveszed: ${noted.name}? A jegyzete is törlődik.`)) { t.checked = true; return; }
+    v = [...H.spellKept(c, H.choiceOptions(c, null, RB()), RB()), ...els.filter(e => e.checked).map(e => e.value)];
   } else if (H.choiceOptions(c, null, RB()).multi) v = els.filter(e => e.checked).map(e => e.value);
   else if (c.kind === 'subclass' || c.kind === 'subrace') v = els[0].value;
   else v = els.map(e => e.value.trim()).filter(Boolean);
+  if (lu) { lu.build = H.setChoice(lu.build, c, v); luStore(); render(true); return; }
   patch({build: H.setChoice(s.build, c, v)});
+}
+
+// ---------- szintlépés-varázsló: a piszkozat (lu) egy ideiglenes felépítés; a mentésig a lap nem változik, és a telefonon megmarad (újratöltés, elalvó telefon) ----------
+let lu = null;  // {id, from, step, cls, how: 'avg'|'roll'|'manual'|'', die, build, saving}
+const LU_STEPS = [['cls', 'Osztály'], ['hp', 'HP'], ['ch', 'Választások'], ['sp', 'Varázslatok'], ['ft', 'Jellemzők'], ['sum', 'Összegzés']];
+const luFile = id => window.Szerzodes.HELYI.szintlepes(id);
+function luStore() { try { localStorage.setItem(luFile(lu.id), JSON.stringify(lu)); } catch {} }
+function luDrop(id) { try { localStorage.removeItem(luFile(id)); } catch {} }
+// a tárolt piszkozat csak akkor él, ha ugyanarról a szintről indult (másik eszközön már léphetett); a kézzel átírt tárolót sem hisszük el
+function luLoad(id, s) {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(luFile(id))); } catch {}
+  const L = H.level(s);
+  const uj = () => {
+    lu = {id, from: L, step: 'cls', cls: '', how: '', die: null, build: null, base: ''};
+    if (s.classes.length === 1) luSetClass(s, s.classes[0].name);
+    return lu;
+  };
+  if (!isObj(d) || d.from !== L) return uj();
+  const build = H.norm({auto: true, build: d.build}).build, cls = s.classes.some(c => c.name === d.cls) && build.levels.at(-1)?.c === d.cls && build.levels.length === L + 1 ? d.cls : '';
+  if (!cls) return uj();
+  const hd = H.classInfo(cls, RB()).hd, die = Number.isInteger(d.die) && d.die >= 1 && d.die <= hd ? d.die : null, how = die && ['roll', 'manual'].includes(d.how) ? d.how : d.how === 'avg' ? 'avg' : '';
+  build.levels.at(-1).hp = how === 'avg' ? null : how ? die : null;
+  lu = {id, from: L, step: LU_STEPS.some(([k]) => k === d.step) ? d.step : 'cls', cls, how, die: how === 'avg' ? null : die, build, base: String(d.base)};
+  if (lu.base !== H.stableJson(s.build)) luRebase(s);
+  return lu;
+}
+const luEnabled = s => !!s.levelUp && s.levelUp.to > H.level(s) && H.level(s) < 20;
+// a felépítés minden szintet tartalmaz (különben a varázsló a lapot visszaejtené a felépítés szintjére)
+const luReady = s => s.auto && s.build.levels.length === H.level(s);
+function luBar(s) {
+  if (!luEnabled(s)) return '';
+  const to = H.level(s) + 1;
+  if (!s.auto) return `<div class="lubar"><span class="grow">⬆ <b>Szintlépés: ${esc(to)}. szint.</b> Előbb állítsd át a lapot a szabálymotorra (Alapadatok fül).</span><button class="small" data-tab="adat">Alapadatok</button></div>`;
+  if (!RB()?.classes?.length) return `<div class="lubar"><span class="grow">⬆ <b>Szintlépés: ${esc(to)}. szint.</b> Ehhez a szabálykönyv kell: várd meg, amíg betöltődik.</span></div>`;
+  if (!luReady(s)) return `<div class="lubar"><span class="grow">⬆ <b>Szintlépés: ${esc(to)}. szint.</b> A lap szintjei nem egyeznek a felépítéssel (pl. a szabálykönyvben nem szereplő osztály): kérd meg a DM-et, hogy állítsa be.</span></div>`;
+  return `<div class="lubar"><span class="grow">⬆ <b>Szintlépés: ${esc(to)}. szint</b>${s.levelUp.to > to ? ` <span class="hint">(a DM ${esc(s.levelUp.to)}. szintig engedte)</span>` : ''}</span><button class="primary" data-act="luStart">Indítás</button></div>`;
+}
+function luSetClass(s, cls) { lu.cls = cls; lu.how = ''; lu.die = null; lu.build = H.levelUpBuild(s, cls); lu.base = H.stableJson(s.build); }
+// ha a felépítés közben másképp változott (DM, Felépítés fül), a régi piszkozat felülírná: a választások újrakezdődnek, a HP és a dobás marad
+function luRebase(s) {
+  const {how, die} = lu;
+  luSetClass(s, lu.cls);
+  if (how) luSetHp(how, die);
+  lu.step = 'cls'; luStore();
+}
+function luSetHp(how, die = null) {
+  lu.how = how; lu.die = die;
+  lu.build = {...lu.build, levels: lu.build.levels.map((l, i) => i === lu.from ? {...l, hp: how === 'avg' ? null : die} : l)};
+  luStore();
+}
+const luSteps = plan => LU_STEPS.filter(([k]) => k === 'cls' || (plan && (k !== 'ch' || plan.choices.length) && (k !== 'sp' || plan.spells.length || plan.nw.casting.some(x => x.cls === plan.cls))));
+const luMissing = list => list.reduce((t, x) => t + x.missing, 0);
+function luBlocked(plan) {
+  if (lu.step === 'cls') return lu.cls ? '' : 'Válassz osztályt.';
+  if (lu.step === 'hp') return !lu.how ? 'Válaszd ki, hogyan lesz meg a HP.' : lu.how === 'manual' && !lu.die ? 'Írd be a dobott értéket.' : '';
+  const n = lu.step === 'ch' ? luMissing(plan.choices) : lu.step === 'sp' ? luMissing(plan.spells) : 0;
+  return n ? `Még ${n} választás hiányzik.` : '';
+}
+function luStepCls(s) {
+  return `<p class="hint">Melyik osztályban lépsz szintet?</p><div class="list">${s.classes.map(c => `<button class="li ${lu.cls === c.name ? 'on' : ''}" data-act="luCls" data-c="${esc(c.name)}" ${lu.how === 'roll' ? 'disabled' : ''} style="width:100%;text-align:left"><b>${esc(c.name)}</b> ${esc(c.level)} → ${esc(c.level + 1)}${lu.cls === c.name ? ' ✓' : ''}</button>`).join('')}</div>
+    ${lu.how === 'roll' ? '<p class="hint">Már dobtál HP-t, ezért az osztály nem változtatható.</p>' : ''}`;
+}
+const luHpText = plan => {
+  const h = plan.hp;
+  return lu.how && (lu.how !== 'manual' || lu.die) ? `+${esc(h.die)} (${lu.how === 'avg' ? 'átlag' : lu.how === 'roll' ? 'dobás' : 'kézi'}, d${esc(h.hd)})${h.rest ? ` ${esc(sgn(h.rest))} (CON és bónuszok)` : ''} = <b>${esc(sgn(h.gain))}</b> → max HP <b>${esc(h.to)}</b>` : '';
+};
+function luStepHp(plan) {
+  const h = plan.hp, rolled = lu.how === 'roll';
+  return `<p class="hint">Mennyi HP-t kapsz ezen a szinten? (d${esc(h.hd)}, most max HP ${esc(h.from)})</p>
+    <div class="row"><button class="${lu.how === 'avg' ? 'on' : ''}" data-act="luHow" data-how="avg" ${rolled ? 'disabled' : ''}>Átlag (${esc(h.avg)})</button>
+      <button class="${rolled ? 'on' : ''}" data-act="luHow" data-how="roll" ${rolled ? 'disabled' : ''}>🎲 Dobás</button>
+      <button class="${lu.how === 'manual' ? 'on' : ''}" data-act="luHow" data-how="manual" ${rolled ? 'disabled' : ''}>Kézi</button></div>
+    ${rolled ? `<p>A dobás: <b>${esc(lu.die)}</b> – egyszer dobható, ez rögzült.</p>` : ''}
+    ${lu.how === 'manual' ? `<label class="hint">A dobott érték (1–${esc(h.hd)})<input id="luHpIn" type="number" inputmode="numeric" min="1" max="${esc(h.hd)}" value="${esc(lu.die ?? '')}"></label>` : ''}
+    <p id="luHpOut">${luHpText(plan)}</p>`;
+}
+function luBox(x, plan) {
+  const note = !x.uj && !x.csere ? 'Korábbról elmaradt: most pótolhatod, de nem kötelező.' : x.csere ? 'Egyet lecserélhetsz: vedd le a pipát (vagy válts a listán), és válassz másikat.' : '';
+  return `${note ? `<p class="hint" style="margin:8px 0 2px">${esc(note)}</p>` : ''}${choiceBox(x.c, plan.nw, x)}`;
+}
+function luStepSp(plan) {
+  const cast = plan.nw.casting.find(x => x.cls === plan.cls), info = cast ? `<p class="hint">${cast.prepared ? `Mostantól ${esc(cast.prepared)} varázslatot készíthetsz fel. ` : ''}${cast.maxSpell ? `Legfeljebb ${esc(cast.maxSpell)}. szintű varázslatot tanulhatsz. ` : ''}DC ${esc(cast.dc)}, attack ${esc(sgn(cast.atk))}.</p>` : '';
+  return info + plan.spells.map(x => luBox(x, plan)).join('');
+}
+function luStepFt(plan) {
+  const ft = plan.features.map(f => det('luf:' + f.name + f.src, `<span class="nm"><b>${esc(f.name)}</b><small>${esc(f.src)}</small></span>`, f.text ? `<div class="tx">${esc(f.text)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>')).join('');
+  return `${ft ? `<div class="list">${ft}</div>` : '<p class="hint">Ezen a szinten nincs új jellemző.</p>'}
+    ${plan.resources.length ? `<h3>Erőforrások</h3><div class="list">${plan.resources.map(r => `<div class="li"><span class="nm">${esc(r.name)}</span><b>${esc(r.from)} → ${esc(r.to)}</b></div>`).join('')}</div>` : ''}
+    ${plan.manual.length ? `<h3>✋ Kézi teendők</h3><div class="list">${plan.manual.map(t => `<div class="li"><span class="nm">${esc(t.text)}</span></div>`).join('')}</div><p class="hint">Ezeket a program nem tudja helyetted kiválasztani, a Teendők közt megtalálod őket.</p>` : ''}`;
+}
+function luStepSum(s, plan) {
+  const n = H.norm({...s, ...H.levelUpApply(s, RB(), lu.build)}), row = (l, a, b) => a === b ? '' : `<tr><td>${esc(l)}</td><td>${esc(a)} → <b>${esc(b)}</b></td></tr>`;
+  const hd = x => H.hitDice(x).map(h => h.max + 'd' + h.die).join(' + ');
+  const slots = x => [...x.spellcasting.slots.map((v, i) => v ? `${i + 1}.: ${v}` : '').filter(Boolean), x.spellcasting.pact.max ? `Pact: ${x.spellcasting.pact.max} (${x.spellcasting.pact.level}.)` : ''].filter(Boolean).join(', ') || '–';
+  const casting = plan.nw.casting.map(c => { const o = plan.old.casting.find(x => x.cls === c.cls); return row(`${c.cls}: spell DC`, o?.dc ?? '–', c.dc) + (c.prepared ? row(`${c.cls}: felkészíthető`, o?.prepared ?? 0, c.prepared) : ''); }).join('');
+  const ovK = Object.keys(n.ov), nyitott = plan.nw.todos.length;
+  return `<table class="lutab">
+      ${row('Szint', H.level(s), H.level(n))}${row('Osztályok', H.classLabel(s), H.classLabel(n))}${row('Jártassági bónusz', sgn(H.pb(s)), sgn(H.pb(n)))}${row('Max HP', s.hp.max, n.hp.max)}${row('Jelenlegi HP', s.hp.cur, n.hp.cur)}${row('Hit Dice', hd(s), hd(n))}
+      ${H.ABIL.map(a => row(H.ABIL_FULL[a], s.abilities[a], n.abilities[a])).join('')}${row('AC', s.ac, n.ac)}${row('Speed', s.speed, n.speed)}
+      ${H.ABIL.map(a => row(a.toUpperCase() + ' mentő', sgn(H.saveBonus(s, a)), sgn(H.saveBonus(n, a)))).join('')}${row('Spell slotok', slots(s), slots(n))}${casting}
+      ${plan.resources.map(r => row(r.name, r.from, r.to)).join('')}
+    </table>
+    ${plan.features.length ? `<p><b>Új jellemzők:</b> ${esc(plan.features.map(f => f.name).join(', '))}</p>` : ''}
+    ${ovK.length ? `<p class="hint">✎ Kézzel felülírt értékek maradnak: ${esc(ovK.join(', '))}</p>` : ''}
+    ${nyitott ? `<p class="warn">📋 Nyitva marad ${esc(nyitott)} teendő: a Teendők közt később pótolhatod.</p>` : ''}
+    <p class="hint">Mentés előtt a lap az előzményekbe kerül, így a szintlépés visszavonható.</p>`;
+}
+function renderWizard(s) {
+  const plan = lu.cls ? H.levelUpPlan(s, RB(), lu.build) : null, steps = luSteps(plan);
+  if (!steps.some(([k]) => k === lu.step)) lu.step = steps.at(-1)[0];
+  const body = lu.step === 'cls' ? luStepCls(s) : lu.step === 'hp' ? luStepHp(plan) : lu.step === 'ch' ? plan.choices.map(x => luBox(x, plan)).join('') : lu.step === 'sp' ? luStepSp(plan) : lu.step === 'ft' ? luStepFt(plan) : luStepSum(s, plan);
+  const baj = luBlocked(plan), i = steps.findIndex(([k]) => k === lu.step), last = lu.step === 'sum';
+  $('#main').innerHTML = `<div class="top"><button class="small" data-act="luClose">‹ Bezárás</button><span class="hint">A piszkozat megmarad.</span></div>
+    <h2 style="margin:6px 0">⬆ ${esc(s.name)}: ${esc(lu.from + 1)}. szint</h2>
+    <div class="lusteps">${steps.map(([k, l]) => `<span class="${k === lu.step ? 'on' : ''}">${esc(l)}</span>`).join('')}</div>
+    ${body}
+    <div class="row lunav"><button data-act="luBack" ${i ? '' : 'disabled'}>Vissza</button><span class="grow hint">${esc(baj)}</span>
+      ${last ? `<button class="primary" data-act="luSave" ${lu.saving ? 'disabled' : ''}>${lu.saving ? 'Mentés…' : 'Mentés'}</button>` : `<button class="primary" data-act="luNext" ${baj ? 'disabled' : ''}>Tovább</button>`}</div>`;
+}
+const histId = at => at.replace(/[:.]/g, '-');
+let saveTimeout = 20000;
+// a pillanatkép és a lap egy írásban; a sikertelen írás nem hagy nyomot, és nem marad el csendben. Internet nélkül nem indul (a Firestore különben sorba állítaná)
+async function saveWithHist(id, p, h) {
+  if (sheetStale) { alert('Az oldal egy része régi változatból töltődött be, ezért nem mentettem.\nFrissítsd az oldalt (Ctrl + F5).'); return false; }
+  if (navigator.onLine === false) { alert('Nincs internet. A mentéshez kapcsolat kell, a piszkozat megmarad.'); return false; }
+  try {
+    const ir = window.KDB.saveWithHist(id, JSON.parse(JSON.stringify(p)), histId(h.at), JSON.parse(JSON.stringify(h)));
+    await Promise.race([ir, new Promise((_, rej) => setTimeout(() => rej(new Error('időtúllépés')), saveTimeout))]);
+    return true;
+  } catch (e) {
+    // a kapcsolat közben szakadt meg: a Firestore az írást megőrizte, és feltölti, amint van internet (a helyi lap már az új)
+    if (e.message === 'időtúllépés') { alert('Nincs kapcsolat a felhővel. A mentés sorba állt, és magától feltöltődik, amint lesz internet.'); return true; }
+    console.warn('az előzményes mentés nem sikerült:', e.code || e.message);
+    alert(e.code === 'permission-denied' ? 'A mentést a jogosultsági szabályok nem engedték: lehet, hogy a DM közben visszavonta az engedélyt, vagy frissítenie kell a szabályokat a Firebase konzolban.' : 'A mentés nem sikerült (' + (e.code || e.message) + '). A lap nem változott, próbáld újra.');
+    return false;
+  }
+}
+// a mentés után a helyi lap és a csapat felé látszó rész (a felhős figyelő ezt később megerősíti)
+function afterSave(id, s, p, at) {
+  const next = H.norm({...(sheets.get(id) || s), ...p, updatedAt: at, updatedBy: me});
+  sheets.set(id, next); calcSig.set(id, sigOf(next));
+  pubSheet(id, next);
+  return next;
+}
+async function luFinish(s) {
+  const at = new Date().toISOString(), id = lu.id, from = lu.from, how = lu.how;
+  const p = {...H.levelUpApply(s, RB(), lu.build), updatedAt: at, updatedBy: me};
+  lu.saving = true; render(true);
+  const ok = await saveWithHist(id, p, {at, by: me, reason: 'levelup', from, to: from + 1, hp: how, sheet: s});
+  if (lu) lu.saving = false;
+  if (!ok) { render(true); return; }
+  afterSave(id, s, p, at);
+  luDrop(id); lu = null; histCache.delete(id); window.scrollTo(0, 0);
+  render(true);
+  toast(`✓ ${from + 1}. szint elmentve`);
+}
+function luAct(act, el, s) {
+  const plan = lu.cls ? H.levelUpPlan(s, RB(), lu.build) : null, steps = luSteps(plan), i = steps.findIndex(([k]) => k === lu.step);
+  if (act === 'luClose') { luStore(); lu = null; render(true); return; }
+  if (act === 'luCls') { if (lu.how !== 'roll' && lu.cls !== el.dataset.c) luSetClass(s, el.dataset.c); }
+  else if (act === 'luHow') {
+    if (lu.how === 'roll') return;
+    const how = el.dataset.how;
+    // a dobás egyszeri: előbb rögzül a piszkozatban, csak utána látszik
+    if (how === 'roll') luSetHp('roll', rnd(plan.hp.hd));
+    else if (how === 'manual') luSetHp('manual', lu.how === 'manual' ? lu.die : null);
+    else luSetHp('avg');
+  }
+  else if (act === 'luNext') { if (luBlocked(plan)) return; lu.step = steps[i + 1][0]; window.scrollTo(0, 0); }
+  else if (act === 'luBack') { if (i > 0) lu.step = steps[i - 1][0]; window.scrollTo(0, 0); }
+  else if (act === 'luSave') { if (!lu.saving) luFinish(s); return; }
+  luStore(); render(true);
+}
+
+// ---------- előzmények: a játékos az utolsó szintlépését vonhatja vissza, a DM bármelyiket visszaállíthatja ----------
+const histCache = new Map();  // lap-id → lista (legfrissebb elöl) | 'hiba'
+const HOW_HU = {avg: 'átlag', roll: 'dobás', manual: 'kézi'}, HIST_HU = {levelup: 'Szintlépés', restore: 'Visszaállítás', manual: 'Mentés'};
+function histLoad(id) {
+  if (!window.KDB?.histList) return;
+  histCache.set(id, null);
+  window.KDB.histList(id).then(list => { histCache.set(id, list.map(d => ({...H.normHist(d), id: String(d.id)})).sort((a, b) => (a.id < b.id ? 1 : -1))); },
+    e => { console.warn('az előzmények betöltése nem sikerült:', e.code || e.message); histCache.set(id, 'hiba'); }).then(() => { if (view.id === id) render(); });
+}
+function histBox(s) {
+  if (openKeys.has('hist') && !histCache.has(view.id)) histLoad(view.id);
+  const list = histCache.get(view.id), L = H.level(s);
+  const canUndo = h => isDM || (h === list[0] && h.reason === 'levelup' && h.to === L);
+  const row = h => `<div class="li"><span class="nm"><b>${esc(HIST_HU[h.reason])}: ${esc(h.from)} → ${esc(h.to)}</b><small>${esc(h.at ? new Date(h.at).toLocaleString('hu-HU') : '')}${h.hp ? ' · HP: ' + esc(HOW_HU[h.hp]) : ''}${isDM ? ' · ' + esc(h.by) : ''}</small></span>
+    ${canUndo(h) ? `<button class="small" data-act="histRestore" data-h="${esc(h.id)}">${isDM ? 'Visszaállítás' : '↩ Visszavonás'}</button>` : ''}</div>`;
+  const body = list === 'hiba' ? '<p class="hint">Nem sikerült betölteni (lehet, hogy a DM-nek frissítenie kell a szabályokat).</p>'
+    : list ? (list.length ? `<div class="list" style="margin-top:8px">${list.map(row).join('')}</div>` : '<p class="hint">Még nincs előzmény.</p>') : '<p class="hint">Betöltés…</p>';
+  return `<div data-hist="1">${det('hist', '<b>🕘 Előzmények</b>', `${body}<p class="hint" style="margin:6px 0 0">Visszaállításkor a felépítés és a számolt értékek jönnek vissza; a felszerelés, a pénz, a jegyzet és az állapotok maradnak.</p>`)}</div>`;
+}
+async function histRestore(s, h) {
+  if (!RB()?.classes?.length) { alert('A visszaállításhoz a szabálykönyv kell: várd meg, amíg betöltődik.'); return; }
+  const lv = h.sheet.build?.levels?.length || H.level(h.sheet);
+  if (!confirm(`Visszaállítod a lapot a ${lv}. szintre (${h.at ? new Date(h.at).toLocaleString('hu-HU') : ''})?\nA felszerelés, a pénz, a jegyzet és az állapotok maradnak.`)) return;
+  const at = new Date().toISOString();
+  const p = {...H.restorePatch(s, h, RB(), {by: me, at}), updatedAt: at, updatedBy: me};
+  if (!await saveWithHist(view.id, p, {at, by: me, reason: 'restore', from: H.level(s), to: lv, sheet: s})) return;
+  afterSave(view.id, s, p, at);
+  histCache.delete(view.id); luDrop(view.id);
+  render(true); toast('✓ Visszaállítva');
 }
 // számolt érték sora: érték, ℹ bontás, ✎ felülírás (üres = a számolt érték), ↺ visszaállítás
 function ovRow(s, key, label, x, kind = 'num') {
@@ -671,6 +914,7 @@ function tabBuild(s) {
     <h3 class="sub2">Képességértékek</h3><div class="list">${ab}</div>
     <h3 class="sub2">Mentők</h3><div class="list">${sv}</div>
     <h3 class="sub2">Skillek</h3><div class="list">${sk}</div>
+    <h3>Előzmények</h3>${histBox(s)}
     ${autoForm(s)}`;
 }
 // szabálymotoros lapon a kézzel szerkeszthető rész: név, alignment, saját támadások és erőforrások (a számoltak mellé)
@@ -727,7 +971,7 @@ function canCalc(s) {
   if (!s.auto || !rbInfo) return false;
   if (RB()?.classes?.length) return true;
   const b = s.build;
-  return !b.race && !b.subrace && !b.background && !Object.keys(b.sub).length && !JSON.stringify(b.ch).includes('|');
+  return !b.race && !b.subrace && !b.background && !Object.keys(b.sub).length && !JSON.stringify(b.ch).includes('|') && !Object.keys(b.spells || {}).length;
 }
 
 // ---------- írás: helyben azonnal, a felhőbe mezőnként ----------
@@ -745,6 +989,8 @@ function write(id, p) {
   if (next.auto) {
     const ov = H.ovEdits(s, next);
     if (Object.keys(ov).length) { next = H.norm({...next, ov: {...next.ov, ...ov}}); keys.add('ov'); }
+    // a meglévő varázslatok besorolása a választási helyekre: egyszer, az első számolás előtt
+    if (next.build.spells == null && RB()?.classes?.length && RB().spells?.length) { next = H.norm({...next, build: H.adoptSpells(next, RB())}); keys.add('build'); }
     if (canCalc(next) && sigOf(next) !== calcSig.get(id)) {
       const m = H.materialize(next, H.calc(next, RB()));
       next = H.norm({...next, ...m});
@@ -758,14 +1004,16 @@ function write(id, p) {
   next.updatedAt = out.updatedAt = new Date().toISOString(); next.updatedBy = out.updatedBy = me;
   sheets.set(id, next);
   try { window.KDB?.update(id, JSON.parse(JSON.stringify(out))); } catch {}
-  // a csapat felé látszó rész (characters/{id}) is frissül: HP, AC, név, szint
-  // az AC az aktív hatásokkal együtt (pl. Mage Armor, Shield of Faith)
-  if (['hp', 'ac', 'name', 'classes', 'conditions', 'effOff', 'exhaustion', 'inventory', 'abilities'].some(k => keys.has(k)) && chars.some(c => c.id === id)) {
-    const pub = {hp: {cur: next.hp.cur, max: next.hp.max}, ac: H.effects(next, RB()).ac, name: next.name, level: 'Szint ' + H.level(next)};
-    try { window.KDB?.pub(id, pub); } catch {}
-    chars = chars.map(c => c.id === id ? normChar({...c, ...pub}) : c);
-  }
+  if (['hp', 'ac', 'name', 'classes', 'conditions', 'effOff', 'exhaustion', 'inventory', 'abilities'].some(k => keys.has(k))) pubSheet(id, next);
   return true;
+}
+// a csapat felé látszó rész (characters/{id}) is frissül: HP, AC, név, szint
+// az AC az aktív hatásokkal együtt (pl. Mage Armor, Shield of Faith)
+function pubSheet(id, next) {
+  if (!chars.some(c => c.id === id)) return;
+  const pub = {hp: {cur: next.hp.cur, max: next.hp.max}, ac: H.effects(next, RB()).ac, name: next.name, level: 'Szint ' + H.level(next)};
+  try { window.KDB?.pub(id, pub); } catch {}
+  chars = chars.map(c => c.id === id ? normChar({...c, ...pub}) : c);
 }
 // true, ha volt mit írni
 function patch(p) { const ok = write(view.id, p); if (ok) render(true); return ok; }
@@ -823,6 +1071,10 @@ function render(force = false) {
   const s = view.id && sheets.get(view.id);
   $('#rollbar').hidden = !s;
   if (!s) { renderList(); return; }
+  // a varázsló a lap helyén fut; ha közben másik eszközön már szintet lépett, vagy elvették az engedélyt, bezárul
+  if (lu && !lu.saving && (lu.id !== view.id || !luEnabled(s) || H.level(s) !== lu.from || !s.auto || !RB()?.classes?.length)) lu = null;
+  if (lu && !lu.saving && lu.cls && lu.base !== H.stableJson(s.build)) { luRebase(s); toast('A lap közben változott: a választásokat újra kell kitölteni.', true); }
+  if (lu) { $('#rollbar').hidden = true; renderWizard(s); return; }
   // a fülsáv vízszintes görgetése megmarad (különben minden kattintásra az elejére ugrana)
   const tabScroll = $('nav.tabs')?.scrollLeft || 0;
   renderSheet(s);
@@ -836,7 +1088,7 @@ document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender
 function route() {
   const m = location.hash.match(/^#lap\/([A-Za-z0-9_-]{1,64})$/);
   const id = m ? m[1] : null;
-  if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; hdOpen = false; castOpen = null; featPick = null; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
+  if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; lu = null; hdOpen = false; castOpen = null; featPick = null; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
   render(true);
 }
 window.addEventListener('hashchange', route);
@@ -883,6 +1135,9 @@ document.addEventListener('click', e => {
   if (el.tagName === 'A' || el.closest('summary')) e.preventDefault();
   if (!s && !['signIn', 'signOut', 'reload'].includes(act)) return;
   switch (act) {
+    case 'luStart': if (canEdit(s) && luEnabled(s) && luReady(s) && !sheetStale) { luLoad(view.id, s); window.scrollTo(0, 0); render(true); } break;
+    case 'luClose': case 'luCls': case 'luHow': case 'luNext': case 'luBack': case 'luSave': if (lu) luAct(act, el, s); break;
+    case 'histRestore': { const h = histCache.get(view.id)?.find?.(x => x.id === el.dataset.h); if (h) histRestore(s, h); break; }
     case 'signIn': window.KAuth?.signIn(); break;
     case 'signOut': window.KAuth?.signOut(); break;
     case 'reload': location.reload(); break;
@@ -1007,7 +1262,11 @@ document.addEventListener('click', e => {
     case 'edCancel': draft = null; render(true); break;
   }
 });
-document.addEventListener('toggle', e => { const k = e.target.dataset?.key; if (k) e.target.open ? openKeys.add(k) : openKeys.delete(k); }, true);
+document.addEventListener('toggle', e => {
+  const k = e.target.dataset?.key;
+  if (k) e.target.open ? openKeys.add(k) : openKeys.delete(k);
+  if (k === 'hist' && e.target.open && !histCache.has(view.id)) histLoad(view.id);
+}, true);
 document.addEventListener('change', e => {
   const t = e.target, s = cur(); if (!s) return;
   const i = +t.dataset.i, act = t.dataset.act;
@@ -1051,6 +1310,20 @@ document.addEventListener('input', e => {
   if (t.id === 'spellQ') { searchQ.spell = t.value; spellResults(s); }
   if (t.id === 'itemQ') { searchQ.item = t.value; itemResults(s); }
   if (t.id === 'featQ') { searchQ.feat = t.value; featResults(s); }
+  // kézi HP: gépelés közben a szöveg és a Tovább frissül, újrarajzolás nélkül (különben a mező elhagyása elnyelné a Tovább első koppintását)
+  if (t.id === 'luHpIn' && lu) {
+    const hd = H.classInfo(lu.cls, RB()).hd, v = Math.floor(+t.value);
+    luSetHp('manual', v >= 1 && v <= hd ? v : null);
+    const plan = H.levelUpPlan(s, RB(), lu.build);
+    $('#luHpOut').innerHTML = luHpText(plan);
+    $('[data-act="luNext"]').disabled = !!luBlocked(plan);
+  }
+  if (t.dataset.chq != null) {
+    chSearch[t.dataset.chq] = t.value;
+    const box = t.closest('.chbox'), q = t.value.trim().toLowerCase();
+    box.querySelectorAll('label[data-chl]').forEach(l => { l.hidden = !!q && !l.dataset.chl.includes(q); });
+    if (q) box.querySelectorAll('details').forEach(d => { d.open = !!d.querySelector('label[data-chl]:not([hidden])'); });
+  }
   // a jegyzet gépelés közben is mentődik, de a lap nem rajzolódik újra (ne ugorjon a kurzor)
   if (t.id === 'notes' && canEdit(s)) {
     clearTimeout(notesTimer);
@@ -1101,6 +1374,14 @@ if (!cfg || !cfg.apiKey || location.protocol === 'file:' || new URLSearchParams(
     window.KDB = {
       update: (id, p) => F.updateDoc(F.doc(fs, UT.lap(id)), p).catch(e => console.warn('a lap mentése nem sikerült:', e.code)),
       pub: (id, p) => F.updateDoc(F.doc(fs, UT.karakter(id)), p).catch(() => {}),
+      // szintlépés, visszaállítás: a pillanatkép és a lap egy írásban (vagy mindkettő sikerül, vagy egyik sem)
+      saveWithHist: async (id, p, h, doc) => {
+        const b = F.writeBatch(fs);
+        b.set(F.doc(fs, UT.elozmeny(id, h)), doc);
+        b.update(F.doc(fs, UT.lap(id)), p);
+        await b.commit();
+      },
+      histList: async id => (await F.getDocs(F.collection(fs, UT.elozmenyek(id)))).docs.map(d => ({...d.data(), id: d.id})),
     };
     const rulesDb = {get: async p => { const s = await F.getDoc(F.doc(fs, p)); return s.exists() ? s.data() : null; }};
     let unsub = [];

@@ -1200,10 +1200,10 @@ describe('Online (csak  .\\teszt.ps1 -Online  esetén)', () => {
 // ál-adatbázis a felhős funkciókhoz (a Firestore-adapter felületét utánozza)
 function makeFakeDb(initial = {}) {
   const store = structuredClone(initial), log = [], watchers = [];
-  const list = col => Object.entries(store).filter(([k]) => k.startsWith(col + '/')).map(([k, v]) => ({...structuredClone(v), id: k.split('/')[1]}));
+  const list = col => Object.entries(store).filter(([k]) => k.startsWith(col + '/')).map(([k, v]) => ({...structuredClone(v), id: k.slice(col.length + 1)}));
   return {store, log, emit: col => watchers.filter(w => w.col === col).forEach(w => w.cb(list(col))), db: {
     get: async p => store[p] ? structuredClone(store[p]) : null,
-    list: async col => list(col),
+    list: async col => list(col).filter(x => !x.id.includes('/')),
     set: async (p, d) => { JSON.stringify(d); store[p] = structuredClone(d); log.push('set ' + p); },
     // mezőnkénti írás, mint a Firestore updateDoc: 'hp.cur' = beágyazott mező; a naplóba a mezőnevek kerülnek (updatedAt/By nélkül)
     update: async (p, d) => {
@@ -1880,7 +1880,7 @@ Object.assign(FAKE5E, {
         {title: 'Spell Slots', colLabels: ['1st'], rowsSpellProgression: [[0], [2]]}],
       classFeatures: ['Fighting Style|Fighter||1', {classFeature: 'Martial Archetype|Fighter||3', gainSubclassFeature: true}, 'Ability Score Improvement|Fighter||4',
         'Martial Versatility|Fighter||4|TCE', 'Ability Score Improvement|Fighter||6', 'Új dolog|Fighter||5|XPHB'],
-      optionalfeatureProgression: [{name: 'Fighting Style', featureType: ['FS:F'], progression: {1: 1, 10: 1}}]},
+      optionalfeatureProgression: [{name: 'Fighting Style', featureType: ['FS:F'], progression: {1: 1, 10: 2}}]},
       {name: 'Fighter', source: 'XPHB', edition: 'one', hd: {faces: 10}, classFeatures: []}],
     classFeature: [
       {name: 'Fighting Style', source: 'PHB', className: 'Fighter', classSource: 'PHB', level: 1, entries: ['Válassz stílust.', {type: 'options', entries: [{type: 'refOptionalfeature', optionalfeature: 'Archery'}]}]},
@@ -2187,7 +2187,7 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     eq([c.saves.wis.v, c.saves.str.v, c.saves.dex.v], [9, 9, 5], 'aura +CHA 4, köpeny +1');
     eq(c.saves.dex.parts.map(p => p.src), ['DEX-módosító', 'Aura of Protection (Paladin 6)', 'Cloak of Protection']);
     eq(c.resources, [{name: 'Divine Sense', max: 5, reset: 'long'}, {name: 'Lay on Hands', max: 30, reset: 'long'}]);
-    eq(c.casting, [{cls: 'Paladin', type: 'half', ab: 'cha', dc: 15, atk: 7, cantrips: 0, known: 0, prepared: 7}]);
+    eq(c.casting, [{cls: 'Paladin', type: 'half', ab: 'cha', dc: 15, atk: 7, cantrips: 0, known: 0, prepared: 7, maxSpell: 2}]);
     eq(c.slots.filter(Boolean), [4, 2]);
     eq(c.attacks[0], {name: '+1 Longsword', hit: '+8', dmg: '1d8+5 slashing', note: 'versatile · versatile 1d10'});
     ok(c.features.some(f => f.name === 'Defense' && f.src === 'Fighting Style (Paladin)'), 'a választott stílus a jellemzők között');
@@ -2203,9 +2203,9 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
       ch: {'subrace:ability': ['dex', 'cha'], 'subrace:feat': ['Alert|PHB'], 'Bard:1:skills': ['persuasion', 'performance', 'deception'], 'Bard:3:expertise': exp}});
     let c = H.calc(mk(['persuasion', 'arcana']), rb);
     eq([c.abilities.dex.v, c.abilities.cha.v, c.skills.persuasion.v, c.skills.athletics.v, c.init.v], [15, 17, 9, 1, 8], 'PB 3: persuasion 3 + 6 (az egy érvényes expertise); athletics 0 + 1 (Jack); init 2 + 1 + 5');
-    eq(c.todos.map(t => t.key), ['Bard:sub', 'Bard:4:asi', 'Bard:3:expertise'], 'az arcana nem jártas, így az expertise hiányos');
+    eq(c.todos.map(t => t.key), ['Bard:sub', 'Bard:4:asi', 'Bard:3:expertise', 'Bard:cantrips', 'Bard:known'], 'az arcana nem jártas, így az expertise hiányos');
     c = H.calc(mk(['persuasion', 'performance']), rb);
-    eq([c.skills.persuasion.v, c.skills.persuasion.prof, c.todos.map(t => t.key)], [9, 2, ['Bard:sub', 'Bard:4:asi']]);
+    eq([c.skills.persuasion.v, c.skills.persuasion.prof, c.todos.map(t => t.key)], [9, 2, ['Bard:sub', 'Bard:4:asi', 'Bard:cantrips', 'Bard:known']]);
     eq(c.resources, [{name: 'Bardic Inspiration', max: 3, reset: 'short'}]);
     eq([c.casting[0].dc, c.casting[0].cantrips, c.casting[0].known], [14, 2, 8]);
     ok(c.features.some(f => f.name === 'Alert' && f.src === 'Feat'), 'a feat a jellemzők között');
@@ -2385,6 +2385,22 @@ const rbArany = () => ({
   variants: [{n: '+1 Weapon', s: 'DMG', pre: '+1 ', bW: 1, req: [{weapon: true}]}],
   spells: [{n: 'Bless', s: 'PHB', l: 1}, {n: 'Cure Wounds', s: 'PHB', l: 1}, {n: 'Detect Magic', s: 'PHB', l: 1}, {n: 'Spiritual Weapon', s: 'PHB', l: 2}, {n: 'Revivify', s: 'PHB', l: 3}], conditions: []
 });
+// a varázslat-választásokhoz: kitalált listákkal és iskolákkal, EK / AT / Lore alosztállyal
+const rbVarazs = () => {
+  const rb = rbArany(), sp = (n, l, sc, ...cl) => ({n, s: 'PHB', l, sc, cl});
+  rb.spells = [sp('Light', 0, 'evocation', 'Wizard', 'Sorcerer', 'Bard', 'Cleric'), sp('Fire Bolt', 0, 'evocation', 'Wizard', 'Sorcerer', 'Artificer'), sp('Mage Hand', 0, 'conjuration', 'Wizard', 'Sorcerer', 'Bard', 'Warlock'),
+    sp('Vicious Mockery', 0, 'enchantment', 'Bard'), sp('Prestidigitation', 0, 'transmutation', 'Wizard'), sp('Guidance', 0, 'divination', 'Cleric', 'Druid'), sp('Shield', 1, 'abjuration', 'Wizard', 'Sorcerer'), sp('Magic Missile', 1, 'evocation', 'Wizard', 'Sorcerer'),
+    sp('Sleep', 1, 'enchantment', 'Wizard', 'Sorcerer', 'Bard'), sp('Thunderwave', 1, 'evocation', 'Wizard', 'Sorcerer', 'Bard', 'Druid'), sp('Grease', 1, 'conjuration', 'Wizard', 'Sorcerer'), sp('Find Familiar', 1, 'conjuration', 'Wizard'),
+    sp('Cure Wounds', 1, 'evocation', 'Bard', 'Cleric', 'Druid', 'Paladin', 'Ranger'), sp('Bless', 1, 'enchantment', 'Cleric', 'Paladin'), sp('Hex', 1, 'enchantment', 'Warlock'), sp('Burning Hands', 1, 'evocation', 'Wizard', 'Sorcerer'),
+    sp('Web', 2, 'conjuration', 'Wizard', 'Sorcerer'), sp('Spiritual Weapon', 2, 'evocation', 'Cleric'), sp('Fireball', 3, 'evocation', 'Wizard', 'Sorcerer'), sp('Revivify', 3, 'necromancy', 'Cleric', 'Paladin')];
+  rb.subclasses.push({n: 'Eldritch Knight', short: 'Eldritch Knight', cls: 'Fighter', s: 'PHB', caster: 'third', ab: 'int', cantrips: R20(l => l < 3 ? 0 : 2), known: R20(l => l < 3 ? 0 : l + 1)},
+    {n: 'Arcane Trickster', short: 'Arcane Trickster', cls: 'Rogue', s: 'PHB', caster: 'third', ab: 'int', cantrips: R20(l => l < 3 ? 0 : 3), known: R20(l => l < 3 ? 0 : l)},
+    {n: 'College of Lore', short: 'Lore', cls: 'Bard', s: 'PHB'});
+  rb.classes.find(c => c.n === 'Warlock').opt.push({n: 'Pact Boon', t: ['PB'], p: R20(l => l >= 3 ? 1 : 0)});
+  rb.classes.find(c => c.n === 'Sorcerer').opt = [{n: 'Metamagic', t: ['MM'], p: R20(l => l < 3 ? 0 : l < 10 ? 2 : 3)}];
+  rb.optfeatures.push({n: 'Pact of the Blade', s: 'PHB', t: ['PB']}, {n: 'Pact of the Chain', s: 'PHB', t: ['PB']}, {n: 'Quickened Spell', s: 'PHB', t: ['MM']}, {n: 'Twinned Spell', s: 'PHB', t: ['MM']}, {n: 'Subtle Spell', s: 'PHB', t: ['MM']});
+  return rb;
+};
 const rolled = (c, ...hp) => hp.map(h => ({c, hp: h}));
 const BASE_A = {str: 10, dex: 16, con: 14, int: 14, wis: 12, cha: 8};
 // név → [lap, szabálykönyv]; minden új lapnál az aranymintát is rögzíteni kell (a módszer a tests/arany-calc.js elején)
@@ -2426,7 +2442,11 @@ const aranyLapok = () => {
     pontosEro: [mkS({base: {str: 15}, levels: lv('Fighter', 1)}, {inventory: inv('Plate')}), rbArany()],
     alfajFelulirja: [mkS({race: 'Elf|PHB', subrace: 'Felülíró|HB', levels: lv('Fighter', 1), ch: {'Fighter:opt:Fighting Style': ['Defense|PHB']}}), rbArany()],
     varazslok: [mkS({race: 'Próbafaj|HB', base: {str: 8, dex: 14, con: 14, int: 13, wis: 14, cha: 16}, levels: [...lv('Cleric', 7), ...lv('Paladin', 3), ...lv('Warlock', 2), ...lv('Próbaosztály', 3), {c: 'Ranger'}], sub: {Cleric: 'Life|PHB', Paladin: 'Devotion|PHB', Warlock: 'Fiend|PHB', 'Próbaosztály': 'Próbamágus|HB', Ranger: 'Hibás|HB'},
-      ch: {'Warlock:opt:Eldritch Invocations': ['Későbbi|PHB', 'Pontos szint|PHB', 'Beguiling Influence|PHB', 'Agonizing Blast|PHB'], 'opt:Beguiling Influence:skills': ['deception', 'nature'], 'Cleric:4:asi': {feat: 7}, 'Paladin:opt:Fighting Style': []}}, {inventory: inv('Dagger'), todoDone: ['✋ Favored Enemy (Ranger 1)']}), rbArany()]
+      ch: {'Warlock:opt:Eldritch Invocations': ['Későbbi|PHB', 'Pontos szint|PHB', 'Beguiling Influence|PHB', 'Agonizing Blast|PHB'], 'opt:Beguiling Influence:skills': ['deception', 'nature'], 'Cleric:4:asi': {feat: 7}, 'Paladin:opt:Fighting Style': []}}, {inventory: inv('Dagger'), todoDone: ['✋ Favored Enemy (Ranger 1)']}), rbArany()],
+    tanultVarazslatok: [mkS({base: {int: 16, cha: 14}, levels: [...lv('Wizard', 3), ...lv('Sorcerer', 2), ...lv('Bard', 10)], spells: {
+      Wizard: {cantrips: ['Light|PHB', 'Fire Bolt|PHB', 'Kitalált|PHB'], book: ['Shield|PHB', 'Magic Missile|PHB', 'Sleep|PHB', 'Web|PHB', 'Fireball|PHB', 'Cure Wounds|PHB', 'Thunderwave|PHB', 'Grease|PHB', 'Find Familiar|PHB']},
+      Sorcerer: {cantrips: ['Light|PHB'], known: ['Shield|PHB', 'Fireball|PHB', 'Web|PHB', 'Sleep|PHB']},
+      Bard: {cantrips: ['Vicious Mockery|PHB', 'Mage Hand|PHB'], known: ['Sleep|PHB', 'Fireball|PHB', 'Shield|PHB', 'Fire Bolt|PHB']}}}), rbVarazs()]
   };
 };
 describe('Szabálymotor: aranyminta (a Sheet.calc teljes kimenete)', () => {
@@ -2450,10 +2470,311 @@ describe('Szabálymotor: aranyminta (a Sheet.calc teljes kimenete)', () => {
   test('a calc csak végigmegy a lépéseken; a lépések sorrendje rögzített (egy rossz sorrend csendben undefined-ot is olvashat), és egyik sem hosszú', () => {
     const H = W.Sheet;
     eq(H.CALC_LEPESEK.map(f => f.name), ['calcFaj', 'calcOsztalyok', 'calcValasztasok', 'calcHatasok', 'calcExpertise', 'calcFelszereles', 'calcKepessegek', 'calcMentokSkillek',
-      'calcHp', 'calcAc', 'calcSpeed', 'calcTamadasok', 'calcEroforrasok', 'calcVarazslas', 'calcTeendok']);
+      'calcHp', 'calcAc', 'calcSpeed', 'calcTamadasok', 'calcEroforrasok', 'calcVarazslas', 'calcVarazslatHelyek', 'calcTeendok']);
     ok(H.calc.toString().split('\n').length <= 5, 'a calc rövid');
     for (const f of H.CALC_LEPESEK) ok(f.toString().split('\n').length <= 60, f.name + ' legfeljebb 60 sor');
   });
+});
+
+describe('Szintlépés: varázslat-választások (sheet.js)', () => {
+  const hely = (c, k) => c.choices.find(x => x.key === k);
+  test('legmagasabb spellszint az osztály saját táblája szerint (full, half, third, Artificer, Pact)', () => {
+    const m = W.Sheet.maxSpellLevel;
+    eq([1, 3, 5, 17, 20].map(l => m('full', l)), [1, 2, 3, 9, 9]);
+    eq([1, 2, 5, 9, 17].map(l => m('half', l)), [0, 1, 2, 3, 5]);
+    eq([2, 3, 7, 13, 19].map(l => m('third', l)), [0, 1, 2, 3, 4]);
+    eq([1, 5, 9, 17].map(l => m('artificer', l)), [1, 2, 3, 5]);
+    eq([1, 3, 9, 11, 20].map(l => m('pact', l)), [1, 2, 5, 5, 5]);
+    eq(m('', 5), 0);
+  });
+  test('Wizard: spellbook 6 + 2 szintenként, csak wizard listáról és csak elérhető szintű; a hely több is lehet (talált varázslat); a Bard / Sorcerer is külön számol', () => {
+    const H = W.Sheet, [s, rb] = aranyLapok().tanultVarazslatok, c = H.calc(s, rb), book = hely(c, 'Wizard:book');
+    eq(book.n, 10, 'Wizard 3: 6 + 2 × 2');
+    eq(book.ok, ['Shield|PHB', 'Magic Missile|PHB', 'Sleep|PHB', 'Web|PHB', 'Thunderwave|PHB', 'Grease|PHB', 'Find Familiar|PHB'], 'a Fireball túl magas (Wizard 3), a Cure Wounds nincs a listáján');
+    eq(book.done, false);
+    const sok = mkS({base: {int: 16}, levels: lv('Wizard', 1), spells: {Wizard: {book: ['Shield', 'Magic Missile', 'Sleep', 'Thunderwave', 'Grease', 'Find Familiar', 'Burning Hands'].map(n => n + '|PHB')}}});
+    eq(H.calc(sok, rb).choices.find(x => x.key === 'Wizard:book').ok.length, 7, 'Wizard 1: 6 hely, de a spellbookban lehet több');
+    eq(hely(H.calc(mkS({levels: lv('Sorcerer', 1), spells: {Sorcerer: {known: ['Shield|XGE', 'Shield|PHB', 'Shield']}}}), rb), 'Sorcerer:known').ok, ['Shield|PHB'], 'a más forrású ref a szabálykönyv szerintire fordul, egyszer számít');
+    eq(hely(c, 'Wizard:cantrips').ok, ['Light|PHB', 'Fire Bolt|PHB'], 'a kitalált kiesik');
+    eq(hely(c, 'Sorcerer:known').ok, ['Shield|PHB', 'Sleep|PHB'], 'Sorcerer 2: csak 1. szintű, a közös slot tábla nem számít');
+    eq(H.calc(s, rb).casting.map(x => [x.cls, x.maxSpell]), [['Wizard', 2], ['Sorcerer', 1], ['Bard', 5]]);
+    ok(c.todos.some(t => t.key === 'Wizard:book' && t.text.includes('7 / 10')), 'teendő');
+    eq(c.learned.find(x => x.name === 'Shield' && x.cls === 'Wizard'), {name: 'Shield', level: 1, ref: 'Shield|PHB', cls: 'Wizard', book: true});
+  });
+  test('Bard: Magical Secrets (10.: 2 bármely listáról, cantrip is, a known számán belül); Lore 6.: +2 hely és 2 kivétel; 2 fölött nem választható', () => {
+    const H = W.Sheet, rb = rbVarazs(), S = (n, known, sub) => mkS({base: {cha: 16}, levels: lv('Bard', n), sub: sub ? {Bard: sub} : {}, spells: {Bard: {known}}});
+    let c = H.calc(S(10, ['Shield|PHB', 'Fire Bolt|PHB', 'Fireball|PHB', 'Sleep|PHB']), rb);
+    eq(hely(c, 'Bard:known').n, 13, 'a táblázat száma, Magical Secrets nem ad pluszt');
+    eq(hely(c, 'Bard:known').ok, ['Shield|PHB', 'Fire Bolt|PHB', 'Sleep|PHB'], 'a harmadik kivétel kiesik');
+    const o = H.choiceOptions(hely(c, 'Bard:known'), c, rb);
+    eq([o.opts.find(x => x.v === 'Fireball|PHB').dis, o.opts.find(x => x.v === 'Shield|PHB').dis, o.opts.find(x => x.v === 'Sleep|PHB').off], [true, false, false], 'a kivételek elfogytak; a sajátot le lehet venni');
+    c = H.calc(S(9, ['Shield|PHB']), rb);
+    eq(hely(c, 'Bard:known').ok, [], 'a 10. szint előtt nincs kivétel');
+    c = H.calc(S(6, ['Shield|PHB', 'Web|PHB', 'Fireball|PHB'], 'College of Lore|PHB'), rb);
+    eq([hely(c, 'Bard:known').n, hely(c, 'Bard:known').ok], [11, ['Shield|PHB', 'Web|PHB']], 'Lore 6.: 9 + 2');
+    ok(!c.todos.some(t => /Magical Secrets/.test(t.text)), 'nem ✋ teendő');
+  });
+  test('EK / AT: a wizard listájáról, iskolához kötve, a szabad helyekkel; a cantrip nincs iskolához kötve', () => {
+    const H = W.Sheet, rb = rbVarazs();
+    const ek = (n, known, cantrips = []) => H.calc(mkS({base: {int: 14}, levels: lv('Fighter', n), sub: {Fighter: 'Eldritch Knight|PHB'}, spells: {Fighter: {known, cantrips}}}), rb);
+    let c = ek(3, ['Shield|PHB', 'Magic Missile|PHB', 'Sleep|PHB'], ['Mage Hand|PHB']);
+    eq([hely(c, 'Fighter:known').n, hely(c, 'Fighter:known').ok], [4, ['Shield|PHB', 'Magic Missile|PHB', 'Sleep|PHB']], 'Sleep az 1 szabad hely');
+    eq(hely(c, 'Fighter:cantrips').ok, ['Mage Hand|PHB']);
+    c = ek(3, ['Sleep|PHB', 'Grease|PHB']);
+    eq(hely(c, 'Fighter:known').ok, ['Sleep|PHB'], 'a szabad hely elfogyott');
+    c = ek(8, ['Sleep|PHB', 'Grease|PHB', 'Web|PHB']);
+    eq(hely(c, 'Fighter:known').ok, ['Sleep|PHB', 'Grease|PHB'], 'a 8. szinten 2 szabad hely van');
+    c = ek(3, ['Cure Wounds|PHB', 'Fireball|PHB']);
+    eq(hely(c, 'Fighter:known').ok, [], 'nincs a wizard listáján; túl magas');
+    ok(c.casting[0].maxSpell === 1);
+    const at = H.calc(mkS({base: {int: 14}, levels: lv('Rogue', 3), sub: {Rogue: 'Arcane Trickster|PHB'}, spells: {Rogue: {known: ['Sleep|PHB', 'Shield|PHB', 'Grease|PHB']}}}), rb);
+    eq(hely(at, 'Rogue:known').ok, ['Sleep|PHB', 'Shield|PHB'], 'Rogue 3: enchantment / illusion + 1 szabad');
+  });
+  test('Warlock: a pact táblája szerinti szint, az expanded lista is választható; prepared castereknél csak cantrip a hely', () => {
+    const H = W.Sheet, rb = rbVarazs();
+    let c = H.calc(mkS({base: {cha: 16}, levels: lv('Warlock', 3), sub: {Warlock: 'Fiend|PHB'}, spells: {Warlock: {known: ['Hex|PHB', 'Burning Hands|PHB', 'Shield|PHB'], cantrips: ['Mage Hand|PHB']}}}), rb);
+    eq(hely(c, 'Warlock:known').ok, ['Hex|PHB', 'Burning Hands|PHB'], 'a Fiend listája bővít, a Shield nincs rajta');
+    eq(H.choiceOptions(hely(c, 'Warlock:known'), c, rb).opts.map(x => x.l), ['Burning Hands', 'Hex']);
+    c = H.calc(mkS({base: {wis: 16}, levels: lv('Cleric', 3), sub: {Cleric: 'Life|PHB'}}), rb);
+    eq(c.choices.filter(x => ['cantrips', 'known', 'book'].includes(x.kind)).map(x => x.key), ['Cleric:cantrips']);
+    const o = H.choiceOptions(hely(c, 'Cleric:cantrips'), c, rb);
+    eq(o.opts.map(x => x.l), ['Guidance', 'Light']);
+    eq(H.choiceOptions({kind: 'known', key: 'Bard:known', n: 1, ok: [], ctx: {list: 'Bard', max: 1, off: 0}}, null, rb).opts.map(x => [x.l, x.lvl]), [['Cure Wounds', 1], ['Sleep', 1], ['Thunderwave', 1]], 'számolás nélkül is');
+  });
+  test('a lapra kiírva: cls, book, a felkészítés és a jegyzet megmarad, az új spellbook-varázslat nem felkészített; a saját varázslat marad; a levett lekerül', () => {
+    const H = W.Sheet, rb = rbVarazs();
+    const s = mkS({base: {int: 16}, levels: lv('Wizard', 3), spells: {Wizard: {cantrips: ['Light|PHB'], book: ['Shield|PHB', 'Sleep|PHB']}}}, {spells: [{name: 'Shield', level: 1, prepared: true, note: 'jegyzet', auto: true, cls: 'Wizard', book: true}, {name: 'Saját bűbáj', level: 1, prepared: true}, {name: 'Web', level: 2, auto: true, cls: 'Wizard'}]});
+    const p = H.materialize(s, H.calc(s, rb)), by = Object.fromEntries(p.spells.map(x => [x.name, x]));
+    eq(p.spells.map(x => x.name), ['Light', 'Shield', 'Sleep', 'Saját bűbáj'], 'a Web lekerült');
+    eq([by.Light.prepared, by.Light.cls, 'book' in by.Light], [true, 'Wizard', false]);
+    eq([by.Shield.prepared, by.Shield.note, by.Shield.book, by.Shield.auto], [true, 'jegyzet', true, true]);
+    eq([by.Sleep.prepared, by.Sleep.book], [false, true]);
+    ok(!by['Saját bűbáj'].auto);
+    const k = H.setChoice(s.build, {kind: 'book', key: 'Wizard:book'}, ['Sleep|PHB']);
+    eq(k.spells.Wizard, {cantrips: ['Light|PHB'], book: ['Sleep|PHB']});
+    eq(H.setChoice(k, {kind: 'book', key: 'Wizard:book'}, []).spells.Wizard, {cantrips: ['Light|PHB']});
+    eq(H.choiceOptions({kind: 'book', key: 'Wizard:book', n: 1, ok: [], ctx: {list: 'Wizard', max: 1, off: 0}}, null, rb).over, true, 'a spellbook lehet a helyeknél több');
+    eq(H.calc(mkS({levels: lv('Wizard', 3)})).choices.filter(x => x.kind === 'book'), [], 'szabálykönyv nélkül nincs hely');
+  });
+  test('régi lap besorolása: az egyértelmű a helyére, a kétértelmű és a listán kívüli saját marad; a hely fölötti nem vész el; a kivételek a Bardnál; egyszer fut', () => {
+    const H = W.Sheet, rb = rbVarazs(), sp = (...n) => n.map(x => ({name: x, level: 1, prepared: true}));
+    let s = mkS({base: {int: 16, cha: 16}, levels: [...lv('Wizard', 1), ...lv('Sorcerer', 1)]}, {spells: [...sp('Find Familiar', 'Shield', 'Hex', 'Nincs ilyen'), {name: 'Fire Bolt', level: 0}, {name: 'Vicious Mockery', level: 0}, {name: 'Bless', level: 1, always: true}]});
+    eq(H.adoptSpells(s, rb).spells, {Wizard: {book: ['Find Familiar|PHB']}}, 'a Shield és a Fire Bolt mindkét listán van; a Hex egyiken sem');
+    s = mkS({base: {cha: 16}, levels: lv('Sorcerer', 1)}, {spells: [...sp('Shield', 'Sleep', 'Grease', 'Magic Missile'), {name: 'Light', level: 0}]});
+    const b = H.adoptSpells(s, rb);
+    eq(b.spells, {Sorcerer: {cantrips: ['Light|PHB'], known: ['Shield|PHB', 'Sleep|PHB']}}, 'Sorcerer 1: 2 ismert, a többi saját marad');
+    const p = H.materialize({...s, build: b}, H.calc({...s, build: b}, rb));
+    eq(p.spells.map(x => [x.name, !!x.auto]), [['Light', true], ['Shield', true], ['Sleep', true], ['Grease', false], ['Magic Missile', false]], 'egy sem veszik el');
+    s = mkS({base: {cha: 16}, levels: lv('Bard', 10)}, {spells: sp('Sleep', 'Shield', 'Grease', 'Hex')});
+    eq(H.adoptSpells(s, rb).spells.Bard.known, ['Sleep|PHB', 'Shield|PHB', 'Grease|PHB'], 'a kivételek csak a második körben, kettő');
+    eq(H.adoptSpells(s, null), s.build, 'szabálykönyv nélkül nem nyúl hozzá');
+    eq(H.adoptSpells(mkS({levels: lv('Fighter', 1)}), rb).spells, {}, 'nem varázslónál üres, így többször nem fut le');
+    s = mkS({base: {cha: 16, wis: 16}, levels: [...lv('Cleric', 1), ...lv('Bard', 10)]}, {spells: sp('Cure Wounds', 'Bless', 'Sleep')});
+    eq(H.adoptSpells(s, rb).spells, {Bard: {known: ['Sleep|PHB']}}, 'ami a felkészítős osztály listáján is rajta van, az saját marad (kivételt sem fogyaszt)');
+  });
+  test('adatvédelem: szabálykönyvbeli varázslatok nélkül a tanult varázslatok a lapon maradnak; az érvénytelenné vált ref nem vész el a felépítésből', () => {
+    const H = W.Sheet, rb = rbVarazs();
+    const s = mkS({base: {int: 16}, levels: lv('Wizard', 1), spells: {Wizard: {book: ['Shield|PHB', 'Fireball|PHB', 'Törölt|X']}}}, {spells: [{name: 'Shield', level: 1, prepared: true, note: 'jegyzet', auto: true, cls: 'Wizard', book: true, ref: 'Shield|PHB'}]});
+    const p = H.materialize(s, H.calc(s, {...rb, spells: []}));
+    ok(!p.spells || p.spells.some(x => x.name === 'Shield' && x.note === 'jegyzet'), 'nem került le');
+    const c = H.calc(s, rb), ch = c.choices.find(x => x.key === 'Wizard:book');
+    eq(ch.ok, ['Shield|PHB']);
+    eq(H.spellKept(ch, H.choiceOptions(ch, c, rb), rb), ['Fireball|PHB', 'Törölt|X'], 'a Fireball most túl magas, a Törölt nincs a könyvben');
+  });
+});
+
+describe('Szintlépés: terv és mentés (sheet.js)', () => {
+  const H = () => W.Sheet;
+  const terv = (s, rb, cls) => H().levelUpPlan(s, rb, H().levelUpBuild(s, cls));
+  const kulcs = l => l.map(x => x.c.key);
+  test('Rogue 3 → 4: ASI, új jellemző nélkül, HP-bontás; a meglévő választások nem jönnek elő', () => {
+    const rb = rbVarazs(), s = mkS({base: {dex: 16, con: 14}, levels: lv('Rogue', 3), ch: {'Rogue:1:skills': ['stealth', 'perception', 'arcana', 'acrobatics'], 'Rogue:1:expertise': ['stealth', 'arcana']}, sub: {Rogue: 'Thief|PHB'}});
+    const p = terv(s, rb, 'Rogue');
+    eq(kulcs(p.choices), ['Rogue:4:asi']);
+    eq([p.choices[0].uj, p.choices[0].missing], [true, 1]);
+    eq([p.cls, p.classLevel, p.spells], ['Rogue', 4, []]);
+    eq(p.hp, {hd: 8, avg: 5, die: 5, rest: 2, gain: 7, from: 24, to: 31}, 'átlag 5 + CON 2');
+  });
+  test('Fighter 2 → 3: alosztály elöl; Cleric 1 → 2: nincs választás, Channel Divinity új erőforrás és jellemző', () => {
+    const rb = rbVarazs();
+    let p = terv(mkS({levels: lv('Fighter', 2), ch: {'Fighter:opt:Fighting Style': ['Defense|PHB']}}), rb, 'Fighter');
+    eq(kulcs(p.choices), ['Fighter:sub']);
+    p = terv(mkS({base: {wis: 16}, levels: lv('Cleric', 1), sub: {Cleric: 'Life|PHB'}, spells: {Cleric: {cantrips: ['Light|PHB']}}, ch: {'Cleric:1:skills': ['history', 'insight']}}), rb, 'Cleric');
+    eq(p.choices.map(x => x.c.key), []);
+    eq(p.spells.map(x => [x.c.key, x.uj, x.missing]), [['Cleric:cantrips', true, 1]]);
+    eq(p.resources, [{name: 'Channel Divinity', from: 0, to: 1}]);
+    eq(p.features.map(f => f.name), ['Channel Divinity']);
+    eq([p.nw.casting[0].prepared, p.nw.casting[0].maxSpell], [5, 1]);
+  });
+  test('Wizard 4 → 5: spellbook +2, 3. szintű is; a meglévők zárolva, nincs csere', () => {
+    const rb = rbVarazs(), book = ['Shield', 'Magic Missile', 'Sleep', 'Thunderwave', 'Grease', 'Find Familiar', 'Burning Hands', 'Web'].map(n => n + '|PHB');
+    const s = mkS({base: {int: 16}, levels: lv('Wizard', 4), ch: {'Wizard:4:asi': {int: 2}}, spells: {Wizard: {cantrips: ['Light|PHB', 'Fire Bolt|PHB', 'Mage Hand|PHB'], book}}});
+    const p = terv(s, rb, 'Wizard'), b = p.spells.find(x => x.c.key === 'Wizard:book');
+    eq([b.c.n, b.c.ok.length, b.uj, b.csere, b.locked.length, b.missing], [14, 8, true, false, 8, 1], 'a helyek 6 + 2 × 4; a teszt-könyvben csak 1 maradt');
+    ok(H().choiceOptions(b.c, p.nw, rb).opts.some(x => x.l === 'Fireball'), 'már 3. szintű is');
+    eq(p.old.casting[0].maxSpell + 1, p.nw.casting[0].maxSpell);
+    eq(p.nw.casting[0].maxSpell, 3);
+  });
+  test('Warlock 2 → 3: Pact Boon, invocation-csere (a darabszám is nő); known: új hely és csere', () => {
+    const rb = rbVarazs(), s = mkS({base: {cha: 16}, levels: lv('Warlock', 2), sub: {Warlock: 'Fiend|PHB'}, ch: {'Warlock:opt:Eldritch Invocations': ['Agonizing Blast|PHB', 'Pontos szint|PHB']}, spells: {Warlock: {cantrips: ['Mage Hand|PHB'], known: ['Hex|PHB', 'Burning Hands|PHB', 'Hex|PHB']}}});
+    const p = terv(s, rb, 'Warlock');
+    eq(kulcs(p.choices), ['Warlock:opt:Eldritch Invocations', 'Warlock:opt:Pact Boon']);
+    eq(p.choices[0].locked, ['Agonizing Blast|PHB', 'Pontos szint|PHB']);
+    eq(p.choices.map(x => x.csere), [true, false]);
+    const k = p.spells.find(x => x.c.key === 'Warlock:known');
+    eq([k.uj, k.csere], [true, true]);
+    const azonos = mkS({base: {cha: 16}, levels: lv('Warlock', 3), sub: {Warlock: 'Fiend|PHB'}, ch: {'Warlock:opt:Eldritch Invocations': ['Agonizing Blast|PHB', 'Pontos szint|PHB', 'Beguiling Influence|PHB'], 'opt:Beguiling Influence:skills': ['deception', 'persuasion'], 'Warlock:opt:Pact Boon': ['Pact of the Blade|PHB']}, spells: {Warlock: {cantrips: ['Mage Hand|PHB'], known: ['Hex|PHB', 'Burning Hands|PHB']}}});
+    const q = terv(azonos, rb, 'Warlock');
+    eq(q.choices.map(x => [x.c.key, x.uj, x.csere]), [['Warlock:4:asi', true, false], ['Warlock:opt:Eldritch Invocations', false, true]], 'a darabszám nem nő, de cserélhet; a Pact Boon nem jön elő');
+    eq(q.choices[1].missing, 0, 'a csere nem kötelező');
+  });
+  test('Sorcerer 2 → 3: 2 metamagic, known +1 és csere; a metamagic nem cserélhető; a feat saját választása a plan-be kerül', () => {
+    const rb = rbVarazs(), s = mkS({base: {cha: 16}, levels: lv('Sorcerer', 2), sub: {Sorcerer: 'Draconic|PHB'}, spells: {Sorcerer: {cantrips: ['Light|PHB', 'Fire Bolt|PHB', 'Mage Hand|PHB'], known: ['Shield|PHB', 'Sleep|PHB', 'Grease|PHB']}}});
+    let p = terv(s, rb, 'Sorcerer');
+    eq(p.choices.map(x => [x.c.key, x.c.n, x.csere, x.missing]), [['Sorcerer:opt:Metamagic', 2, false, 2]]);
+    const kn = p.spells.find(x => x.c.key === 'Sorcerer:known');
+    eq([kn.c.n, kn.locked.length, kn.csere, kn.missing], [4, 3, true, 1]);
+    // ASI → feat: a feat választása új kulcs, és megjelenik
+    const f = mkS({levels: lv('Fighter', 3), sub: {Fighter: 'Champion|PHB'}, ch: {'Fighter:opt:Fighting Style': ['Defense|PHB']}});
+    const b = {...H().levelUpBuild(f, 'Fighter')}; b.ch = {...b.ch, 'Fighter:4:asi': {feat: 'Resilient|HB'}};
+    p = H().levelUpPlan(f, rb, b);
+    eq(kulcs(p.choices), ['Fighter:4:asi', 'feat:Resilient|HB:ability', 'feat:Resilient|HB:saves']);
+    eq(p.choices[0].missing, 0, 'az ASI kész');
+  });
+  test('korábbról nyitott választás megjelenik, de nem kötelező; ha nincs miből választani, a hely nem akad el', () => {
+    const rb = rbVarazs(), s = mkS({levels: lv('Fighter', 3), sub: {}});
+    const p = terv(s, rb, 'Fighter');
+    eq(p.choices.map(x => [x.c.key, x.uj, x.missing]), [['Fighter:sub', false, 0], ['Fighter:4:asi', true, 1], ['Fighter:opt:Fighting Style', false, 0]]);
+    const ures = {...rb, optfeatures: []}, w = mkS({base: {cha: 16}, levels: lv('Warlock', 2), ch: {}, sub: {Warlock: 'Fiend|PHB'}, spells: {}});
+    eq(terv(w, ures, 'Warlock').choices.map(x => x.missing), [0, 0], 'nincs Pact Boon a könyvben');
+    const sz = {...rb, subclasses: rb.subclasses.filter(x => x.cls !== 'Monk')}, m = mkS({levels: lv('Monk', 2)});
+    eq(terv(m, sz, 'Monk').choices.map(x => [x.c.key, x.missing]), [['Monk:sub', 0]], 'alosztály nélküli könyvnél sem akad el');
+  });
+  test('levelUpApply: egy írásban a számolt mezők, a jelenlegi HP a növekedéssel nő, a használt marad; az engedély a célszintnél törlődik, köztes szinten marad; szabálykönyv-mentes felülírás', () => {
+    const rb = rbVarazs(), s = mkS({base: {con: 14}, levels: lv('Barbarian', 3)}, {levelUp: {to: 4}, hp: {max: 30, cur: 12}, resources: [{name: 'Rage', max: 3, used: 2, auto: true}]});
+    const b = H().levelUpBuild(s, 'Barbarian'); b.levels[3].hp = 9;
+    let p = H().levelUpApply(s, rb, b);
+    eq(p.levelUp, null);
+    eq(p.classes[0].level, 4);
+    eq([p.hp.max, p.hp.cur], [12 + 7 * 2 + 9 + 8, 12 + (12 + 7 * 2 + 9 + 8 - 30)]);
+    eq((p.resources || s.resources).find(r => r.name === 'Rage').used, 2);
+    eq(H().levelUpApply({...s, levelUp: {to: 6, by: 'dm', at: '', mc: false}}, rb, b).levelUp.to, 6, 'két szintre szóló engedély');
+    const ovS = mkS({base: {con: 14, str: 10}, levels: lv('Barbarian', 3)}, {ov: {hpMax: 40, 'ab:str': 16, ac: 18}, hp: {max: 40, cur: 40}});
+    const ob = H().levelUpBuild(ovS, 'Barbarian'); ob.ch = {'Barbarian:4:asi': {str: 2}};
+    p = H().levelUpApply(ovS, rb, ob);
+    eq([p.ov.hpMax, p.ov['ab:str'], p.ov.ac, p.abilities.str, p.hp.max, p.hp.cur], [40 + 9, 18, 18, 18, 49, 49], 'a max HP és a képesség felülírása mozdul, az AC-é marad');
+    eq(H().levelUpPlan(ovS, rb, ob).hp.to, 49, 'a tervben is');
+  });
+  test('restorePatch: a felépítés és a számolt mezők vissza, a felszerelés, a pénz, a jegyzet, a HP marad; engedély visszajön; saját varázslat a pillanatkép szerint', () => {
+    const rb = rbVarazs(), s = mkS({base: {con: 14}, levels: lv('Barbarian', 3)}, {levelUp: {to: 4}, hp: {max: 40, cur: 40}, notes: 'régi', inventory: [{name: 'Régi'}], spells: [{name: 'Saját', level: 1}], resources: [{name: 'Rage', max: 3, used: 1, auto: true}]});
+    const b = H().levelUpBuild(s, 'Barbarian'), up = H().norm({...s, ...H().levelUpApply(s, rb, b), notes: 'új', inventory: [{name: 'Új'}], currency: {gp: 9}, resources: [{name: 'Rage', max: 3, used: 2, auto: true}]});
+    const h = {reason: 'levelup', from: 3, to: 4, sheet: s};
+    const p = H().restorePatch(up, h, rb, {by: 'a@x.hu', at: '2026-11-02T18:00:00.000Z'}), n = H().norm({...up, ...p});
+    eq([n.build.levels.length, H().level(n), n.notes, n.inventory[0].name, n.currency.gp], [3, 3, 'új', 'Új', 9]);
+    eq(p.levelUp, {to: 4, by: 'a@x.hu', at: '2026-11-02T18:00:00.000Z', mc: false});
+    eq(n.resources.find(r => r.name === 'Rage').used, 2);
+    ok(n.hp.cur <= n.hp.max);
+    eq(H().restorePatch({...up, levelUp: {to: 6}}, h, rb).levelUp, {to: 6}, 'az érvényes engedély marad');
+    eq(H().restorePatch(up, {reason: 'restore', from: 4, to: 3, sheet: s}, rb).levelUp, null, 'visszaállítás visszavonása nem ad engedélyt');
+    ok(n.spells.some(x => x.name === 'Saját'));
+  });
+});
+
+describe('Szintlépés: robot (minden osztály 1 → 20)', () => {
+  // minden hely az első érvényes opcióval; ASI: +1 STR, +1 DEX. Hibalista: elakadás, érvénytelen választás, kulcsváltozás, HP-csökkenés
+  const kitolt = (c, cr, rb, b) => {
+    const H = W.Sheet;
+    if (c.kind === 'asi') return H.setChoice(b, c, {str: 1, dex: 1});
+    const o = H.choiceOptions(c, cr, rb);
+    if (o.free) return H.setChoice(b, c, ['Próbaeszköz']);
+    const uj = o.opts.filter(x => !x.dis && !c.ok.includes(x.v)).slice(0, c.n - c.ok.length).map(x => x.v);
+    if (c.kind === 'subclass' || c.kind === 'subrace') return H.setChoice(b, c, uj[0]);
+    return H.setChoice(b, c, [...c.ok, ...uj]);
+  };
+  const robot = (cls, rb, subIdx = 0, kor = null) => {
+    const H = W.Sheet, hibak = [];
+    const elso = s => {
+      for (let g = 0; g < 30; g++) {
+        const c = H.calc(s, rb), x = c.choices.find(y => !y.done && H.choiceOptions(y, c, rb).opts.some(o => !o.dis && !y.ok.includes(o.v)));
+        if (!x) return s;
+        const b = x.kind === 'subclass' ? H.setChoice(s.build, x, H.subclassesOf(cls, rb)[subIdx]?.n + '|' + H.subclassesOf(cls, rb)[subIdx]?.s) : kitolt(x, c, rb, s.build);
+        s = H.norm({...s, build: b});
+      }
+      hibak.push(cls + ': az 1. szint nem tölthető ki'); return s;
+    };
+    let s = mkS({base: {str: 14, dex: 14, con: 14, int: 14, wis: 14, cha: 14}, levels: lv(cls, 1), spells: {}});
+    s = elso(s); s = H.norm({...s, ...H.materialize(s, H.calc(s, rb))});
+    for (let L = 2; L <= 20; L++) {
+      let b = H.levelUpBuild(s, cls), kesz = false;
+      s = H.norm({...s, levelUp: {to: L}});
+      for (let g = 0; g < 40 && !kesz; g++) {
+        const plan = H.levelUpPlan(s, rb, b), x = [...plan.choices, ...plan.spells].find(y => y.missing > 0);
+        if (!x) { kesz = true; break; }
+        b = x.c.kind === 'subclass' ? H.setChoice(b, x.c, H.subclassesOf(cls, rb)[subIdx].n + '|' + H.subclassesOf(cls, rb)[subIdx].s) : kitolt(x.c, plan.nw, rb, b);
+        // egy feat vagy feature új helyet nyithat, de ugyanaz a hely nem ragadhat be
+        const u = H.levelUpPlan(s, rb, b);
+        if ([...u.choices, ...u.spells].some(y => y.c.key === x.c.key && y.missing >= x.missing)) { hibak.push(`${cls} ${L}: nem tölthető ki: ${x.c.key}`); kesz = true; }
+      }
+      if (!kesz) hibak.push(`${cls} ${L}: elakadt`);
+      const plan = H.levelUpPlan(s, rb, b), regi = plan.old.choices.map(c => c.key), ujK = new Set(plan.nw.choices.map(c => c.key));
+      for (const k of regi) if (!ujK.has(k)) hibak.push(`${cls} ${L}: eltűnt kulcs: ${k}`);
+      for (const x of plan.old.choices) { const y = plan.nw.choices.find(c => c.key === x.key); if (y && fmt(x.ok.filter(v => !y.ok.some(w => fmt(w) === fmt(v)))) !== '[]') hibak.push(`${cls} ${L}: elveszett választás: ${x.key}`); }
+      const p = H.levelUpApply(s, rb, b), n = H.norm({...s, ...p});
+      if (H.level(n) !== L) hibak.push(`${cls} ${L}: a szint ${H.level(n)}`);
+      if (n.hp.max <= s.hp.max) hibak.push(`${cls} ${L}: a max HP nem nőtt`);
+      if (L < 20 ? n.levelUp !== null : false) hibak.push(`${cls} ${L}: az engedély maradt`);
+      const m = H.materialize(n, H.calc(n, rb));
+      if (Object.keys(m).length) hibak.push(`${cls} ${L}: a mentett lap újraszámolva eltér: ${Object.keys(m)}`);
+      kor?.(n, L, plan);
+      s = n;
+    }
+    return {s, hibak};
+  };
+  const rb13 = () => {
+    const rb = rbVarazs();
+    rb.classes.push({n: 'Druid', s: 'PHB', hd: 8, saves: ['int', 'wis'], caster: 'full', ab: 'wis', cantrips: R20(l => l < 4 ? 2 : l < 10 ? 3 : 4), prep: 'lvl+wis', subLvl: 2, asi: ASI, feats: [{n: 'Wild Shape', lvl: 2}]},
+      {n: 'Artificer', s: 'TCE', hd: 8, saves: ['con', 'int'], caster: 'artificer', ab: 'int', cantrips: R20(l => l < 10 ? 2 : l < 14 ? 3 : 4), prep: 'lvl/2+int', subLvl: 3, asi: ASI, feats: [{n: 'Flash of Genius', lvl: 7}]});
+    rb.classes = rb.classes.filter(c => c.n !== 'Próbaosztály');
+    rb.subclasses = rb.subclasses.filter(x => x.cls !== 'Próbaosztály');
+    for (const c of rb.classes) if (!rb.subclasses.some(x => x.cls === c.n)) rb.subclasses.push({n: 'Próba ' + c.n, short: 'Próba', cls: c.n, s: 'HB'});
+    return rb;
+  };
+  test('mind a 13 osztály 1 → 20: nincs elakadás, nem vész el választás, a kulcsok stabilak, a mentett lap újraszámolva nem változik', () => {
+    const rb = rb13(), hibak = [];
+    eq(rb.classes.map(c => c.n).sort(), ['Artificer', 'Barbarian', 'Bard', 'Cleric', 'Druid', 'Fighter', 'Monk', 'Paladin', 'Ranger', 'Rogue', 'Sorcerer', 'Warlock', 'Wizard']);
+    for (const c of rb.classes) hibak.push(...robot(c.n, rb).hibak);
+    eq(hibak, []);
+    const v = robot('Fighter', rb, rb.subclasses.filter(x => x.cls === 'Fighter').findIndex(x => x.short === 'Eldritch Knight'));
+    eq(v.hibak, []);
+    eq(v.s.spellcasting.slots.slice(0, 4), [4, 3, 3, 1], 'EK 20: PHB third caster tábla');
+  });
+  test('valódi szabálykönyvvel mind a 13 osztály minden alosztálya 1 → 20; a slotok, ismert számok és erőforrások a PHB tábláival egyeznek (kézzel ellenőrzött mintaszintek)', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet, hibak = [];
+    eq(rb.classes.length, 13);
+    const minta = {};
+    for (const c of rb.classes) {
+      const subs = H.subclassesOf(c.n, rb);
+      for (let i = 0; i < subs.length; i++) hibak.push(...robot(c.n, rb, i, i ? null : (n, L, p) => {
+        minta[c.n + L] = {slots: n.spellcasting.slots.join(''), pact: n.spellcasting.pact, res: Object.fromEntries(n.resources.map(r => [r.name, r.max])), cast: p.nw.casting[0]};
+      }).hibak);
+    }
+    eq(hibak, []);
+    const slot = (k, v) => eq(minta[k].slots.replace(/0+$/, ''), v, k + ' slotok');
+    slot('Wizard20', '433332211'); slot('Wizard5', '432'); slot('Cleric17', '433321111'); slot('Paladin5', '42'); slot('Paladin20', '43332'); slot('Ranger9', '432'); slot('Artificer5', '42'); slot('Artificer20', '43332');
+    eq(minta.Warlock11.pact, {level: 5, max: 3, used: 0}); eq(minta.Warlock2.pact, {level: 1, max: 2, used: 0}); eq(minta.Warlock20.pact.max, 4);
+    eq([minta.Bard20.cast.known, minta.Sorcerer20.cast.known, minta.Ranger20.cast.known, minta.Warlock20.cast.known], [22, 15, 11, 15]);
+    eq([minta.Wizard20.cast.cantrips, minta.Cleric20.cast.cantrips, minta.Sorcerer20.cast.cantrips, minta.Warlock20.cast.cantrips, minta.Druid20.cast.cantrips, minta.Bard20.cast.cantrips], [5, 5, 6, 4, 4, 4]);
+    eq([minta.Wizard20.cast.maxSpell, minta.Paladin20.cast.maxSpell, minta.Warlock20.cast.maxSpell, minta.Artificer20.cast.maxSpell], [9, 5, 5, 5]);
+    eq([minta.Barbarian3.res.Rage, minta.Barbarian20.res.Rage, minta.Monk20.res.Ki, minta.Cleric18.res['Channel Divinity'], minta.Fighter17.res['Action Surge'], minta.Sorcerer20.res['Sorcery Points']], [3, 99, 20, 3, 2, 20]);
+    // az Artificer infúzió, a Warlock Pact Boon: az opcionális választásoknak legalább ennyi helye van
+    const opt = (cls, n, L) => H.calc(mkS({levels: lv(cls, L)}), rb).choices.find(x => x.kind === 'opt' && x.key.endsWith(n))?.n;
+    eq([opt('Warlock', 'Eldritch Invocations', 20), opt('Warlock', 'Pact Boon', 3), opt('Sorcerer', 'Metamagic', 17), opt('Sorcerer', 'Metamagic', 10), opt('Fighter', 'Fighting Style', 1)], [8, 1, 4, 3, 1], 'a progression teljes darabszám, nem növekmény');
+    const bm = H.calc(mkS({levels: lv('Fighter', 15), sub: {Fighter: 'Battle Master|PHB'}}), rb).choices.find(x => x.key.endsWith(':Maneuvers'));
+    eq(bm.n, 9, 'Battle Master 15: 9 maneuver');
+    const at = H.calc(mkS({levels: lv('Rogue', 3), sub: {Rogue: 'Arcane Trickster|PHB'}}), rb);
+    ok(at.always.some(x => x.name === 'Mage Hand'), 'AT: a Mage Hand a szabálykönyvből mindig megvan, a táblázat csak a többi cantripet számolja');
+    eq(at.choices.find(x => x.key === 'Rogue:cantrips').n, 2);
+  }, {online: true});
 });
 
 describe('Választó-modul: további választástípusok (sheet.js)', () => {
@@ -2782,6 +3103,62 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
   });
 });
 
+describe('Szintlépés-engedély a DM Screenben', () => {
+  const lapos = (id, nev, extra = {}) => { A(`S.library.push(normCreature(${JSON.stringify({...pc(nev, 5), id, owner: 'a@x.hu'})}))`); W.createSheet(id, {name: nev, classes: [{name: 'Rogue', level: 5}], ...extra}); };
+  test('Könyvtár: ⬆ +1 szint (többször is), ✕ vissza; csak lappal rendelkezőnél; felhőbe a levelUp megy; 20. szinten nincs', async () => {
+    const f = makeFakeDb(); A('Tar').kapcsol(f.db);
+    A(`S.library.push(normCreature(${JSON.stringify({...pc('Lap nélkül', 5), id: 'nl'})}))`);
+    lapos('p1', 'Lapos');
+    await A('doSave()');
+    await until(() => f.store['sheets/p1'], 2000, 'a lap a felhőben');
+    f.log.length = 0;
+    W.openLib('lib');
+    ok(!$('[data-lib="nl"] [data-act="libSzintAd"]'), 'lap nélkül nincs gomb');
+    click('[data-lib="p1"] [data-act="libSzintAd"]');
+    has($('[data-lib="p1"]').textContent, '6. szintre vár');
+    eq(A('SHEETS.p1.levelUp.to'), 6);
+    click('[data-lib="p1"] [data-act="libSzintAd"]');
+    has($('[data-lib="p1"]').textContent, '7. szintre vár');
+    await until(() => f.store['sheets/p1']?.levelUp?.to === 7, 2000, 'a felhőbe is');
+    ok(f.log.some(l => l === 'update sheets/p1 levelUp'), f.log.join(';'));
+    click('[data-lib="p1"] [data-act="libSzintVissza"]');
+    eq(A('SHEETS.p1.levelUp.to'), 6);
+    click('[data-lib="p1"] [data-act="libSzintVissza"]');
+    eq(A('SHEETS.p1.levelUp'), null);
+    ok(!$('[data-lib="p1"] [data-act="libSzintVissza"]'), 'nincs több visszavonás');
+    await until(() => f.store['sheets/p1']?.levelUp === null, 2000, 'a felhőben is törölve');
+    W.createSheet('p1', {name: 'Lapos', classes: [{name: 'Rogue', level: 20}]});
+    W.filterLib(); ok($('[data-lib="p1"] [data-act="libSzintAd"]').disabled, '20. szinten tiltva');
+    eq(A(`szintlepesAd('p1')`), false);
+  });
+  test('Csapat: egyenként és ⬆ Mindenki; régi közös fájl mellett nem ír; gonosz név nem fut', () => {
+    lapos('p1', 'Egy'); lapos('p2', '<img src=x onerror=alert(1)>');
+    W.openParty();
+    click('[data-pcard="p1"] [data-act="partySzintAd"]');
+    has($('[data-pcard="p1"]').textContent, '6. szintre vár');
+    click('[data-act="partySzintMind"]');
+    eq([A('SHEETS.p1.levelUp.to'), A('SHEETS.p2.levelUp.to')], [7, 6]);
+    click('[data-pcard="p2"] [data-act="partySzintVissza"]');
+    eq(A('SHEETS.p2.levelUp'), null);
+    assertNoXss();
+    A('VART_MODULOK.sheet += 100');
+    try { eq([A(`szintlepesAd('p2')`), A(`szintlepesVissza('p1')`), A('SHEETS.p2.levelUp')], [false, false, null], 'régi közös fájl mellett nem ír'); } finally { A('VART_MODULOK.sheet -= 100'); }
+  });
+  test('előzmények: csak a legfrissebb 20 marad az engedély adásakor; lap törlésekor mind törlődik; hiba nem akasztja meg', async () => {
+    const f = makeFakeDb(); A('Tar').kapcsol(f.db);
+    lapos('p1', 'Lapos');
+    for (let i = 10; i < 35; i++) f.store[`sheets/p1/hist/2026-11-${i}`] = {reason: 'levelup'};
+    A(`szintlepesAd('p1')`);
+    await until(() => Object.keys(f.store).filter(k => k.includes('/hist/')).length === 20, 2000, 'takarítás');
+    ok(f.store['sheets/p1/hist/2026-11-34'] && !f.store['sheets/p1/hist/2026-11-14'], 'a régiek mentek');
+    A(`sheetOps.del.add('p1'); doSave()`);
+    await until(() => !Object.keys(f.store).some(k => k.startsWith('sheets/p1')), 2000, 'lappal együtt');
+    const hibas = {...f.db, list: async () => { throw new Error('tilos'); }};
+    A('Tar').kapcsol(hibas);
+    await A(`elozmenyTakarit('p1')`);
+  });
+});
+
 describe('Telefonos karakterlap (karakter.html)', () => {
   const kq = s => K.document.querySelector(s), kqa = s => [...K.document.querySelectorAll(s)];
   const kclick = el => { if (typeof el === 'string') el = kq(el); ok(el, 'nincs ilyen elem'); el.dispatchEvent(new K.MouseEvent('click', {bubbles: true, cancelable: true})); };
@@ -2790,11 +3167,12 @@ describe('Telefonos karakterlap (karakter.html)', () => {
   let klog;
   const ORIGK = {};
   const ktest = (name, fn, opts) => test(name, async () => {
-    for (const k of ['rnd', 'confirm']) ORIGK[k] ??= K[k];
-    klog = []; K.KDB = {update: (id, p) => klog.push(['update', id, p]), pub: (id, p) => klog.push(['pub', id, p])};
+    for (const k of ['rnd', 'confirm', 'alert']) ORIGK[k] ??= K[k];
+    klog = []; K.KDB = {update: (id, p) => klog.push(['update', id, p]), pub: (id, p) => klog.push(['pub', id, p]), saveWithHist: async (id, p, h, doc) => { klog.push(['hist', id, p, h, doc]); }, histList: async () => []};
     K.confirm = () => true;
+    K.localStorage.removeItem('dmscreen-szintlepes-p1');
     try { await fn(); }
-    finally { Object.assign(K, ORIGK); K.KDB = undefined; K.location.hash = ''; K.KApp.setSheets([]); K.KApp.setChars([]); K.KApp.setRulebook(null); K.route(); }
+    finally { Object.assign(K, ORIGK); K.KDB = undefined; K.eval('lu = null; histCache.clear(); openKeys.delete("hist")'); K.localStorage.removeItem('dmscreen-szintlepes-p1'); K.frameElement.width = 420; delete K.navigator.onLine; K.location.hash = ''; K.KApp.setSheets([]); K.KApp.setChars([]); K.KApp.setRulebook(null); K.route(); }
   }, opts);
   ktest('valódi szabálykönyvvel: kézi lap átállítása minden osztályra (5. szint, alosztállyal, különböző faj és háttér) – a Felépítés-fül hiba nélkül megjelenik, a gomb eltűnik', async () => {
     const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet;
@@ -2822,6 +3200,295 @@ describe('Telefonos karakterlap (karakter.html)', () => {
   };
   const lastUpdate = () => klog.filter(l => l[0] === 'update').at(-1)?.[2] || {};
   const H_sv = fm => ['str', 'dex', 'con', 'int', 'wis', 'cha'].filter(a => fm.elements['sv_' + a].checked);
+  // ---------- szintlépés-varázsló ----------
+  const rogue3 = (extra = {}) => ({auto: true, build: {base: {dex: 16, con: 14}, levels: lv('Rogue', 3), sub: {Rogue: 'Thief|PHB'}, spells: {}, ch: {'Rogue:1:skills': ['stealth', 'perception', 'arcana', 'acrobatics'], 'Rogue:1:expertise': ['stealth', 'arcana']}}, classes: [{name: 'Rogue', subclass: 'Thief', level: 3, hitDie: 8}], levelUp: {to: 4}, hp: {max: 24, cur: 20}, ...extra});
+  const luStep = () => kq('.lusteps span.on')?.textContent;
+  const luNext = () => kclick('[data-act="luNext"]');
+  const asi = (a, b) => { kset('[data-asi="a0"]', a); kset('[data-asi="a1"]', b); };
+  ktest('szintlépés: sáv csak engedéllyel; kézi lapnál Átállítás; szabálykönyv nélkül vár; a DM-é és a gazdáé', () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    openSheet(rogue3({levelUp: null}));
+    ok(!kq('.lubar'), 'engedély nélkül nincs');
+    openSheet(rogue3({levelUp: {to: 3}}));
+    ok(!kq('.lubar'), 'már elérte');
+    openSheet(rogue3());
+    has(kq('.lubar').textContent, '4. szint'); ok(kq('[data-act="luStart"]'));
+    openSheet(rogue3({levelUp: {to: 6}}));
+    has(kq('.lubar').textContent, '6. szintig');
+    openSheet({classes: [{name: 'Rogue', level: 3}], levelUp: {to: 4}});
+    has(kq('.lubar').textContent, 'állítsd át'); ok(!kq('[data-act="luStart"]'));
+    openSheet(rogue3(), 'mas@x.hu');
+    ok(!kq('.lubar'), 'idegen lapon nincs');
+    K.KApp.setRulebook(null);
+    openSheet(rogue3());
+    has(kq('.lubar').textContent, 'szabálykönyv'); ok(!kq('[data-act="luStart"]'));
+  });
+  ktest('szintlépés Rogue 3 → 4: osztály, dobás egyszer és rögzítve, ASI kötelező, összegzés, mentés előzménnyel; az engedély törlődik; a csapat felé is', async () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    openSheet(rogue3());
+    klog.length = 0;
+    kclick('[data-act="luStart"]');
+    eq(luStep(), 'Osztály'); has(ktext(), 'Rogue 3 → 4');
+    luNext(); eq(luStep(), 'HP');
+    ok(kq('[data-act="luNext"]').disabled, 'HP nélkül nem lép tovább');
+    K.rnd = () => 2;
+    kclick('[data-act="luHow"][data-how="roll"]');
+    has(ktext(), 'A dobás: 2');
+    has(ktext(), 'max HP');
+    ok(kq('[data-act="luHow"][data-how="avg"]').disabled && kq('[data-act="luHow"][data-how="roll"]').disabled, 'nem dobható újra');
+    // újratöltés után ugyanaz (a dobás nem dobódik újra, ha a kockát más adná)
+    K.rnd = () => 8;
+    kclick('[data-act="luClose"]'); ok(kq('.lubar'));
+    kclick('[data-act="luStart"]');
+    eq(luStep(), 'HP'); has(ktext(), 'A dobás: 2');
+    luNext(); eq(luStep(), 'Választások');
+    ok(kq('[data-act="luNext"]').disabled); has(ktext(), 'Még 1 választás');
+    eq(K.eval('sheets.get("p1")').build.levels.length, 3, 'a mentésig a lap nem változik');
+    asi('dex', 'dex');
+    ok(!kq('[data-act="luNext"]').disabled);
+    luNext(); eq(luStep(), 'Jellemzők');
+    luNext(); eq(luStep(), 'Összegzés');
+    const t = ktext();
+    has(t, '3 → 4'); has(t, 'Dexterity'); has(t, '16 → 18'); has(t, 'Rogue 3 (Thief) → Rogue 4 (Thief)'); has(t, '3d8 → 4d8');
+    kclick('[data-act="luBack"]'); eq(luStep(), 'Jellemzők'); luNext();
+    kclick('[data-act="luSave"]');
+    await until(() => !K.eval('lu'), 2000, 'a varázsló bezárul');
+    const [, id, p, h, doc] = klog.find(l => l[0] === 'hist');
+    eq([id, p.build.levels.length, p.build.levels[3], p.levelUp, p.classes[0].level, p.abilities.dex], ['p1', 4, {c: 'Rogue', hp: 2}, null, 4, 18]);
+    eq([p.hp.max - 24, p.hp.cur - 20], [p.hp.max - 24, p.hp.max - 24], 'a jelenlegi HP ugyanannyit nő');
+    ok(/^\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d-\d+Z$/.test(h), 'időbélyeg-azonosító: ' + h);
+    eq([doc.reason, doc.from, doc.to, doc.hp, doc.by, doc.sheet.build.levels.length], ['levelup', 3, 4, 'roll', 'a@x.hu', 3]);
+    const s = K.eval('sheets.get("p1")');
+    eq([K.Sheet.level(s), s.levelUp], [4, null]);
+    ok(!kq('.lubar'), 'a sáv eltűnt');
+    eq(K.localStorage.getItem('dmscreen-szintlepes-p1'), null);
+    eq(klog.find(l => l[0] === 'pub')?.[2].level, 'Szint 4');
+    has(kq('#toast').textContent, '4. szint');
+    eq(klog.filter(l => l[0] === 'update' && l[2].build), [], 'nem két írás');
+  });
+  ktest('szintlépés: sikertelen mentés (szabály, internet nélkül) a lapot nem változtatja, a piszkozat marad; két szintes engedély újra indul', async () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    openSheet(rogue3({levelUp: {to: 5}, build: {...rogue3().build, ch: {...rogue3().build.ch, 'Rogue:4:asi': {dex: 2}}}}));
+    const uzenet = []; K.alert = m => uzenet.push(m);
+    K.KDB.saveWithHist = async () => { const e = new Error('tilos'); e.code = 'permission-denied'; throw e; };
+    kclick('[data-act="luStart"]'); luNext();
+    kclick('[data-act="luHow"][data-how="avg"]'); luNext();
+    while (!kq('[data-act="luSave"]')) luNext();
+    kclick('[data-act="luSave"]');
+    await until(() => uzenet.length, 2000, 'hibaüzenet');
+    has(uzenet[0], 'szabályokat');
+    await until(() => !K.eval('lu').saving, 1000, 'újra menthető');
+    eq(K.Sheet.level(K.eval('sheets.get("p1")')), 3); ok(kq('[data-act="luSave"]'), 'a varázsló nyitva');
+    Object.defineProperty(K.navigator, 'onLine', {get: () => false, configurable: true});
+    kclick('[data-act="luSave"]');
+    await until(() => uzenet.length === 2, 2000, 'internet nélkül');
+    has(uzenet[1], 'internet');
+    delete K.navigator.onLine;
+    K.KDB.saveWithHist = async (id, p, h, doc) => { klog.push(['hist', id, p, h, doc]); };
+    kclick('[data-act="luSave"]');
+    await until(() => !K.eval('lu'), 2000, 'menthető');
+    eq(K.eval('sheets.get("p1")').levelUp.to, 5, 'a köztes szinten az engedély marad');
+    ok(kq('[data-act="luStart"]'), 'jöhet a következő');
+    has(kq('.lubar').textContent, '5. szint');
+  });
+  ktest('szintlépés: a meglévő választás zárolt; known casternél 1 csere, a többi zárolt', () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    openSheet({auto: true, build: {base: {cha: 16}, levels: lv('Sorcerer', 2), sub: {Sorcerer: 'Draconic|PHB'}, spells: {Sorcerer: {cantrips: ['Light|PHB', 'Fire Bolt|PHB', 'Mage Hand|PHB', 'Prestidigitation|PHB'], known: ['Shield|PHB', 'Sleep|PHB', 'Grease|PHB']}}}, classes: [{name: 'Sorcerer', level: 2, hitDie: 6}], levelUp: {to: 3}});
+    kclick('[data-act="luStart"]'); luNext();
+    kclick('[data-act="luHow"][data-how="manual"]');
+    ok(kq('[data-act="luNext"]').disabled, 'kézi: érték kell');
+    kset('#luHpIn', 99, 'input'); ok(kq('[data-act="luNext"]').disabled, 'érvénytelen');
+    kset('#luHpIn', 4, 'input'); ok(!kq('[data-act="luNext"]').disabled);
+    has(ktext(), '+4 (kézi, d6)');
+    luNext(); eq(luStep(), 'Választások');
+    const mm = kqa('select[data-ch="Sorcerer:opt:Metamagic"]');
+    eq(mm.length, 2);
+    kset(mm[0], 'Quickened Spell|PHB');
+    kset(kqa('select[data-ch="Sorcerer:opt:Metamagic"]')[1], 'Twinned Spell|PHB');
+    luNext(); eq(luStep(), 'Varázslatok');
+    has(ktext(), 'Egyet lecserélhetsz');
+    const C = (k, v) => kqa('input[type=checkbox]').find(e => e.dataset.ch === k && e.value === v);
+    const K_ = 'Sorcerer:known';
+    ok(!C(K_, 'Shield|PHB').disabled && !C(K_, 'Sleep|PHB').disabled, 'még cserélhető');
+    kset(C(K_, 'Web|PHB'), true);
+    has(kq('#ch-Sorcerer_known').textContent, '4 / 4');
+    kset(C(K_, 'Shield|PHB'), false);
+    ok(C(K_, 'Sleep|PHB').disabled && C(K_, 'Grease|PHB').disabled, 'egy csere után a többi zárolt');
+    ok(!C(K_, 'Shield|PHB').disabled, 'a levett visszarakható');
+    ok(kq('[data-act="luNext"]').disabled, 'a levett hely pótlandó');
+    kset(C(K_, 'Thunderwave|PHB'), true);
+    ok(!kq('[data-act="luNext"]').disabled);
+    eq([...K.eval('lu').build.spells.Sorcerer.known].sort(), ['Grease|PHB', 'Sleep|PHB', 'Thunderwave|PHB', 'Web|PHB']);
+    eq(K.eval('sheets.get("p1")').build.spells.Sorcerer.known.length, 3, 'a lap még a régi');
+  });
+  ktest('szintlépés: a piszkozat a telefonon, és ha közben megváltozik a felépítés vagy elveszik az engedélyt, nem írja felül; 320 px; gonosz adat', () => {
+    const rb = rbVarazs();
+    rb.features.push({n: '<img src=x onerror=window.__x1=1>', cls: 'Rogue', lvl: 4, s: 'PHB', tx: '<img src=x onerror=window.__x2=1>'});
+    rb.classes.find(c => c.n === 'Rogue').feats.push({n: '<img src=x onerror=window.__x1=1>', lvl: 4});
+    K.KApp.setRulebook({version: 'v', rb});
+    openSheet(rogue3());
+    K.frameElement.width = 320;
+    const nincsSzeles = l => ok(K.document.documentElement.scrollWidth <= 320, l + ': nem lóg ki, ' + K.document.documentElement.scrollWidth);
+    kclick('[data-act="luStart"]'); nincsSzeles('osztály');
+    luNext(); kclick('[data-act="luHow"][data-how="avg"]'); nincsSzeles('HP');
+    luNext(); asi('str', 'con'); nincsSzeles('választások');
+    luNext(); nincsSzeles('jellemzők');
+    ok(!kq('main img') && !K.__x1 && !K.__x2, 'nincs befecskendezés'); has(ktext(), '<img src=x');
+    luNext(); nincsSzeles('összegzés');
+    const tabla = kq('.lutab'), cella = tabla.querySelector('td');
+    ok(tabla.getBoundingClientRect().right <= 320, 'az összegző táblázat nem lóg ki: ' + tabla.getBoundingClientRect().right);
+    ok(cella.getBoundingClientRect().width >= 60 && cella.getBoundingClientRect().height < 60, 'a címke olvasható, nem betűnként törik');
+    eq(JSON.parse(K.localStorage.getItem('dmscreen-szintlepes-p1')).how, 'avg', 'a piszkozat a telefonon');
+    // kívülről változott a felépítés: a választások újrakezdődnek, a régi nem írja felül
+    const b = {...rogue3().build, ch: {...rogue3().build.ch, 'Rogue:1:expertise': ['stealth', 'perception']}};
+    K.KApp.setSheets([{...sheetDoc(), id: 'p1', ...rogue3({build: b})}]);
+    eq(K.eval('lu').build.ch['Rogue:1:expertise'], ['stealth', 'perception']);
+    eq([K.eval('lu').how, K.eval('lu').build.ch['Rogue:4:asi']], ['avg', undefined]);
+    // elvették az engedélyt: bezárul
+    K.KApp.setSheets([{...sheetDoc(), id: 'p1', ...rogue3({levelUp: null})}]);
+    eq(K.eval('lu'), null); ok(!kq('.lubar'));
+    // másik szintről maradt, vagy kézzel átírt piszkozat nem számít
+    K.localStorage.setItem('dmscreen-szintlepes-p1', JSON.stringify({from: 9, cls: 'Rogue', how: 'roll', die: 1}));
+    K.KApp.setSheets([{...sheetDoc(), id: 'p1', ...rogue3()}]);
+    kclick('[data-act="luStart"]');
+    eq(K.eval('lu').how, '');
+    kclick('[data-act="luClose"]');
+    K.localStorage.setItem('dmscreen-szintlepes-p1', '{rossz json');
+    kclick('[data-act="luStart"]'); eq(K.eval('lu').from, 3);
+    kclick('[data-act="luClose"]');
+    K.localStorage.setItem('dmscreen-szintlepes-p1', JSON.stringify({from: 3, cls: 'Rogue', step: 'x', how: 'roll', die: 99, base: K.JSON.stringify(K.eval('sheets.get("p1")').build), build: K.eval('sheets.get("p1")').build}));
+    kclick('[data-act="luStart"]');
+    eq([K.eval('lu').how, K.eval('lu').die], ['', null], 'a kockánál nagyobb dobás érvénytelen');
+  });
+  ktest('szintlépés: a kulcssorrend nem számít változásnak; a kapcsolat közbeni megszakadásnál sorba áll; hiányos felépítésnél nem indul', async () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    const base = rogue3();
+    openSheet(base);
+    kclick('[data-act="luStart"]'); luNext(); kclick('[data-act="luHow"][data-how="avg"]'); luNext(); asi('dex', 'dex');
+    K.KApp.setSheets([{...sheetDoc(), id: 'p1', ...base, build: {...base.build, ch: Object.fromEntries(Object.entries(base.build.ch).reverse())}}]);
+    eq(K.eval('lu').build.ch['Rogue:4:asi'], {dex: 2}, 'a választás megmaradt');
+    eq(luStep(), 'Választások');
+    luNext(); luNext();
+    const uzenet = []; K.alert = m => uzenet.push(m);
+    K.eval('saveTimeout = 20');
+    K.KDB.saveWithHist = () => new Promise(() => {});
+    klog.length = 0;
+    kclick('[data-act="luSave"]');
+    await until(() => !K.eval('lu'), 2000, 'a varázsló bezárul');
+    K.eval('saveTimeout = 20000');
+    has(uzenet[0], 'sorba állt');
+    eq(K.Sheet.level(K.eval('sheets.get("p1")')), 4);
+    ok(klog.some(l => l[0] === 'pub' && l[2].level === 'Szint 4'), 'a csapat felé is');
+    // a felépítés kevesebb szintet tud, mint a lap (saját osztály): a varázsló visszaejtené
+    openSheet({auto: true, build: {levels: [], spells: {}}, classes: [{name: 'Saját', level: 5, hitDie: 8}], levelUp: {to: 6}});
+    ok(!kq('[data-act="luStart"]')); has(kq('.lubar').textContent, 'nem egyeznek');
+  });
+  ktest('többosztályú lapon választani kell; dobás után nem váltható; osztályváltás újrakezd', () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    openSheet({auto: true, build: {base: {str: 14, dex: 14, wis: 14}, levels: [...lv('Fighter', 2), ...lv('Monk', 2)], spells: {}, ch: {'Fighter:opt:Fighting Style': ['Defense|PHB']}}, classes: [{name: 'Fighter', level: 2, hitDie: 10}, {name: 'Monk', level: 2, hitDie: 8}], levelUp: {to: 5}});
+    kclick('[data-act="luStart"]');
+    ok(kq('[data-act="luNext"]').disabled);
+    has(ktext(), 'Monk 2 → 3');
+    kclick('[data-act="luCls"][data-c="Monk"]'); eq(K.eval('lu').build.levels.at(-1).c, 'Monk');
+    kclick('[data-act="luCls"][data-c="Fighter"]'); eq(K.eval('lu').build.levels.at(-1).c, 'Fighter');
+    luNext(); K.rnd = () => 3; kclick('[data-act="luHow"][data-how="roll"]');
+    kclick('[data-act="luBack"]');
+    ok(kq('[data-act="luCls"][data-c="Monk"]').disabled, 'dobás után rögzült');
+    has(ktext(), 'nem változtatható');
+  });
+  ktest('előzmények: játékos csak az utolsó szintlépését vonja vissza, a DM bármelyiket; a visszaállítás előzménnyel, engedéllyel; hibánál üzenet; gonosz adat', async () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    const regi = rogue3({levelUp: {to: 4}, notes: 'pillanatkép'});
+    const h1 = {id: '2026-11-02T18-00-00-000Z', at: '2026-11-02T18:00:00.000Z', by: 'a@x.hu', reason: 'levelup', from: 3, to: 4, hp: 'roll', sheet: regi};
+    const h0 = {id: '2026-10-02T18-00"><img src=x onerror=window.__x3=1>', at: '2026-10-02T18:00:00.000Z', by: '<img src=x onerror=window.__x3=1>', reason: 'levelup', from: 2, to: 3, hp: 'avg', sheet: rogue3({build: {...rogue3().build, levels: lv('Rogue', 2)}, classes: [{name: 'Rogue', level: 2}], levelUp: null})};
+    K.KDB.histList = async () => [h0, h1];
+    const most = {auto: true, build: {...rogue3().build, levels: lv('Rogue', 4)}, classes: [{name: 'Rogue', subclass: 'Thief', level: 4, hitDie: 8}], levelUp: null, notes: 'új jegyzet', inventory: [{name: 'Új tárgy', qty: 1}], hp: {max: 31, cur: 31}};
+    openSheet(most);
+    kclick('[data-tab="adat"]');
+    const nyit = async () => { const d = kq('details[data-key="hist"]'); d.open = true; d.dispatchEvent(new K.Event('toggle')); await until(() => kq('[data-hist]').textContent.includes('3 → 4'), 2000, 'betöltve'); };
+    await nyit();
+    const gombok = () => kqa('[data-act="histRestore"]').map(b => b.dataset.h);
+    eq(gombok(), [h1.id], 'játékos: csak a legfrissebb szintlépés');
+    has(kq('[data-hist]').textContent, 'HP: dobás');
+    has(kq('[data-hist]').textContent, '↩ Visszavonás');
+    let kerdes = '';
+    K.confirm = m => { kerdes = m; return false; };
+    kclick(kq('[data-act="histRestore"]')); await wait(10);
+    has(kerdes, '3. szintre'); eq(klog.filter(l => l[0] === 'hist'), [], 'mégsem');
+    K.confirm = () => true; klog.length = 0;
+    kclick(kq('[data-act="histRestore"]'));
+    await until(() => klog.some(l => l[0] === 'hist'), 2000, 'visszaállítva');
+    await until(() => K.Sheet.level(K.eval('sheets.get("p1")')) === 3, 2000);
+    const [, , p, , doc] = klog.find(l => l[0] === 'hist');
+    eq([doc.reason, doc.from, doc.to, doc.sheet.build.levels.length], ['restore', 4, 3, 4], 'a visszaállítás előtt is pillanatkép');
+    eq(p.levelUp.to, 4, 'az engedély visszajön');
+    const s = K.eval('sheets.get("p1")');
+    eq([s.notes, s.inventory[0].name, s.build.levels.length], ['új jegyzet', 'Új tárgy', 3]);
+    await until(() => !K.eval('histCache').size || K.eval('histCache').get('p1') !== undefined, 1000);
+    // a DM mindegyiket látja, gonosz adat csak szövegként
+    K.eval('histCache.clear()');
+    openSheet(most, 'dm@x.hu', true);
+    kclick('[data-tab="adat"]');
+    await until(() => kq('[data-hist]').textContent.includes('3 → 4'), 2000, 'DM: nyitva marad és betölt');
+    eq(gombok(), [h1.id, h0.id]);
+    ok(!kq('[data-hist] img') && !K.__x3, 'nincs befecskendezés');
+    // a betöltés hibája csak üzenet
+    K.eval('histCache.clear()');
+    K.KDB.histList = async () => { throw Object.assign(new Error('x'), {code: 'permission-denied'}); };
+    K.render(true);
+    await until(() => kq('[data-hist]').textContent.includes('Nem sikerült'), 2000, 'hibaüzenet');
+    // a saját, régi előzményt nem tudja a játékos visszaállítani újabb szint után
+    K.eval('histCache.clear()');
+    K.KDB.histList = async () => [h0];
+    openSheet(most);
+    kclick('[data-tab="adat"]');
+    await until(() => kq('[data-hist]').textContent.includes('2 → 3'), 2000);
+    eq(gombok(), [], 'a h0 már nem a mostani szinté');
+  });
+  ktest('varázslat-választó a Felépítésen: besorolás betöltéskor, választás, keresés, a tanult varázslat a Varázslat fülön, nem távolítható el; a teli hely tilt, a spellbook nem', () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    openSheet({auto: true, build: {base: {int: 16}, levels: lv('Wizard', 1)}, spells: [{name: 'Light', level: 0, prepared: true, ref: 'Light|PHB'}, {name: 'Shield', level: 1, prepared: true, note: 'jegyzet', ref: 'Shield|PHB'}, {name: 'Saját', level: 1, prepared: true}]});
+    let s = K.eval('sheets.get("p1")');
+    eq(s.build.spells, {Wizard: {cantrips: ['Light|PHB'], book: ['Shield|PHB']}}, 'besorolva');
+    eq(s.spells.find(x => x.name === 'Shield').note, 'jegyzet');
+    ok(klog.some(l => l[0] === 'update' && l[2].build?.spells), 'kiírva a felhőbe');
+    kclick('[data-tab="adat"]');
+    const box = kq('#ch-Wizard_book');
+    ok(box.classList.contains('need'), 'még nyitott');
+    has(box.textContent, '1 / 6');
+    const chk = v => kqa('input[type=checkbox]').find(e => e.dataset.ch === 'Wizard:book' && e.value === v);
+    ok(chk('Shield|PHB').checked);
+    kset(chk('Sleep|PHB'), true);
+    s = K.eval('sheets.get("p1")');
+    eq(s.build.spells.Wizard.book, ['Shield|PHB', 'Sleep|PHB']);
+    eq(s.spells.find(x => x.name === 'Sleep').book, true);
+    const q = kq('[data-chq="Wizard:book"]'); q.value = 'gre'; q.dispatchEvent(new K.Event('input', {bubbles: true}));
+    eq(kqa('#ch-Wizard_book label[data-chl]:not([hidden])').map(l => l.dataset.chl), ['grease']);
+    ok(kqa('#ch-Wizard_book details').some(d => d.open), 'a találat szintje kinyílik');
+    K.eval('delete chSearch["Wizard:book"]');
+    // a cantrip-hely (3) a telitől tilt
+    for (const v of ['Fire Bolt|PHB', 'Mage Hand|PHB']) kset(kqa('input[type=checkbox]').find(e => e.dataset.ch === 'Wizard:cantrips' && e.value === v), true);
+    ok(kq('#ch-Wizard_cantrips').querySelector('label[data-chl] input:not(:checked)')?.disabled === true, 'a harmadik után a többi tiltott');
+    kclick('[data-tab="var"]');
+    has(ktext(), 'Sleep'); has(ktext(), 'Saját');
+    const rows = kqa('details').filter(d => d.dataset.key?.startsWith('sp:'));
+    eq(rows.filter(d => d.querySelector('[data-act="spellRm"]')).map(d => d.dataset.key), ['sp:Saját'], 'csak a sajátnál van eltávolítás');
+    const n = klog.length;
+    K.KApp.setSheets([{...sheetDoc(), id: 'p1', ...K.eval('sheets.get("p1")')}]);
+    eq(klog.slice(n).filter(l => l[2].build), [], 'egyszer sorol be');
+    // a jegyzetes varázslat levétele megerősítést kér; a szabálykönyvből jövő gonosz név csak szövegként jelenik meg
+    kclick('[data-tab="adat"]');
+    K.confirm = () => false;
+    const shield = () => kqa('input[type=checkbox]').find(e => e.dataset.ch === 'Wizard:book' && e.value === 'Shield|PHB');
+    kset(shield(), false);
+    ok(shield().checked && K.eval('sheets.get("p1")').build.spells.Wizard.book.includes('Shield|PHB'), 'mégsem: marad');
+    K.confirm = () => true;
+    const rb2 = rbVarazs(); rb2.spells.push({n: '<img src=x onerror=window.__xss=1>', s: '<b>', l: 1, sc: 'evocation', cl: ['Wizard']});
+    K.KApp.setRulebook({version: 'v2', rb: rb2});
+    kclick('[data-tab="adat"]');
+    ok(!kq('#ch-Wizard_book img') && !K.__xss, 'nincs befecskendezés');
+    has(kq('#ch-Wizard_book').textContent, '<img src=x');
+  });
   ktest('lista → lap: a saját kártya a lapra visz; fejléc, HP, AC, initiative, fülek', () => {
     K.KApp.setAuth({status: 'signedIn', email: 'a@x.hu'});
     K.KApp.setChars([{id: 'p1', kind: 'pc', owner: 'a@x.hu', visibility: 'party', name: 'Minta Tolvaj', ac: 14, hp: {cur: 24, max: 24}}]);
@@ -3497,7 +4164,8 @@ describe('Szerződés (szerzodes.js)', () => {
   test('minden felhős útvonal gyűjteményére van szabály a firestore.rules-ban', async () => {
     const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text(), UT = W.Szerzodes.UT;
     const utak = Object.values(UT).map(u => typeof u === 'function' ? u('x') : u);
-    eq(utak.length, 13, 'az útvonalak száma (új útvonalnál a teszt is bővül)');
+    eq(utak.length, 15, 'az útvonalak száma (új útvonalnál a teszt is bővül)');
+    has(rules, 'match /hist/{h} ', 'a lapok előzménye (alkollekció)');
     for (const u of utak) {
       const col = u.split('/')[0], doc = u.split('/')[1];
       const van = col.startsWith('dmscreen') ? rules.includes("col.matches('dmscreen.*')")
@@ -3509,10 +4177,54 @@ describe('Szerződés (szerzodes.js)', () => {
     const {UT, HELYI, CSATORNA} = W.Szerzodes, kert = [];
     await W.Sheet.loadRulebook({get: async p => { kert.push(p); return p === UT.szabalyMeta ? {version: 1, chunks: ['a']} : {data: '{"k":"spells","a":[]}'}; }});
     eq(kert, [UT.szabalyMeta, UT.szabalyDarab('a')]);
-    eq(HELYI, {allapot: 'dmscreen', lapok: 'dmscreen-sheets'}, 'a régi kulcsok (a böngészőben tárolt másolat ezeken van)');
+    eq([HELYI.allapot, HELYI.lapok, HELYI.szintlepes('x')], ['dmscreen', 'dmscreen-sheets', 'dmscreen-szintlepes-x'], 'a régi kulcsok (a böngészőben tárolt másolat ezeken van)');
     localStorage.removeItem(HELYI.allapot); A('doSave()');
     await until(() => JSON.parse(localStorage.getItem(HELYI.allapot) || 'null')?.settings?.sources, 2000, 'helyi mentés a HELYI.allapot kulcson');
     has(await (await fetch('../player.html', {cache: 'no-store'})).text(), `new BroadcastChannel('${CSATORNA}')`, 'player.html csatornája');
+  });
+  test('szintlépés mezői a lapon: levelUp, build.spells, spells.cls / book tisztítva; az előzmény (normHist); XSS-kód csak szövegként', () => {
+    const H = W.Sheet, XSS = '<img src=x onerror=alert(1)>';
+    eq(H.norm({}).levelUp, null);
+    for (const to of [1, 0, -3, 'x', null]) eq(H.norm({levelUp: {to}}).levelUp, null, 'érvénytelen cél: ' + to);
+    eq(H.norm({levelUp: {to: 99, by: XSS, at: 'tegnap', mc: 1, extra: 5}}).levelUp, {to: 20, by: XSS, at: '', mc: true});
+    eq(H.norm({levelUp: {to: 6, by: 'dm', at: '2026-11-02T18:00:00.000Z'}}).levelUp, {to: 6, by: 'dm', at: '2026-11-02T18:00:00.000Z', mc: false});
+    const b = H.norm({auto: true, build: {levels: [{c: 'Wizard'}], spells: {Wizard: {cantrips: ['Light|PHB', 'Light|PHB', 5, XSS], book: ['Shield|PHB'], kitalalt: ['X|Y']}, Bard: {known: ['Sleep|PHB']}, Fighter: 'szöveg'}}}).build;
+    eq(b.spells, {Wizard: {cantrips: ['Light|PHB'], book: ['Shield|PHB']}}, 'csak a felépítés osztályai, csak érvényes refek');
+    eq(H.norm({auto: true, build: {levels: []}}).build.spells, null, 'null = még nincs besorolva');
+    eq(H.norm({auto: true, build: {levels: [{c: 'Bard'}], spells: {}}}).build.spells, {}, 'a besorolt, de üres lista nem null');
+    const sp = H.norm({spells: [{name: 'A', cls: 'Wizard', book: 1}, {name: 'B', cls: {x: 1}}]}).spells;
+    eq([sp[0].cls, sp[0].book, 'cls' in sp[1], 'book' in sp[1]], ['Wizard', true, false, false]);
+    const h = H.normHist({at: '2026-11-02T18:00:00.000Z', by: 'a@x.hu', reason: 'levelup', from: 5, to: 6, hp: 'roll', sheet: {name: XSS, levelUp: {to: 6}}});
+    eq([h.reason, h.from, h.to, h.hp, h.sheet.name, h.sheet.levelUp.to], ['levelup', 5, 6, 'roll', XSS, 6]);
+    eq([H.normHist({reason: 'x', hp: 'x'}).reason, H.normHist({hp: 'x'}).hp, H.normHist(null).sheet.name], ['manual', '', 'Névtelen']);
+    for (const x of [H.norm({levelUp: {to: 6, by: XSS}, spells: [{name: 'A', cls: 'Wizard', book: true, auto: true}], auto: true, build: {levels: [{c: 'Wizard'}], spells: {Wizard: {book: ['A|B']}}}}), h])
+      eq(JSON.parse(JSON.stringify(x.sheet ? H.normHist(x) : H.norm(x))), JSON.parse(JSON.stringify(x)), 'még egyszer tisztítva nem változik');
+  });
+  // a firestore.rules játékos-feltételeinek tükre (a szabályszöveget magát a konzol ellenőrzi; a teszt a szöveg kulcssorait is rögzíti)
+  const szabalyTukor = (old, now) => {
+    const lv = d => d.build == null ? 0 : (d.build.levels || []).length, lu = old.levelUp ?? null, nlu = now.levelUp ?? null;
+    const levelsOk = (lv(old) === 0 || lv(now) > 0) && (lv(old) === 0 || lv(now) <= lv(old) || (lu != null && lv(now) <= lu.to));
+    const levelUpOk = fmt(nlu) === fmt(lu) || nlu == null || (lv(now) < lv(old) && nlu.to <= lv(old));
+    return levelsOk && levelUpOk;
+  };
+  test('szabályok: a játékos nem adhat magának szintet és engedélyt, a régi lapot nem zárja ki; a visszavonás visszakapja az engedélyt', async () => {
+    const L = (n, levelUp) => ({build: {levels: Array(n).fill({c: 'Rogue'})}, levelUp});
+    const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text();
+    for (const sor of ['(buildLv(old) == 0 || buildLv(now) > 0)', "buildLv(old) == 0 || buildLv(now) <= buildLv(old) || (lu != null && buildLv(now) <= lu.to)", "b == null ? 0 : b.get('levels', []).size()", 'allow read, create: if isDM() || ownSheet();', 'allow delete: if isDM();', "lu == old.get('levelUp', null) || lu == null || (buildLv(now) < buildLv(old) && lu.to <= buildLv(old))",
+      'levelsOk(resource.data, request.resource.data) && levelUpOk(resource.data, request.resource.data)']) has(rules, sor, 'a tükör a szabály szövegét követi');
+    ok(szabalyTukor(L(5, null), L(5, null)), 'sima írás');
+    ok(!szabalyTukor(L(5, null), L(6, null)), 'engedély nélkül nincs új szint');
+    ok(szabalyTukor(L(5, {to: 6}), L(6, null)), 'engedéllyel lép, és törli');
+    ok(szabalyTukor(L(5, {to: 7}), L(6, {to: 7})), 'két szintre szóló engedélynél az első után megmarad');
+    ok(!szabalyTukor(L(5, {to: 6}), L(7, null)), 'az engedélyen túl nem');
+    ok(!szabalyTukor(L(5, null), L(5, {to: 6})), 'engedélyt nem adhat magának');
+    ok(!szabalyTukor(L(5, {to: 6}), L(5, {to: 7})), 'az engedélyt nem emelheti');
+    ok(szabalyTukor(L(6, null), L(5, {to: 6})), 'visszavonás: az engedély visszajön');
+    ok(!szabalyTukor(L(6, null), L(5, {to: 7})), 'visszavonásnál sem magasabbra');
+    ok(szabalyTukor({levelUp: null}, L(5, null)), 'a kézi lap átállítható (nincs felépítése)');
+    ok(szabalyTukor({}, {name: 'x'}), 'a mezők nélküli régi lap írható');
+    ok(!szabalyTukor(L(5, null), {build: null, levelUp: null}), 'a felépítést nem veheti le (utána bármekkorát írhatna)');
+    ok(!szabalyTukor(L(5, null), L(0, null)), 'üresre sem');
   });
   test('a tisztítók kimenete stabil: még egyszer tisztítva nem változik (lény, harc, állapot, nyilvános karakterrész)', () => {
     const {normCreature, normCombatant, sanitizeState, normPublicChar} = W.Szerzodes;

@@ -22,10 +22,12 @@ window.Szerzodes = (() => {
     dmek: 'access/dms',                   // {emails}: csak a konzolból írható
     lapok: 'sheets',                      // telefonos karakterlapok (Sheet.norm)
     lap: id => 'sheets/' + id,
+    elozmenyek: id => 'sheets/' + id + '/hist',  // egy lap előzményei (Sheet.normHist)
+    elozmeny: (id, h) => 'sheets/' + id + '/hist/' + h,
     szabalyMeta: 'rules/meta',            // szabálykönyv (sheet.js: loadRulebook)
     szabalyDarab: id => 'rules/' + id,
   };
-  const HELYI = {allapot: 'dmscreen', lapok: 'dmscreen-sheets'};
+  const HELYI = {allapot: 'dmscreen', lapok: 'dmscreen-sheets', szintlepes: id => 'dmscreen-szintlepes-' + id};  // szintlepes: a varázsló piszkozata a telefonon
   const CSATORNA = 'dmscreen-player';
 
   // ---------- lények ----------
@@ -160,7 +162,7 @@ window.Szerzodes = (() => {
     };
   }
 
-  if (typeof modul === 'function') modul('szerzodes', 1);
+  if (typeof modul === 'function') modul('szerzodes', 2);
   return {UT, HELYI, CSATORNA, SECTIONS, TEMPLATE, KINDS, SIDES, VIS, ALLAPOTOK, ALAP_BEALLITASOK, str, safeId, blankCreature, splitEntry,
     normInventory, normCreature, normCombatant, sanitizeState, normPublicChar};
 })();

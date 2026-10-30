@@ -36,12 +36,35 @@ service cloud.firestore {
             && request.resource.data.visibility == resource.data.visibility
             && request.resource.data.kind == resource.data.kind);
     }
-    // a teljes telefonos karakterlap: csak a gazdája és a DM látja; a gazdája írhatja, de a gazdát nem változtathatja meg
+    // a szintek száma a felépítésben (0 = a régi, kézi lapon még nincs felépítés)
+    function buildLv(d) {
+      let b = d.get('build', null);
+      return b == null ? 0 : b.get('levels', []).size();
+    }
+    // a játékos nem adhat magának szintet: a felépítés csak a DM engedélyéig nőhet (a kézi lap átállítása kivétel), és a meglévő felépítést nem veheti le
+    function levelsOk(old, now) {
+      let lu = old.get('levelUp', null);
+      return (buildLv(old) == 0 || buildLv(now) > 0)
+        && (buildLv(old) == 0 || buildLv(now) <= buildLv(old) || (lu != null && buildLv(now) <= lu.to));
+    }
+    // az engedélyt a játékos csak törölheti; visszavonásnál visszajöhet, de a korábbi szintnél magasabbra nem szólhat
+    function levelUpOk(old, now) {
+      let lu = now.get('levelUp', null);
+      return lu == old.get('levelUp', null) || lu == null || (buildLv(now) < buildLv(old) && lu.to <= buildLv(old));
+    }
+    // a teljes telefonos karakterlap: csak a gazdája és a DM látja; a gazdája írhatja, de a gazdát nem változtathatja meg, és szintet sem adhat magának
     match /sheets/{id} {
       allow read: if isDM() || (isPlayer() && resource.data.owner == email());
       allow create, delete: if isDM();
       allow update: if isDM()
-        || (isPlayer() && resource.data.owner == email() && request.resource.data.owner == resource.data.owner);
+        || (isPlayer() && resource.data.owner == email() && request.resource.data.owner == resource.data.owner
+            && levelsOk(resource.data, request.resource.data) && levelUpOk(resource.data, request.resource.data));
+      // előzmény: a gazda és a DM olvassa és létrehozza; módosítani nem lehet, törölni csak a DM
+      match /hist/{h} {
+        function ownSheet() { return isPlayer() && get(/databases/$(database)/documents/sheets/$(id)).data.owner == email(); }
+        allow read, create: if isDM() || ownSheet();
+        allow delete: if isDM();
+      }
     }
 
     // szabálykönyv (varázslatok, tárgyak, featek): minden játékos olvassa, csak a DM tölti fel
