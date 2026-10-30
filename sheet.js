@@ -474,18 +474,14 @@ window.Sheet = (() => {
       }
     }
   }
-  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok];
-
-  function calc(s, rb = null) {
-    const ctx = calcKezdet(s, rb);
-    for (const lepes of CALC_LEPESEK) lepes(ctx);
-    const {b, ov, full, classes, L, PB, fxs, choices, missing, features, race, subrace} = ctx;
+  function calcHatasok(ctx) {
+    const {b, fxs} = ctx;
     // hatások összegyűjtése
     const abil = {};
     for (const a of ABIL) abil[a] = {base: b.base[a], parts: [{v: b.base[a], src: 'alapérték'}], set: null};
     const A = {saves: {}, skills: {}, expert: [], jack: null, remarkable: null, saveAll: null, saveBonus: [], hp: [], init: [], passive: {}, armor: [], weapon: [], tool: [], lang: [],
       dv: 0, resist: [], acBase: [], acBonus: [], speed: [], heavyOk: false, mamCap: 2, rangedAtk: 0, duelDmg: 0, martialArts: null, res: [], spells: [], todo: []};
-    for (const {fx, src, ctx, ch} of fxs) {
+    for (const {fx, src, ctx: kor, ch} of fxs) {
       if (isObj(fx.ab)) for (const a of ABIL) if (num(fx.ab[a])) abil[a].parts.push({v: num(fx.ab[a]), src});
       if (ch.ability) for (const a of ch.ability.ok) abil[a].parts.push({v: ch.ability.amt, src});
       if (isObj(fx.abSet)) for (const a of ABIL) if (num(fx.abSet[a]) > (abil[a].set?.v || 0)) abil[a].set = {v: num(fx.abSet[a]), src};
@@ -498,7 +494,7 @@ window.Sheet = (() => {
       if (fx.saveAll && !A.saveAll) A.saveAll = src;
       if (isObj(fx.saveBonus) && ABIL.includes(fx.saveBonus.ab)) A.saveBonus.push({...fx.saveBonus, src});
       if (num(fx.hpPerLevel)) A.hp.push({v: num(fx.hpPerLevel), src});
-      if (num(fx.hpPerClassLevel) && ctx.cls) A.hp.push({v: num(fx.hpPerClassLevel), src, cls: ctx.cls});
+      if (num(fx.hpPerClassLevel) && kor.cls) A.hp.push({v: num(fx.hpPerClassLevel), src, cls: kor.cls});
       if (num(fx.init)) A.init.push({v: num(fx.init), src});
       if (isObj(fx.passive)) for (const [k, v] of Object.entries(fx.passive)) A.passive[k] = (A.passive[k] || 0) + num(v);
       for (const k of ['armor', 'weapon', 'tool', 'lang']) A[k].push(...arr(fx[k], 30).map(x => str(x, 80)));
@@ -507,21 +503,29 @@ window.Sheet = (() => {
       A.resist.push(...arr(fx.resist, 20).map(x => str(x, 40)));
       if (isObj(fx.acBase)) A.acBase.push({...fx.acBase, src});
       if (num(fx.acBonus)) A.acBonus.push({v: num(fx.acBonus), src});
-      if (isObj(fx.speed)) A.speed.push({...fx.speed, src, ctx});
+      if (isObj(fx.speed)) A.speed.push({...fx.speed, src, ctx: kor});
       if (fx.heavyOk) A.heavyOk = true;
       if (num(fx.mamCap) > A.mamCap) A.mamCap = num(fx.mamCap);
       A.rangedAtk += num(fx.rangedAtk); A.duelDmg = Math.max(A.duelDmg, num(fx.duelDmg));
-      if (fx.martialArts) A.martialArts = ctx;
-      if (isObj(fx.res) && fx.res.n) A.res.push({...fx.res, src, ctx});
-      if (Array.isArray(fx.spells)) A.spells.push(...fx.spells.filter(isObj).map(x => ({...x, ctx})));
+      if (fx.martialArts) A.martialArts = kor;
+      if (isObj(fx.res) && fx.res.n) A.res.push({...fx.res, src, ctx: kor});
+      if (Array.isArray(fx.spells)) A.spells.push(...fx.spells.filter(isObj).map(x => ({...x, ctx: kor})));
       if (fx.todo) A.todo.push({key: '✋ ' + src, text: `${src}: ${str(fx.todo, 300)}`});
     }
+    ctx.abil = abil;
+    ctx.A = A;
+  }
+  function calcExpertise(ctx) {
+    const {A, choices} = ctx;
     // expertise csak jártas skillre (mindegyik után, hogy a sorrend ne számítson)
     for (const c of A.expert) {
       c.ok = c.ok.filter(k => A.skills[k]);
       for (const k of c.ok) A.skills[k] = {p: 2, src: A.skills[k].src + ' + expertise (' + c.src + ')'};
     }
     for (const c of choices) c.done = c.ok.length >= c.n || ((c.kind === 'ability' || c.kind === 'saves') && c.ok.length >= listFrom(c).length);
+  }
+  function calcFelszereles(ctx) {
+    const {s, rb, full, abil, A} = ctx;
     // felszerelés: felszerelt tárgyak a szabálykönyvből (a saját, ismeretlen tárgyak nem számítanak); hangolást kérőnél csak hangolva
     const items = full ? allItems(rb) : [];
     const worn = s.inventory.filter(i => i.equipped).map(i => ({i, r: items.length ? byRef(items, i.ref, i.name) : null})).filter(x => x.r);
@@ -530,7 +534,14 @@ window.Sheet = (() => {
       if (isObj(r.abS)) for (const a of ABIL) if (num(r.abS[a]) > (abil[a].set?.v || 0)) abil[a].set = {v: num(r.abS[a]), src: i.name};
       if (num(r.bS)) A.saveBonus.push({flat: num(r.bS), src: i.name});
     }
+    ctx.worn = worn;
+  }
+  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok, calcHatasok, calcExpertise, calcFelszereles];
 
+  function calc(s, rb = null) {
+    const ctx = calcKezdet(s, rb);
+    for (const lepes of CALC_LEPESEK) lepes(ctx);
+    const {b, ov, full, classes, L, PB, fxs, choices, missing, features, race, subrace, abil, A, worn} = ctx;
     const val = (key, v, parts) => (key in ov && ov[key] !== v ? {v: ov[key], calc: v, ov: true, parts} : {v, calc: v, ov: false, parts});
     const sum = parts => parts.reduce((t, p) => t + p.v, 0);
     const abilities = {}, mods = {};
