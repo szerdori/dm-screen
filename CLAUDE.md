@@ -49,7 +49,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 - Böngészős előnézethez a `.claude\launch.json`-ba (git-ignorált) egy statikus szerver kell; a régi PowerShell-szerver (`server.ps1`) már nincs meg.
 
 ## Állapot
-- **Játékos app:** a 0–2. fázis a `main`-en; a 3. fázis (szintlépés-varázsló, előzmények) kész a `claude/fazis-3-szintlepes-varazslo-06749a` ágon, élesítés a felhasználó kérésére (teendői: `firestore.rules` a konzolba, szabálykönyv újratöltése) – `TERV-jatekos-app.md`. Következik a 4. fázis (multiclass).
+- **Játékos app:** a 0–3. fázis a `main`-en (a 3.: szintlépés-varázsló, előzmények; feltöltve 2026-10-30; a felhasználó teendői: `firestore.rules` a konzolba, szabálykönyv újratöltése, próba telefonon) – `TERV-jatekos-app.md`. Következik a 4. fázis (multiclass).
 - **Refaktor:** `TERV-refaktor.md` (elfogadva 2026-10-29), ág: `refaktor-retegek`. Kész és élesben: 0–7. lépés (a 7.: `Sheet.calc` → `CALC_LEPESEK`, 2026-10-30). A 8. lépés (opcionális, a `karakter.html` rétegei) a 3. fázis élesítése után.
 
 ## Nyitott / félretett ügyek (2026-10-29)
