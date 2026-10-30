@@ -653,12 +653,27 @@ describe('Importálás', () => {
     eq(W.stableJson(ki(DDB)), W.stableJson(ARANY_DDB.ddb), 'DDB');
     eq(W.stableJson(ki(ddbParty())), W.stableJson(ARANY_DDB.party), 'ddbParty');
   });
-  test('minden importáló a szerződés szerinti lényt adja: normCreature(ki) ≡ ki', async () => {
+  test('minden importálót a saját formátuma választja ki, és a szerződés szerinti lényt adja: normCreature(ki) ≡ ki', async () => {
     stubFive();
-    const n = W.normCreature, sj = W.stableJson;
-    const lenyek = [W.convertDDB(DDB), W.convertDDB(ddbParty()), W.convert5e(FIVE.brute), W.convert5e(FIVE.scout),
-      W.convert5e(await W.resolveCopy(structuredClone(FIVE.chief))), n({...A('TEMPLATE'), id: 'sablon'}), n({name: 'Pók', id: 'pok'})];
-    for (const c of lenyek) eq(sj(n(structuredClone(c))), sj(c), c.name);
+    const n = W.normCreature, sj = W.stableJson, imp = A('IMPORTEROK');
+    const mintak = {karakterlap: W.Sheet.TEMPLATE, 'D&D Beyond': DDB, '5e.tools': FIVE.chief, JSON: {name: 'Pók'}};
+    eq(imp.map(i => i.nev).sort(), Object.keys(mintak).sort(), 'minden importálóhoz van minta');
+    for (const [nev, m] of Object.entries(mintak)) {
+      const valasztott = imp.find(i => i.felismer(m));
+      eq(valasztott.nev, nev);
+      const ki = await valasztott.atalakit(structuredClone(m));
+      eq(sj(n(structuredClone(ki))), sj(ki), nev);
+    }
+    for (const c of [W.convertDDB(ddbParty()), W.convert5e(FIVE.brute), W.convert5e(FIVE.scout), n({...A('TEMPLATE'), id: 'sablon'})]) eq(sj(n(structuredClone(c))), sj(c), c.name);
+  });
+  test('az importálók sorrendje dönt; a lap a lények elé kerül az eredményben; hibás elemnél elutasít', async () => {
+    const imp = A('IMPORTEROK'), valaszt = o => imp.find(i => i.felismer(o)).nev;
+    eq(valaszt({format: W.Sheet.FORMAT, stats: [{id: 1}], ac: [1]}), 'karakterlap');
+    eq(valaszt({stats: [{id: 1}], ac: [1]}), 'D&D Beyond');
+    eq(valaszt({ac: [1]}), '5e.tools');
+    const r = await W.importAny([{name: 'A'}, W.Sheet.TEMPLATE]);
+    eq(r.map(c => c.name), [W.Sheet.TEMPLATE.name, 'A']);
+    let hiba = null; try { await W.importAny([null]); } catch (e) { hiba = e; } ok(hiba, 'null elem');
   });
   test('formátum felismerése: saját, 5e.tools, D&D Beyond, tömb, {creatures}', async () => {
     stubFive();
