@@ -3,6 +3,72 @@
 'use strict';
 modul('akciok', 1);
 
+// ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
+// Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
+const dobasMod = e => e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : '';  // Shift = előny, Ctrl = hátrány
+const harcos = el => byId(el.closest('[data-cid]')?.dataset.cid);
+const hpMezo = el => el.closest('.tile').querySelector('.hpin').value;
+const harcMod = (el, fn) => { fn(harcos(el)); save(); render(); };  // a gomb harcosán változtat, aztán ment és rajzol
+
+const AKCIOK = {
+  // harc
+  next: () => step(1),
+  prev: () => step(-1),
+  rollInit: () => openInitMenu(),
+  init: el => rollInitiative(el.dataset.mode),
+  rollCustom: () => { const v = $('#diceInput').value.trim(); if (v) rollDmg(v, '', v); },
+  select: el => { selected = harcos(el).cid; render(); },
+  deselect: () => { selected = null; render(); },
+  dmg: el => { const n = Math.abs(parseInt(hpMezo(el))); if (n > 0) harcMod(el, x => damage(x, n)); },
+  heal: el => { const n = Math.abs(parseInt(hpMezo(el))); if (n > 0) harcMod(el, x => heal(x, n)); },
+  temp: el => {
+    const n = parseInt(hpMezo(el));
+    if (n >= 0) harcMod(el, x => { x.temp = n; log(`${esc(nameOf(x))}: ${n} temp HP`); });
+  },
+  toggleConc: el => harcMod(el, x => { x.conc = !x.conc; }),
+  toggleDead: el => harcMod(el, x => { x.dead = !x.dead; }),
+  toggleSide: el => harcMod(el, x => { x.side = sideOf(x) === 'enemy' ? 'ally' : 'enemy'; }),
+  toggleHidden: el => harcMod(el, x => { x.hiddenP = !x.hiddenP; }),
+  dup: el => { const x = harcos(el); addToEncounter({...x.c, id: x.c.libId || x.c.id}, 1); },
+  remove: el => {
+    const x = harcos(el);
+    if (confirm(`Eltávolítod: ${nameOf(x)}?`)) {
+      if (S.enc.active === x.cid) step(1);
+      S.enc.list = S.enc.list.filter(y => y !== x);
+      if (S.enc.active === x.cid) S.enc.active = null;
+      save(); render();
+    }
+  },
+  rmCond: el => harcMod(el, x => { x.cond.splice(+el.dataset.i, 1); }),
+  leg: el => { const i = +el.dataset.i; harcMod(el, x => { x.leg = x.leg === i + 1 ? i : i + 1; }); },
+  addCond: el => {
+    const name = $('#condSel').value || $('#condCustom').value.trim();
+    if (!name) return;
+    const rounds = parseInt($('#condRounds').value);
+    harcMod(el, x => { x.cond.push({name, rounds: rounds > 0 ? rounds : null}); });
+  },
+  editCombatant: el => {
+    const x = harcos(el);
+    // a játékos app beállításai a karakterhez tartoznak, nem a harchoz: a könyvtári lényből jönnek, és oda azonnal vissza is íródnak
+    const lib = S.library.find(l => l.id === x.c.libId);
+    openEditor(lib ? {...x.c, owner: lib.owner, share: lib.share} : x.c, c => {
+      const oldMax = x.c.hp.max;
+      c.libId = x.c.libId; x.c = c;
+      x.hp = x.hp === oldMax ? c.hp.max : Math.min(x.hp, c.hp.max);
+      const l = S.library.find(l => l.id === c.libId);
+      if (l && l.kind === c.kind) Object.assign(l, normCreature({...l, owner: c.owner, share: c.share}));
+    }, 'Adatlap szerkesztése (csak ebben a harcban)', {share: true, shareNote: 'A játékos app beállításai a karakterhez tartoznak: a könyvtárban is azonnal érvényesek.'});
+  },
+  saveToLib: el => {
+    const x = harcos(el), c = structuredClone(x.c);
+    c.id = c.libId && S.library.some(l => l.id === c.libId) ? c.libId : uid();
+    if (c.kind === 'pc') c.hp.cur = x.hp;
+    const saved = upsertLibrary(c);
+    x.c.libId = saved.id;
+    log(`📚 ${esc(saved.name)} elmentve a könyvtárba`); save();
+  },
+};
+
 // ---------- események ----------
 // a gombok és mezők eseményei (document szinten, data-act / data-* alapján); induláskor kapcsoljuk fel.
 // A törzs szándékosan nincs behúzva, hogy a többsoros szövegek betűre változatlanok maradjanak (az 5. lépés az AKCIOK nyilvántartásra bontja).
@@ -11,7 +77,7 @@ document.addEventListener('click', async e => {
   const t = e.target;
   // Csapat nézet: titkos skill-dobás egy játékosnak
   const sk = t.closest('td.sk');
-  if (sk) { partyRoll([sk.dataset.pc], sk.dataset.sk, e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : ''); return; }
+  if (sk) { partyRoll([sk.dataset.pc], sk.dataset.sk, dobasMod(e)); return; }
   const th = t.closest('th.sortable');
   if (th) { setPartySort(th.dataset.sort, /^\d+$/.test(th.dataset.col) ? +th.dataset.col : th.dataset.col); rerenderParty(); return; }
   // dobások
@@ -21,7 +87,7 @@ document.addEventListener('click', async e => {
     const x = cidEl ? byId(cidEl.dataset.cid) : null;
     const who = x ? nameOf(x) : '';
     const label = r.closest('[data-label]')?.dataset.label || r.dataset.label || '';
-    if (r.dataset.hit) rollHit(r.dataset.hit, who, label || 'Támadás', e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : '');
+    if (r.dataset.hit) rollHit(r.dataset.hit, who, label || 'Támadás', dobasMod(e));
     else if (r.dataset.roll) rollDmg(r.dataset.roll, who, label || 'Dobás', e.shiftKey);
     else if (r.dataset.rech) {
       const d = rnd(6), ok = d >= +r.dataset.rech;
@@ -33,8 +99,8 @@ document.addEventListener('click', async e => {
   if (chk) {
     const x = byId(chk.closest('[data-cid]')?.dataset.cid); if (!x) return;
     const sv = t.closest('[data-save]');
-    if (sv) rollHit(sgn(+x.c.saves[sv.dataset.save]), nameOf(x), ABIL_FULL[sv.dataset.save] + ' mentő', e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : '');
-    else { const a = chk.dataset.check; rollHit(sgn(mod(x.c.abilities[a])), nameOf(x), ABIL_FULL[a] + ' próba', e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : ''); }
+    if (sv) rollHit(sgn(+x.c.saves[sv.dataset.save]), nameOf(x), ABIL_FULL[sv.dataset.save] + ' mentő', dobasMod(e));
+    else { const a = chk.dataset.check; rollHit(sgn(mod(x.c.abilities[a])), nameOf(x), ABIL_FULL[a] + ' próba', dobasMod(e)); }
     return;
   }
   if (t.dataset.die) { rollDmg(t.dataset.die, '', t.dataset.die.replace('1', '')); return; }
@@ -42,34 +108,13 @@ document.addEventListener('click', async e => {
 
   const el = t.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
-  const x = byId(el.closest('[data-cid]')?.dataset.cid);
+  if (Object.hasOwn(AKCIOK, act)) { await AKCIOK[act](el, e); return; }
   const libEl = el.closest('[data-lib]'), lib = libEl && S.library.find(c => c.id === libEl.dataset.lib);
   const cnt = () => Math.max(1, +(el.closest('.lrow')?.querySelector('.cnt')?.value) || 1);
 
   switch (act) {
-    case 'next': step(1); break;
-    case 'prev': step(-1); break;
-    case 'rollInit': openInitMenu(); break;
-    case 'init': rollInitiative(el.dataset.mode); break;
     case 'openLib': openLib(); break;
     case 'menu': openMenu(); break;
-    case 'rollCustom': { const v = $('#diceInput').value.trim(); if (v) rollDmg(v, '', v); break; }
-    case 'select': selected = x.cid; render(); break;
-    case 'deselect': selected = null; render(); break;
-    case 'dmg': case 'heal': {
-      const n = Math.abs(parseInt(el.closest('.tile').querySelector('.hpin').value));
-      if (n > 0) { act === 'dmg' ? damage(x, n) : heal(x, n); save(); render(); }
-      break;
-    }
-    case 'temp': {
-      const n = parseInt(el.closest('.tile').querySelector('.hpin').value);
-      if (n >= 0) { x.temp = n; log(`${esc(nameOf(x))}: ${n} temp HP`); save(); render(); }
-      break;
-    }
-    case 'toggleConc': x.conc = !x.conc; save(); render(); break;
-    case 'toggleDead': x.dead = !x.dead; save(); render(); break;
-    case 'toggleSide': x.side = sideOf(x) === 'enemy' ? 'ally' : 'enemy'; save(); render(); break;
-    case 'toggleHidden': x.hiddenP = !x.hiddenP; save(); render(); break;
     // 'dmscreen-player' itt ablaknév (ugyanaz a lap nyílik újra), nem a CSATORNA
     case 'openPlayer': window.open('player.html','dmscreen-player', 'popup,width=1280,height=800'); break;
     case 'openCharApp': window.open('karakter.html', '_blank'); break;
@@ -81,7 +126,7 @@ document.addEventListener('click', async e => {
     case 'partyRemove': setPartyMember(el.dataset.pc, false); rerenderParty(); break;
     case 'partySortReset': partySort.s = {col: null, dir: 1}; rerenderParty(); break;
     case 'libParty': setPartyMember(lib.id, !partyMembers().some(c => c.id === lib.id)); filterLib(); break;
-    case 'partyGroup': partyRoll(partyMembers().map(c => c.id), el.dataset.sk, e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : ''); break;
+    case 'partyGroup': partyRoll(partyMembers().map(c => c.id), el.dataset.sk, dobasMod(e)); break;
     case 'partyEdit': {
       const pcLib = S.library.find(c => c.id === el.dataset.pc);
       if (pcLib) openEditor(pcLib, c => { c.id = pcLib.id; upsertLibrary(c, false); setTimeout(openParty); }, undefined, {share: true});
@@ -93,45 +138,6 @@ document.addEventListener('click', async e => {
       catch { el.textContent = 'A böngésző nem engedte'; }
       break;
     case 'lootLog': log('🎁 ' + esc(lootText(lootResult)).replace(/\n/g, '<br>')); el.textContent = '✓ Naplóban'; break;
-    case 'dup': addToEncounter({...x.c, id: x.c.libId || x.c.id}, 1); break;
-    case 'remove':
-      if (confirm(`Eltávolítod: ${nameOf(x)}?`)) {
-        if (S.enc.active === x.cid) step(1);
-        S.enc.list = S.enc.list.filter(y => y !== x);
-        if (S.enc.active === x.cid) S.enc.active = null;
-        save(); render();
-      }
-      break;
-    case 'rmCond': x.cond.splice(+el.dataset.i, 1); save(); render(); break;
-    case 'leg': { const i = +el.dataset.i; x.leg = x.leg === i + 1 ? i : i + 1; save(); render(); break; }
-    case 'addCond': {
-      const name = $('#condSel').value || $('#condCustom').value.trim();
-      if (!name) break;
-      const rounds = parseInt($('#condRounds').value);
-      x.cond.push({name, rounds: rounds > 0 ? rounds : null});
-      save(); render(); break;
-    }
-    case 'editCombatant': {
-      // a játékos app beállításai a karakterhez tartoznak, nem a harchoz: a könyvtári lényből jönnek, és oda azonnal vissza is íródnak
-      const lib = S.library.find(l => l.id === x.c.libId);
-      openEditor(lib ? {...x.c, owner: lib.owner, share: lib.share} : x.c, c => {
-        const oldMax = x.c.hp.max;
-        c.libId = x.c.libId; x.c = c;
-        x.hp = x.hp === oldMax ? c.hp.max : Math.min(x.hp, c.hp.max);
-        const l = S.library.find(l => l.id === c.libId);
-        if (l && l.kind === c.kind) Object.assign(l, normCreature({...l, owner: c.owner, share: c.share}));
-      }, 'Adatlap szerkesztése (csak ebben a harcban)', {share: true, shareNote: 'A játékos app beállításai a karakterhez tartoznak: a könyvtárban is azonnal érvényesek.'});
-    }
-      break;
-    case 'saveToLib': {
-      const c = structuredClone(x.c);
-      c.id = c.libId && S.library.some(l => l.id === c.libId) ? c.libId : uid();
-      if (c.kind === 'pc') c.hp.cur = x.hp;
-      const saved = upsertLibrary(c);
-      x.c.libId = saved.id;
-      log(`📚 ${esc(saved.name)} elmentve a könyvtárba`); save();
-      break;
-    }
     case 'newCreature': openEditor(blankCreature(), c => { upsertLibrary(c, false); log(`📚 ${esc(c.name)} létrehozva`); }, 'Új lény', {share: true}); break;
     case 'edSave': {
       const ow = $('#edForm').elements.owner?.value.trim();
