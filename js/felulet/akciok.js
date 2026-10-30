@@ -11,6 +11,7 @@ const hpMezo = el => el.closest('.tile').querySelector('.hpin').value;
 const harcMod = (el, fn) => { fn(harcos(el)); save(); render(); };  // a gomb harcosán változtat, aztán ment és rajzol
 const konyvtari = el => { const libEl = el.closest('[data-lib]'); return libEl && S.library.find(c => c.id === libEl.dataset.lib); };
 const darab = el => Math.max(1, +(el.closest('.lrow')?.querySelector('.cnt')?.value) || 1);
+const fiveTalalat = async el => convert5e(await resolveCopy(structuredClone(fiveResults[+el.closest('[data-five]').dataset.five])));
 
 const AKCIOK = {
   // harc
@@ -138,6 +139,32 @@ const AKCIOK = {
     const c = it && to && addItemTo(to, it, n);
     if (c) { el.textContent = '✓ ' + c.name; log(`🗡 ${n}× ${esc(it.n)} → ${esc(c.name)}`); }
   },
+
+  // importálás, sablonok
+  downloadSheetTemplate: () => download('karakterlap-sablon.json', Sheet.TEMPLATE),
+  showSheetTemplate: () => { $('#jsonIn').value = JSON.stringify(Sheet.TEMPLATE, null, 2); },
+  addAllPcs: () => {
+    const pcs = S.library.filter(c => c.kind === 'pc' && !S.enc.list.some(x => x.c.libId === c.id));
+    pcs.forEach(c => addToEncounter(c, 1));
+    log(`＋ ${pcs.length} játékos hozzáadva`); closeModal();
+  },
+  fiveSearch: () => fiveSearch(),
+  fiveAdd: async el => { const c = await fiveTalalat(el), n = darab(el); addToEncounter(c, n); log(`＋ ${n}× ${esc(c.name)}`); },
+  fiveSave: async el => { upsertLibrary(await fiveTalalat(el)); el.textContent = '✓ Mentve'; },
+  ddbPasteImport: () => ddbImportText($('#ddbPaste').value),
+  ddbClipboard: async () => {
+    try { ddbImportText(await navigator.clipboard.readText()); }
+    catch { $('#ddbMsg').innerHTML = '<p class="muted">A böngésző nem engedte olvasni a vágólapot – kattints a mezőbe, és nyomj Ctrl+V-t.</p>'; }
+  },
+  jsonImport: async () => {
+    try {
+      const res = await importAny(JSON.parse($('#jsonIn').value));
+      $('#jsonMsg').textContent = `✓ ${res.length} lény importálva: ${res.map(c => c.name).join(', ')}`;
+    } catch (err) { $('#jsonMsg').textContent = '⚠ ' + err.message; }
+  },
+  showTemplate: () => { $('#jsonIn').value = JSON.stringify(TEMPLATE, null, 2); },
+  downloadTemplate: () => download('dmscreen-sablon.json', TEMPLATE),
+  importFile: () => { fileMode = 'creatures'; $('#fileIn').click(); },
 };
 
 // ---------- események ----------
@@ -180,42 +207,11 @@ document.addEventListener('click', async e => {
   const el = t.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
   if (Object.hasOwn(AKCIOK, act)) { await AKCIOK[act](el, e); return; }
-  const libEl = el.closest('[data-lib]'), lib = libEl && S.library.find(c => c.id === libEl.dataset.lib);
-  const cnt = () => Math.max(1, +(el.closest('.lrow')?.querySelector('.cnt')?.value) || 1);
 
   switch (act) {
-    case 'downloadSheetTemplate': download('karakterlap-sablon.json', Sheet.TEMPLATE); break;
-    case 'showSheetTemplate': $('#jsonIn').value = JSON.stringify(Sheet.TEMPLATE, null, 2); break;
-    case 'addAllPcs': {
-      const pcs = S.library.filter(c => c.kind === 'pc' && !S.enc.list.some(x => x.c.libId === c.id));
-      pcs.forEach(c => addToEncounter(c, 1));
-      log(`＋ ${pcs.length} játékos hozzáadva`); closeModal(); break;
-    }
-    case 'fiveSearch': fiveSearch(); break;
-    case 'fiveAdd': case 'fiveSave': {
-      const m = fiveResults[+el.closest('[data-five]').dataset.five];
-      const c = convert5e(await resolveCopy(structuredClone(m)));
-      if (act === 'fiveAdd') { addToEncounter(c, cnt()); log(`＋ ${cnt()}× ${esc(c.name)}`); }
-      else { upsertLibrary(c); el.textContent = '✓ Mentve'; }
-      break;
-    }
-    case 'ddbPasteImport': ddbImportText($('#ddbPaste').value); break;
-    case 'ddbClipboard':
-      try { ddbImportText(await navigator.clipboard.readText()); }
-      catch { $('#ddbMsg').innerHTML = '<p class="muted">A böngésző nem engedte olvasni a vágólapot – kattints a mezőbe, és nyomj Ctrl+V-t.</p>'; }
-      break;
     case 'signIn': window.DMAuth?.signIn(); break;
     case 'signOut': closeModal(); window.DMAuth?.signOut(); break;
     case 'reload': location.reload(); break;
-    case 'jsonImport':
-      try {
-        const res = await importAny(JSON.parse($('#jsonIn').value));
-        $('#jsonMsg').textContent = `✓ ${res.length} lény importálva: ${res.map(c => c.name).join(', ')}`;
-      } catch (err) { $('#jsonMsg').textContent = '⚠ ' + err.message; }
-      break;
-    case 'showTemplate': $('#jsonIn').value = JSON.stringify(TEMPLATE, null, 2); break;
-    case 'downloadTemplate': download('dmscreen-sablon.json', TEMPLATE); break;
-    case 'importFile': fileMode = 'creatures'; $('#fileIn').click(); break;
     case 'encSave': {
       const list = S.enc.list.filter(y => y.c.kind !== 'pc').map(y => y.c);
       if (!list.length) { alert('Nincs nem-játékos lény az encounterben.'); break; }
