@@ -1,9 +1,9 @@
-// Játékos képernyő (felület): a második monitornak küldött nézet (publicView) és a BroadcastChannel – formája: SZERZODES.md.
+// Initiative tracker (felület): a második monitornak küldött nézet (publicView) és a BroadcastChannel – formája: SZERZODES.md.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('jatekos-kepernyo', N) és az index.html-ben a jatekos-kepernyo.js?v=N és a VART_MODULOK.
 'use strict';
 modul('jatekos-kepernyo', 1);
 
-// ---------- játékos képernyő ----------
+// ---------- Initiative tracker ----------
 // csak azt küldjük át, amit a játékosok láthatnak
 const chan = 'BroadcastChannel' in window ? new BroadcastChannel(CSATORNA) : null;
 function publicView() {

@@ -138,7 +138,7 @@ function tileHtml(x) {
     ${others.length ? `<div class="other">${esc(others.join(' · '))}</div>` : ''}
     <div class="t-foot"><button class="sidebtn ${esc(sideOf(x))}" data-act="toggleSide" title="Kattints az oldal váltásához (ellenfél ↔ csapattárs)">${SIDE_HU[sideOf(x)]}</button>${pips}<span class="grow"></span>
       <button class="small ${x.conc ? 'on' : ''}" data-act="toggleConc" title="Koncentráció">C</button>
-      <button class="small ${x.hiddenP ? 'on' : ''}" data-act="toggleHidden" title="Elrejtés a játékos képernyőről (pl. lesben álló ellenfél)">🙈</button>
+      <button class="small ${x.hiddenP ? 'on' : ''}" data-act="toggleHidden" title="Elrejtés az Initiative trackerről (pl. lesben álló ellenfél)">🙈</button>
       <button class="small" data-act="toggleDead" title="Halott / él">💀</button>
       <button class="small" data-act="dup" title="Még egy ilyen">⎘</button>
       <button class="small" data-act="remove" title="Eltávolítás">✕</button>

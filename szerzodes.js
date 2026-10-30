@@ -1,5 +1,5 @@
 // Szerződés: a DM Screen adatformátumai egy helyen (docs/dontesek/0006, SZERZODES.md).
-// - UT: minden felhős útvonal; HELYI: a böngésző-tároló kulcsai; CSATORNA: a játékos képernyő csatornája
+// - UT: minden felhős útvonal; HELYI: a böngésző-tároló kulcsai; CSATORNA: az Initiative tracker csatornája
 // - a bejövő adatok tisztítói: minden betöltött adat (import, felhő, böngésző-tároló, mentésfájl) ezeken megy át,
 //   hogy egy rosszindulatú fájl se tudjon kódot becsempészni: a számok számok, a típusok csak megengedett értékek,
 //   az azonosítók csak biztonságos karakterek, a portré csak kép-link lehet.

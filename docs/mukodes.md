@@ -2,8 +2,8 @@
 
 A funkciók megbeszélt, elfogadott viselkedése. Ha a kód és ez a leírás eltér, kérdezd meg a felhasználót, melyik a helyes. Az adatformátumok: `SZERZODES.md`.
 
-- **Harc:** csempék initiative-sorrendben, HP-mező (pozitív = sebzés, negatív = gyógyítás), temp HP, állapotok körszámmal, koncentráció-mentő DC, legendás akciók, kattintható dobások (Shift = előny/krit, Ctrl = hátrány; kriptográfiai `rnd()`), csoportos initiative, ellenfél/csapattárs oldal, **nehézség (DMG 2014)** a fejlécben, 🙈 rejtés és álnév a játékos képernyőhöz.
-- **Játékos képernyő** (`player.html`, második monitor): a harc élőben, a DM képernyőről; játékosnál HP, mindenki másnál csak állapotcímke (Sértetlen / Sérült / Súlyosan sérült / Haldoklik / Halott), AC, stat és jegyzet nélkül. Mi megy át pontosan: `SZERZODES.md`.
+- **Harc:** csempék initiative-sorrendben, HP-mező (pozitív = sebzés, negatív = gyógyítás), temp HP, állapotok körszámmal, koncentráció-mentő DC, legendás akciók, kattintható dobások (Shift = előny/krit, Ctrl = hátrány; kriptográfiai `rnd()`), csoportos initiative, ellenfél/csapattárs oldal, **nehézség (DMG 2014)** a fejlécben, 🙈 rejtés és álnév az Initiative trackerhez.
+- **Initiative tracker** (`player.html`, második monitor; a felületen ez a neve, a kódban a `player.html`, a `jatekos-kepernyo.js` és a `dmscreen-player` név szándékosan marad): a harc élőben, a DM képernyőről; játékosnál HP, mindenki másnál csak állapotcímke (Sértetlen / Sérült / Súlyosan sérült / Haldoklik / Halott), AC, stat és jegyzet nélkül. Mi megy át pontosan: `SZERZODES.md`.
 - **Import:** 5e.tools (név vagy link, 2014-es források alapból: MM, VGM, MTF, MPMM), D&D Beyond (könyvjelző a karakterlapon → vágólap → beillesztés), saját JSON-sablon, űrlap.
 - **🎁 Loot:** DMG 2014 kincstáblák (egyéni kincs, kincshalom A–I mágikus tárgyakkal), a legyőzöttek felszerelése, összérték és fejenkénti rész.
 - **👥 Csapat** (harcon kívül): tagok kezelése (könyvtárból is, NPC is), passzív értékek, skill-táblázat titkos és csoportos dobással, rendezés oszlop szerint, karakterkártyák (felszerelés tárolók szerint, pénz, eszközök), tárgykereső.

@@ -291,7 +291,7 @@ describe('Körök és sorrend', () => {
     const [p] = setup(); p.leg = 2; W.lep(1); eq(p.leg, 0);
   });
   test('üres encounterben a lépés nem hibázik', () => { W.lep(1); eq(A('S.enc.active'), null); });
-  test('a gomb kezelője rajzol (ettől frissül a játékos képernyő is); ha nincs kire lépni, nem ment és nem rajzol', () => {
+  test('a gomb kezelője rajzol (ettől frissül az Initiative tracker is); ha nincs kire lépni, nem ment és nem rajzol', () => {
     const eredeti = W.render; let n = 0;
     W.render = () => { n++; eredeti(); };
     const rajzol = (mi, fn) => { n = 0; fn(); ok(n > 0, mi + ': nem rajzolt'); };
@@ -807,7 +807,7 @@ describe('Felhő mentés (ál-adatbázissal)', () => {
 });
 
 // ======================================================================
-describe('Játékos képernyő', () => {
+describe('Initiative tracker', () => {
   test('csak a nyilvános mezők mennek át (nincs AC, jegyzet, statok)', () => {
     const [g] = add(mk()); g.notes = 'titok';
     eq(Object.keys(W.publicView().list[0]).sort(), ['active', 'cond', 'hp', 'id', 'kind', 'max', 'name', 'portrait', 'side', 'status', 'temp']);
@@ -835,7 +835,7 @@ describe('Játékos képernyő', () => {
     p.init = 20; g1.init = 10; g2.init = 5; g1.hp = 8; g1.cond = [{name: 'Prone', rounds: null}];
     W.lep(1); W.broadcast();
     const doc = () => P.document.body.textContent;
-    await until(() => doc().includes('Ogre 1'), 4000, 'játékos képernyő frissítése');
+    await until(() => doc().includes('Ogre 1'), 4000, 'Initiative tracker frissítése');
     has(doc(), 'Soron: Rella'); has(doc(), 'Súlyosan sérült'); has(doc(), 'Sértetlen'); has(doc(), 'Prone'); has(doc(), '30 / 30');
     hasNot(doc(), 'Rejtett'); hasNot(doc(), 'Bloodied');
     ok(P.document.querySelector('.e.active .name').textContent === 'Rella', 'nem a soron lévő van kiemelve');
@@ -1172,11 +1172,11 @@ async function renderEverywhere() {
   await wait(300);
 }
 function assertNoXss() {
-  for (const [nm, doc] of [['DM képernyő', W.document], ['játékos képernyő', P.document]]) {
+  for (const [nm, doc] of [['DM képernyő', W.document], ['Initiative tracker', P.document]]) {
     eq(doc.querySelectorAll('[onmouseover]').length, 0, nm + ': attribútum-befecskendezés');
     eq(doc.querySelectorAll('img[src="x"]').length, 0, nm + ': HTML-befecskendezés');
   }
-  eq(W.__xss, undefined, 'lefutott a befecskendezett kód'); eq(P.__xss, undefined, 'lefutott a kód a játékos képernyőn');
+  eq(W.__xss, undefined, 'lefutott a befecskendezett kód'); eq(P.__xss, undefined, 'lefutott a kód az Initiative trackeren');
 }
 
 describe('Biztonság (befecskendezett kód ellen)', () => {
@@ -3200,12 +3200,13 @@ describe('Szerződés (szerzodes.js)', () => {
     W.renderGate(null);
     eq(['shiftKey', 'ctrlKey', 'x'].map(k => A(`dobasMod({${k}: true})`)), ['adv', 'dis', '']);
   });
-  test('kattintás: a fejléc és a kereső gombjai (ablakok, játékos képernyő, belépés)', async () => {
+  test('kattintás: a fejléc és a kereső gombjai (ablakok, Initiative tracker, belépés)', async () => {
     const eredeti = {open: W.open, fiveSearch: W.fiveSearch, DMAuth: W.DMAuth}, hivas = [];
     try {
       W.open = (...a) => { hivas.push(a[0]); return null; };
       W.fiveSearch = () => { hivas.push('keres'); };
       W.DMAuth = {signIn: () => hivas.push('be'), signOut: () => hivas.push('ki')};
+      has($('[data-act="openPlayer"]').textContent, 'Initiative tracker', 'a gomb felirata'); has(P.document.title, 'Initiative tracker', 'az ablak címe');
       click('[data-act="openPlayer"]'); click('[data-act="openCharApp"]');
       eq(hivas, ['player.html', 'karakter.html']);
       A('fiveIndex = {}'); W.openLib('five'); click('[data-act="fiveSearch"]');
@@ -3276,7 +3277,7 @@ describe('Szerződés (szerzodes.js)', () => {
       ok(van, 'nincs szabály: ' + u);
     }
   });
-  test('egy helyen: a sheet.js szabálykönyv-útvonalai, a böngésző-tároló kulcsai és a játékos képernyő csatornája', async () => {
+  test('egy helyen: a sheet.js szabálykönyv-útvonalai, a böngésző-tároló kulcsai és az Initiative tracker csatornája', async () => {
     const {UT, HELYI, CSATORNA} = W.Szerzodes, kert = [];
     await W.Sheet.loadRulebook({get: async p => { kert.push(p); return p === UT.szabalyMeta ? {version: 1, chunks: ['a']} : {data: '{"k":"spells","a":[]}'}; }});
     eq(kert, [UT.szabalyMeta, UT.szabalyDarab('a')]);
