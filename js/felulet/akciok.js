@@ -9,6 +9,7 @@ const dobasMod = e => e.shiftKey ? 'adv' : e.ctrlKey ? 'dis' : '';  // Shift = e
 const harcos = el => byId(el.closest('[data-cid]')?.dataset.cid);
 const hpMezo = el => el.closest('.tile').querySelector('.hpin').value;
 const harcMod = (el, fn) => { fn(harcos(el)); save(); render(); };  // a gomb harcosán változtat, aztán ment és rajzol
+const konyvtari = el => { const libEl = el.closest('[data-lib]'); return libEl && S.library.find(c => c.id === libEl.dataset.lib); };
 
 const AKCIOK = {
   // harc
@@ -67,6 +68,38 @@ const AKCIOK = {
     x.c.libId = saved.id;
     log(`📚 ${esc(saved.name)} elmentve a könyvtárba`); save();
   },
+
+  // ablakok megnyitása
+  openLib: () => openLib(),
+  menu: () => openMenu(),
+  // 'dmscreen-player' itt ablaknév (ugyanaz a lap nyílik újra), nem a CSATORNA
+  openPlayer: () => { window.open('player.html','dmscreen-player', 'popup,width=1280,height=800'); },
+  openCharApp: () => { window.open('karakter.html', '_blank'); },
+  diffInfo: () => openDiffInfo(),
+  openLoot: () => openLoot(),
+  openParty: () => openParty(),
+
+  // portré
+  portraitUpload: () => $('#portraitFile').click(),
+  portraitClear: () => { setPortrait(''); $('#portraitUrl').value = ''; },
+
+  // Csapat nézet
+  partyRemove: el => { setPartyMember(el.dataset.pc, false); rerenderParty(); },
+  partySortReset: () => { partySort.s = {col: null, dir: 1}; rerenderParty(); },
+  libParty: el => { const lib = konyvtari(el); setPartyMember(lib.id, !partyMembers().some(c => c.id === lib.id)); filterLib(); },
+  partyGroup: (el, e) => partyRoll(partyMembers().map(c => c.id), el.dataset.sk, dobasMod(e)),
+  partyEdit: el => {
+    const pcLib = S.library.find(c => c.id === el.dataset.pc);
+    if (pcLib) openEditor(pcLib, c => { c.id = pcLib.id; upsertLibrary(c, false); setTimeout(openParty); }, undefined, {share: true});
+  },
+
+  // zsákmány
+  lootRoll: () => rollLootUi(),
+  lootCopy: async el => {
+    try { await navigator.clipboard.writeText(lootText(lootResult)); el.textContent = '✓ Kimásolva'; }
+    catch { el.textContent = 'A böngésző nem engedte'; }
+  },
+  lootLog: el => { log('🎁 ' + esc(lootText(lootResult)).replace(/\n/g, '<br>')); el.textContent = '✓ Naplóban'; },
 };
 
 // ---------- események ----------
@@ -113,31 +146,6 @@ document.addEventListener('click', async e => {
   const cnt = () => Math.max(1, +(el.closest('.lrow')?.querySelector('.cnt')?.value) || 1);
 
   switch (act) {
-    case 'openLib': openLib(); break;
-    case 'menu': openMenu(); break;
-    // 'dmscreen-player' itt ablaknév (ugyanaz a lap nyílik újra), nem a CSATORNA
-    case 'openPlayer': window.open('player.html','dmscreen-player', 'popup,width=1280,height=800'); break;
-    case 'openCharApp': window.open('karakter.html', '_blank'); break;
-    case 'portraitUpload': $('#portraitFile').click(); break;
-    case 'portraitClear': setPortrait(''); $('#portraitUrl').value = ''; break;
-    case 'diffInfo': openDiffInfo(); break;
-    case 'openLoot': openLoot(); break;
-    case 'openParty': openParty(); break;
-    case 'partyRemove': setPartyMember(el.dataset.pc, false); rerenderParty(); break;
-    case 'partySortReset': partySort.s = {col: null, dir: 1}; rerenderParty(); break;
-    case 'libParty': setPartyMember(lib.id, !partyMembers().some(c => c.id === lib.id)); filterLib(); break;
-    case 'partyGroup': partyRoll(partyMembers().map(c => c.id), el.dataset.sk, dobasMod(e)); break;
-    case 'partyEdit': {
-      const pcLib = S.library.find(c => c.id === el.dataset.pc);
-      if (pcLib) openEditor(pcLib, c => { c.id = pcLib.id; upsertLibrary(c, false); setTimeout(openParty); }, undefined, {share: true});
-      break;
-    }
-    case 'lootRoll': rollLootUi(); break;
-    case 'lootCopy':
-      try { await navigator.clipboard.writeText(lootText(lootResult)); el.textContent = '✓ Kimásolva'; }
-      catch { el.textContent = 'A böngésző nem engedte'; }
-      break;
-    case 'lootLog': log('🎁 ' + esc(lootText(lootResult)).replace(/\n/g, '<br>')); el.textContent = '✓ Naplóban'; break;
     case 'newCreature': openEditor(blankCreature(), c => { upsertLibrary(c, false); log(`📚 ${esc(c.name)} létrehozva`); }, 'Új lény', {share: true}); break;
     case 'edSave': {
       const ow = $('#edForm').elements.owner?.value.trim();
