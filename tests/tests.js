@@ -584,6 +584,20 @@ describe('D&D Beyond átalakítás', () => {
     eq([c.cr, c.hp.max, c.hp.cur, c.speed, c.kind, c.ddbId], ['Szint 5', 67, 57, '35 ft.', 'pc', 424242]);
     eq(c.type, 'Wood Elf — Fighter 3 (Eldritch Knight) / Rogue 2');
   });
+  test('tárgyból jövő bónuszok (skill, minden próba, passzívok), eszköznév tartaléka; egyedi nevű és hiányzó tároló', () => {
+    const d = structuredClone(DDB).data;
+    (d.modifiers.item = d.modifiers.item || []).push({type: 'bonus', subType: 'stealth', value: 2}, {type: 'bonus', subType: 'ability-checks', value: 1},
+      {type: 'bonus', subType: 'passive-investigation', value: 3}, {type: 'bonus', subType: 'passive-insight', value: 4}, {type: 'proficiency', subType: 'thieves-tools'});
+    d.inventory.push({id: 900, quantity: 1, definition: {name: 'Zsák'}}, {id: 901, quantity: 1, containerEntityId: 900, definition: {name: 'Kötél'}}, {id: 902, quantity: 1, containerEntityId: 999, definition: {name: 'Lámpás'}});
+    (d.characterValues = d.characterValues || []).push({typeId: 8, valueId: 900, value: 'Öreg zsák'});
+    const alap = W.convertDDB(DDB), c = W.convertDDB(d), inv = n => c.inventory.find(i => i.name === n);
+    eq(c.skillMods.stealth.b, alap.skillMods.stealth.b + 3, 'stealth: +2 és minden próbára +1');
+    eq(c.skillMods.perception.b, alap.skillMods.perception.b + 1, 'perception: minden próbára +1');
+    eq([c.passiveBonus.investigation, c.passiveBonus.insight], [3, 4]);
+    has(c.tools, 'thieves-tools', 'a név nélküli jártasság az azonosítójával');
+    ok(inv('Öreg zsák (Zsák)'), 'egyedi név');
+    eq([inv('Kötél').container, inv('Lámpás').container], ['Öreg zsák', ''], 'tároló neve');
+  });
   test('HP: a kézi felülírás számít, és a jelenlegi nem megy 0 alá', () => {
     const d = structuredClone(DDB); d.data.overrideHitPoints = 50; d.data.removedHitPoints = 80;
     const {hp} = W.convertDDB(d); eq([hp.max, hp.cur], [50, 0]);

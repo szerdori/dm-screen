@@ -20,7 +20,7 @@ function ddbKepessegek(d, mods, sum) {
   });
   return abilities;
 }
-// a közös alap (k), amiből a részek számolnak: a nyers adat, a módosítók, a képességek, a szint és a jártassági bónusz
+// a közös alap, amiből a részek számolnak: a nyers adat, a módosítók, a képességek, a szint és a jártassági bónusz
 function ddbAlap(raw) {
   const d = raw.data || raw;
   if (!Array.isArray(d.stats)) throw new Error('Ez nem D&D Beyond karakter JSON');
@@ -58,13 +58,15 @@ function ddbAc({d, mods, sum, abilities, M}) {
   if (shield) ac += shield.definition.armorClass || 2;
   return ac + sum('bonus', 'armor-class');
 }
-function convertDDB(raw) {
-  const alap = ddbAlap(raw), {d, mods, sum, abilities, M, classes, level, pb} = alap;
-  const inv = ddbFelszerelt(d), dex = M('dex');
+function ddbMentok({mods, M, pb}) {
+  const saves = {};
+  ABIL.forEach(a => { if (mods.some(m => m.type === 'proficiency' && m.subType === DDB_SUB[a] + '-saving-throws')) saves[a] = M(a) + pb; });
+  return saves;
+}
+// skillek: jártasság / expertise / fél jártasság (Jack of All Trades) + tárgyakból, képességekből jövő bónuszok
+function ddbSkillek({mods, sum, M, pb}) {
   const prof = sub => mods.some(m => m.type === 'proficiency' && m.subType === sub);
   const expert = sub => mods.some(m => m.type === 'expertise' && m.subType === sub);
-  const saves = {}; ABIL.forEach(a => { if (prof(DDB_SUB[a] + '-saving-throws')) saves[a] = M(a) + pb; });
-  // skillek: jártasság / expertise / fél jártasság (Jack of All Trades) + tárgyakból, képességekből jövő bónuszok
   const halfProf = mods.some(m => m.type === 'half-proficiency' && m.subType === 'ability-checks') ? Math.floor(pb / 2) : 0;
   const skillMods = {};
   for (const [k, a] of Object.entries(SKILLS)) {
@@ -75,10 +77,12 @@ function convertDDB(raw) {
   const skillBonus = k => skillMods[k].b;
   const skills = Object.keys(SKILLS).filter(k => skillMods[k].p >= 1).map(k => skillLabel(k) + ' ' + sgn(skillBonus(k))).join(', ');
   const passiveBonus = {perception: sum('bonus', 'passive-perception'), investigation: sum('bonus', 'passive-investigation'), insight: sum('bonus', 'passive-insight')};
-  const passive = 10 + skillBonus('perception') + passiveBonus.perception;
-  // eszköz- és hangszer-jártasságok (a fegyver- és páncéljártasságok nélkül)
-  const tools = [...new Set(mods.filter(m => m.type === 'proficiency' && !(m.subType in SKILLS) && !/saving-throws$/.test(m.subType) && !WEAPON_ARMOR_PROF.test(m.subType)).map(m => m.friendlySubtypeName || m.subType))].join(', ');
-  // felszerelés: tárolók szerint, a D&D Beyondon adott egyedi nevekkel és jegyzetekkel
+  return {skillMods, skills, passiveBonus, passive: 10 + skillBonus('perception') + passiveBonus.perception};
+}
+// eszköz- és hangszer-jártasságok (a fegyver- és páncéljártasságok nélkül)
+const ddbEszkozok = ({mods}) => [...new Set(mods.filter(m => m.type === 'proficiency' && !(m.subType in SKILLS) && !/saving-throws$/.test(m.subType) && !WEAPON_ARMOR_PROF.test(m.subType)).map(m => m.friendlySubtypeName || m.subType))].join(', ');
+// felszerelés: tárolók szerint, a D&D Beyondon adott egyedi nevekkel és jegyzetekkel
+function ddbFelszereles({d}) {
   const custom = (type, id) => (d.characterValues || []).find(v => v.typeId === type && String(v.valueId) === String(id))?.value;
   const allItems = (d.inventory || []).filter(i => i.definition);
   const containerName = id => { if (id == null || String(id) === String(d.id)) return ''; const it = allItems.find(i => i.id != null && String(i.id) === String(id)); return it ? (custom(8, it.id) || it.definition.name) : ''; };
@@ -89,6 +93,12 @@ function convertDDB(raw) {
     note: str(custom(9, i.id))
   }));
   const currency = {}; for (const k of ['pp', 'gp', 'ep', 'sp', 'cp']) currency[k] = num(d.currencies?.[k], 0);
+  return {inventory, currency};
+}
+function convertDDB(raw) {
+  const alap = ddbAlap(raw), {d, mods, sum, abilities, M, classes, level, pb} = alap;
+  const inv = ddbFelszerelt(d), dex = M('dex');
+  const {skillMods, skills, passiveBonus, passive} = ddbSkillek(alap), {inventory, currency} = ddbFelszereles(alap);
   const dv = Math.max(0, ...mods.filter(m => m.subType === 'darkvision').map(m => m.value || 0));
   const langs = [...new Set(mods.filter(m => m.type === 'language').map(m => m.friendlySubtypeName))].join(', ');
   // támadások
@@ -131,12 +141,12 @@ function convertDDB(raw) {
     type: [d.race?.fullName, clsStr].filter(Boolean).join(' — '), cr: 'Szint ' + level,
     ac: ddbAc(alap), hp: ddbHp(alap),
     speed: (d.race?.weightSpeeds?.normal?.walk || 30) + ' ft.',
-    abilities, saves, skills,
+    abilities, saves: ddbMentok(alap), skills,
     senses: [dv ? `darkvision ${dv} ft.` : '', `passive Perception ${passive}`].filter(Boolean).join(', '),
     languages: langs,
     initBonus: dex + sum('bonus', 'initiative') + (mods.some(m => m.type === 'half-proficiency' && m.subType === 'initiative') ? Math.floor(pb / 2) : 0),
     portrait: d.decorations?.avatarUrl || d.avatarUrl || '',
     traits, actions, bonusActions, reactions,
-    skillMods, passiveBonus, tools, inventory, currency, importedAt: new Date().toISOString().slice(0, 10)
+    skillMods, passiveBonus, tools: ddbEszkozok(alap), inventory, currency, importedAt: new Date().toISOString().slice(0, 10)
   });
 }
