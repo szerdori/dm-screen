@@ -597,14 +597,8 @@ window.Sheet = (() => {
     ctx.hpMax = hpMax;
     ctx.init = init;
   }
-  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok, calcHatasok, calcExpertise, calcFelszereles, calcKepessegek, calcMentokSkillek, calcHp];
-
-  function calc(s, rb = null) {
-    const ctx = calcKezdet(s, rb);
-    for (const lepes of CALC_LEPESEK) lepes(ctx);
-    const {b, ov, full, classes, L, PB, fxs, choices, missing, features, race, subrace, abil, A, worn, abilities, mods, jack, half, halfUp, saves, skills, passive, hpMax, init} = ctx;
-    const sl = slotsFor(classes);
-
+  function calcAc(ctx) {
+    const {ov, A, mods, worn} = ctx;
     const armor = worn.find(x => ARMOR_TC.includes(x.r.tc)), shield = worn.find(x => x.r.tc === 'S');
     // AC: a páncél vagy a páncél nélküli képletek közül a legjobb, + pajzs, + mágikus bónuszok, + Defense
     const cands = [];
@@ -626,6 +620,13 @@ window.Sheet = (() => {
     if (armor) acParts.push(...A.acBonus);
     const ac = val(ov, 'ac', sum(acParts), acParts);
     const acNote = [armor ? armor.i.name : best.parts[0].src, best.useShield ? shield.i.name : ''].filter(Boolean).join(', ');
+    ctx.armor = armor;
+    ctx.shield = shield;
+    ctx.ac = ac;
+    ctx.acNote = acNote;
+  }
+  function calcSpeed(ctx) {
+    const {rb, ov, L, PB, race, subrace, A, mods, abilities, armor, shield} = ctx;
     // speed: faj (az alfaj felülírhatja) + feature-ök (feltétellel) ; heavy armor STR alatt −10 (törpének nem)
     const sp = {walk: 30, ...(race?.sp || {}), ...(subrace?.sp || {})};
     const spParts = [{v: num(sp.walk, 30), src: subrace?.sp?.walk ? 'Alfaj: ' + subrace.n : race ? 'Faj: ' + race.n : 'alap'}];
@@ -637,7 +638,10 @@ window.Sheet = (() => {
     if (armor?.r.str && abilities.str.v < num(armor.r.str) && !A.heavyOk) spParts.push({v: -10, src: `${armor.i.name}: STR ${armor.r.str} alatt`});
     const walk = sum(spParts);
     const speed = val(ov, 'speed', [`${walk} ft.`, ...['fly', 'swim', 'climb', 'burrow'].filter(k => num(sp[k])).map(k => `${k} ${sp[k]} ft.`)].join(', '), spParts);
-
+    ctx.speed = speed;
+  }
+  function calcTamadasok(ctx) {
+    const {rb, PB, A, mods, worn} = ctx;
     // támadások a felszerelt fegyverekből
     const wprof = uniqCI(A.weapon).map(x => x.toLowerCase());
     const profW = (r, name) => wprof.some(p => (r.wc && (p === r.wc || p === r.wc + ' weapons')) || (p.length > 3 && name.toLowerCase().includes(p.replace(/s$/, ''))));
@@ -656,6 +660,15 @@ window.Sheet = (() => {
       const die = colOf(classInfo(A.martialArts.cls, rb).r?.cols, 'Martial Arts', A.martialArts.lvl) || '1d4', a = mods.dex > mods.str ? 'dex' : 'str';
       attacks.push({name: 'Unarmed Strike', hit: sgn(mods[a] + PB), dmg: `${die}${mods[a] ? sgn(mods[a]) : ''} bludgeoning`, note: 'Martial Arts'});
     }
+    ctx.attacks = attacks;
+  }
+  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok, calcHatasok, calcExpertise, calcFelszereles, calcKepessegek, calcMentokSkillek, calcHp, calcAc, calcSpeed, calcTamadasok];
+
+  function calc(s, rb = null) {
+    const ctx = calcKezdet(s, rb);
+    for (const lepes of CALC_LEPESEK) lepes(ctx);
+    const {b, ov, full, classes, L, PB, fxs, choices, missing, features, race, subrace, abil, A, worn, abilities, mods, jack, half, halfUp, saves, skills, passive, hpMax, init, armor, shield, ac, acNote, speed, attacks} = ctx;
+    const sl = slotsFor(classes);
     // erőforrások (azonos névnél a nagyobb)
     const resources = [];
     for (const x of A.res) {
