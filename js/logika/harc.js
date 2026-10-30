@@ -1,7 +1,7 @@
 // Harc (logika, DOM nélkül): kockadobás, initiative-sorrend, encounter, körök, sebzés és gyógyítás.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('harc', N) és az index.html-ben a harc.js?v=N és a VART_MODULOK.
 'use strict';
-modul('harc', 1);
+modul('harc', 2);
 
 // ---------- kocka ----------
 function roll(expr) {
@@ -78,7 +78,7 @@ function addToEncounter(creature, count = 1) {
   }
   // harc közben hozzáadott ellenfelek azonnal dobnak
   if (S.enc.active) added.forEach(x => { if (x.c.kind !== 'pc') x.init = roll('1d20').total + initBonusOf(x.c); });
-  save(); render();
+  save();
   return added;
 }
 function startTurn(x) {
@@ -90,11 +90,12 @@ function startTurn(x) {
   expired.forEach(k => log(`${esc(nameOf(x))}: ${esc(k.name)} lejárt`, 'warn'));
   if (x.conc) log(`${esc(nameOf(x))} koncentrál`, 'warn');
 }
+// igazat ad, ha volt kire lépni (ilyenkor a hívó rajzol)
 function step(dir) {
   const o = order();
-  if (!o.length) return;
+  if (!o.length) return false;
   const skip = x => x.dead && x.c.kind !== 'pc';
-  if (o.every(skip)) return;
+  if (o.every(skip)) return false;
   let i = o.findIndex(x => x.cid === S.enc.active);
   if (i < 0) {
     i = o.findIndex(x => !skip(x));
@@ -111,8 +112,8 @@ function step(dir) {
     if (dir > 0) startTurn(o[j]);
   }
   selected = null;
-  save(); render();
-  aktivCsempeMutat();
+  save();
+  return true;
 }
 function rollInitiative(mode) {
   const groups = {};
@@ -125,7 +126,7 @@ function rollInitiative(mode) {
     } else x.init = roll('1d20').total + initBonusOf(x.c);
   }
   log('🎲 Initiative dobva', 'turn');
-  closeModal(); save(); render();
+  save();
 }
 function damage(x, n) {
   const max = x.c.hp.max;

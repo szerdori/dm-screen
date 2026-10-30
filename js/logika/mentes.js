@@ -1,7 +1,7 @@
 // Mentés és betöltés (logika, DOM nélkül): változott dokumentumok írása a Tar-on át, helyi másolat, mentésfájl, napi felhős mentések, mentett encounterek.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('mentes', N) és az index.html-ben a mentes.js?v=N és a VART_MODULOK.
 'use strict';
-modul('mentes', 1);
+modul('mentes', 2);
 
 // ---------- mentés: Firebase (Firestore), plusz másolat a böngészőben ----------
 // A felhőbe a Tar (js/adat/tar.js) ír: állapot (encounter + beállítások), könyvtár, mentett encounterek, és a játékos appnak
@@ -66,7 +66,7 @@ function applyLoaded(d) { S = sanitizeState({...S, ...d}, S.settings); }
 function importBackup(obj) {
   if (!isObj(obj) || !Array.isArray(obj.library) || !isObj(obj.enc)) throw new Error('Ez nem teljes DM Screen mentés');
   applyLoaded(obj); restoreSheets(obj.sheets); selected = null;
-  save(); render();
+  save();
 }
 function loadLocal() {
   try { const t = localStorage.getItem(HELYI.allapot); if (t) applyLoaded(JSON.parse(t)); } catch {}
@@ -134,5 +134,5 @@ async function restoreBackup(id) {
   const parsed = JSON.parse(doc.data);
   await addBackup(timeStamp() + '-elotte', 'visszaállítás előtt');  // a mostani állapotot is megőrizzük
   applyLoaded(parsed); restoreSheets(parsed.sheets); selected = null;
-  save(); render();
+  save();
 }

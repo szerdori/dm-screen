@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 1);
+modul('akciok', 2);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -12,13 +12,15 @@ const harcMod = (el, fn) => { fn(harcos(el)); save(); render(); };  // a gomb ha
 const konyvtari = el => { const libEl = el.closest('[data-lib]'); return libEl && S.library.find(c => c.id === libEl.dataset.lib); };
 const darab = el => Math.max(1, +(el.closest('.lrow')?.querySelector('.cnt')?.value) || 1);
 const fiveTalalat = async el => convert5e(await resolveCopy(structuredClone(fiveResults[+el.closest('[data-five]').dataset.five])));
+// lépés a következő/előző harcosra: rajzol, és a soron következő csempe látszódjon
+function lep(dir) { if (step(dir)) { render(); aktivCsempeMutat(); } }
 
 const AKCIOK = {
   // harc
-  next: () => step(1),
-  prev: () => step(-1),
+  next: () => lep(1),
+  prev: () => lep(-1),
   rollInit: () => openInitMenu(),
-  init: el => rollInitiative(el.dataset.mode),
+  init: el => { rollInitiative(el.dataset.mode); closeModal(); render(); },
   rollCustom: () => { const v = $('#diceInput').value.trim(); if (v) rollDmg(v, '', v); },
   select: el => { selected = harcos(el).cid; render(); },
   deselect: () => { selected = null; render(); },
@@ -32,11 +34,11 @@ const AKCIOK = {
   toggleDead: el => harcMod(el, x => { x.dead = !x.dead; }),
   toggleSide: el => harcMod(el, x => { x.side = sideOf(x) === 'enemy' ? 'ally' : 'enemy'; }),
   toggleHidden: el => harcMod(el, x => { x.hiddenP = !x.hiddenP; }),
-  dup: el => { const x = harcos(el); addToEncounter({...x.c, id: x.c.libId || x.c.id}, 1); },
+  dup: el => { const x = harcos(el); addToEncounter({...x.c, id: x.c.libId || x.c.id}, 1); render(); },
   remove: el => {
     const x = harcos(el);
     if (confirm(`Eltávolítod: ${nameOf(x)}?`)) {
-      if (S.enc.active === x.cid) step(1);
+      if (S.enc.active === x.cid) lep(1);
       S.enc.list = S.enc.list.filter(y => y !== x);
       if (S.enc.active === x.cid) S.enc.active = null;
       save(); render();
@@ -113,7 +115,7 @@ const AKCIOK = {
   edCancel: () => closeModal(),
 
   // könyvtár
-  libAdd: el => { const lib = konyvtari(el), n = darab(el); addToEncounter(lib, n); log(`＋ ${n}× ${esc(lib.name)}`); },
+  libAdd: el => { const lib = konyvtari(el), n = darab(el); addToEncounter(lib, n); render(); log(`＋ ${n}× ${esc(lib.name)}`); },
   libEdit: el => { const lib = konyvtari(el); openEditor(lib, c => { c.id = lib.id; upsertLibrary(c, false); setTimeout(() => openLib('lib')); }, undefined, {share: true}); },
   libExport: el => { const lib = konyvtari(el); download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', SHEETS[lib.id] || lib); },
   libDel: el => {
@@ -145,11 +147,11 @@ const AKCIOK = {
   showSheetTemplate: () => { $('#jsonIn').value = JSON.stringify(Sheet.TEMPLATE, null, 2); },
   addAllPcs: () => {
     const pcs = S.library.filter(c => c.kind === 'pc' && !S.enc.list.some(x => x.c.libId === c.id));
-    pcs.forEach(c => addToEncounter(c, 1));
+    pcs.forEach(c => addToEncounter(c, 1)); render();
     log(`＋ ${pcs.length} játékos hozzáadva`); closeModal();
   },
   fiveSearch: () => fiveSearch(),
-  fiveAdd: async el => { const c = await fiveTalalat(el), n = darab(el); addToEncounter(c, n); log(`＋ ${n}× ${esc(c.name)}`); },
+  fiveAdd: async el => { const c = await fiveTalalat(el), n = darab(el); addToEncounter(c, n); render(); log(`＋ ${n}× ${esc(c.name)}`); },
   fiveSave: async el => { upsertLibrary(await fiveTalalat(el)); el.textContent = '✓ Mentve'; },
   ddbPasteImport: () => ddbImportText($('#ddbPaste').value),
   ddbClipboard: async () => {
@@ -182,7 +184,7 @@ const AKCIOK = {
     const enc = S.saved[+el.closest('[data-enc]').dataset.enc];
     const groups = {};
     enc.list.forEach(c => (groups[c.name] = groups[c.name] || []).push(c));
-    Object.values(groups).forEach(g => addToEncounter(g[0], g.length));
+    Object.values(groups).forEach(g => addToEncounter(g[0], g.length)); render();
     log(`⚔ ${esc(enc.name)} betöltve`); closeModal();
   },
   encDel: el => { if (confirm('Törlöd ezt a mentett encountert?')) { S.saved.splice(+el.closest('[data-enc]').dataset.enc, 1); save(); renderLib(); } },
@@ -214,7 +216,7 @@ const AKCIOK = {
   backupRestore: async el => {
     const id = el.closest('[data-backup]').dataset.backup;
     if (!confirm('Visszaállítod ezt a mentést? A mostani állapotról előbb automatikusan mentés készül.')) return;
-    try { await restoreBackup(id); closeModal(); log('↺ Biztonsági mentés visszaállítva'); }
+    try { await restoreBackup(id); render(); closeModal(); log('↺ Biztonsági mentés visszaállítva'); }
     catch (err) { alert('A visszaállítás nem sikerült: ' + (err.code || err.message)); }
   },
 };
@@ -307,8 +309,8 @@ function akciokEsemenyek() {
     if (t.id === 'diceInput' && e.key === 'Enter') { const v = t.value.trim(); if (v) rollDmg(v, '', v); return; }
     if (t.id === 'fiveQ' && e.key === 'Enter') { fiveSearch(); return; }
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || !$('#modal').hidden) return;
-    if (e.key === 'n' || e.key === 'N' || e.key === ' ') { e.preventDefault(); step(1); }
-    else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); step(-1); }
+    if (e.key === 'n' || e.key === 'N' || e.key === ' ') { e.preventDefault(); lep(1); }
+    else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); lep(-1); }
   });
 
   // beillesztéskor magától importál

@@ -67,7 +67,7 @@ const mk = (name = 'Goblin', extra = {}) => ({
 });
 const pc = (name, level = 3, extra = {}) => ({name, kind: 'pc', cr: 'Szint ' + level, ac: 16, hp: {max: 30}, abilities: {dex: 12}, ...extra});
 const ogre = () => mk('Ogre', {cr: '2', ac: 11, hp: {max: 59, formula: '7d10+21'}, abilities: {dex: 8}});
-const add = (c, n = 1) => W.addToEncounter(c, n);
+const add = (c, n = 1) => { const a = W.addToEncounter(c, n); W.render(); return a; };
 
 // ======================================================================
 describe('Kockadobás', () => {
@@ -239,7 +239,7 @@ describe('Encounter összeállítás', () => {
     eq(a.init, 99); ok(b.init != null);
   });
   test('harc közben hozzáadott ellenfél azonnal initiative-et dob', () => {
-    add(pc('Rella'))[0].init = 10; W.step(1);
+    add(pc('Rella'))[0].init = 10; W.lep(1);
     const [g] = add(mk()); ok(g.init != null, 'nincs initiative');
     const [p] = add(pc('Borin')); eq(p.init, null);
   });
@@ -263,34 +263,61 @@ describe('Körök és sorrend', () => {
     return [p, g1, g2];
   };
   test('az első lépés az elsőt teszi aktívvá, 1. kör', () => {
-    const [p] = setup(); W.step(1);
+    const [p] = setup(); W.lep(1);
     eq([A('S.enc.active'), A('S.enc.round')], [p.cid, 1]);
   });
   test('a sor végén új kör kezdődik', () => {
-    const [p] = setup(); W.step(1); W.step(1); W.step(1); W.step(1);
+    const [p] = setup(); W.lep(1); W.lep(1); W.lep(1); W.lep(1);
     eq([A('S.enc.active'), A('S.enc.round')], [p.cid, 2]);
     has(allLog(), '2. kör');
   });
   test('halott ellenfelet átugorja, halott játékost nem', () => {
     const [p, g1, g2] = setup(); g1.dead = true; p.dead = true;
-    W.step(1); eq(A('S.enc.active'), p.cid);
-    W.step(1); eq(A('S.enc.active'), g2.cid);
+    W.lep(1); eq(A('S.enc.active'), p.cid);
+    W.lep(1); eq(A('S.enc.active'), g2.cid);
   });
   test('visszalépés az elejéről az utolsóra, a kör nem megy 1 alá', () => {
-    const [p, , g2] = setup(); W.step(1); W.step(-1);
+    const [p, , g2] = setup(); W.lep(1); W.lep(-1);
     eq([A('S.enc.active'), A('S.enc.round')], [g2.cid, 1]);
   });
   test('körszámos állapot a lény körének elején csökken és lejár', () => {
     const [, g1] = setup();
     g1.cond = [{name: 'Prone', rounds: 1}, {name: 'Frightened', rounds: 2}, {name: 'Charmed', rounds: null}];
-    W.step(1); W.step(1);
+    W.lep(1); W.lep(1);
     eq(g1.cond, [{name: 'Frightened', rounds: 1}, {name: 'Charmed', rounds: null}]);
     has(allLog(), 'Prone lejárt');
   });
   test('legendás akciók visszaállnak a lény körének elején', () => {
-    const [p] = setup(); p.leg = 2; W.step(1); eq(p.leg, 0);
+    const [p] = setup(); p.leg = 2; W.lep(1); eq(p.leg, 0);
   });
-  test('üres encounterben a lépés nem hibázik', () => { W.step(1); eq(A('S.enc.active'), null); });
+  test('üres encounterben a lépés nem hibázik', () => { W.lep(1); eq(A('S.enc.active'), null); });
+  test('a gomb kezelője rajzol (ettől frissül a játékos képernyő is); ha nincs kire lépni, nem ment és nem rajzol', () => {
+    const eredeti = W.render; let n = 0;
+    W.render = () => { n++; eredeti(); };
+    const rajzol = (mi, fn) => { n = 0; fn(); ok(n > 0, mi + ': nem rajzolt'); };
+    try {
+      n = 0; W.lep(1); eq([n, A('saveTimer')], [0, null], 'üres lista');
+      W.upsertLibrary(W.normCreature(pc('Rella'))); const lib = W.upsertLibrary(W.normCreature(mk('Lib')));
+      rajzol('libAdd', () => { W.openLib('lib'); click(`[data-lib="${lib.id}"] [data-act="libAdd"]`); });
+      rajzol('addAllPcs', () => { W.openLib('lib'); click('[data-act="addAllPcs"]'); });
+      W.closeModal();
+      rajzol('dup', () => click('.tile [data-act="dup"]'));
+      rajzol('next', () => click('[data-act="next"]'));
+      rajzol('prev', () => click('[data-act="prev"]'));
+      rajzol('N billentyű', () => key(null, 'n'));
+      rajzol('P billentyű', () => key(null, 'p'));
+      rajzol('init', () => { W.openInitMenu(); click('[data-act="init"][data-mode="all"]'); });
+      eq($('#modal').hidden, true, 'az Initiative-ablak bezárul');
+      W.openLib('enc'); $('#encName').value = 'E'; click('[data-act="encSave"]');
+      rajzol('encLoad', () => click('[data-act="encLoad"]'));
+    } finally { W.render = eredeti; }
+  });
+  test('a logika maga nem rajzol: a harcfüggvények után a csempék csak a render()-re frissülnek', () => {
+    W.addToEncounter(mk()); eq($$('.tile').length, 0, 'addToEncounter');
+    W.render(); eq($$('.tile').length, 1);
+    W.step(1); ok(!$('.tile').classList.contains('active'), 'step');
+    W.render(); ok($('.tile').classList.contains('active'));
+  });
 });
 
 // ======================================================================
@@ -491,6 +518,7 @@ describe('5e.tools átalakítás', () => {
     click('#fiveRows [data-act="fiveSave"]'); await wait(50);
     $('#fiveRows .cnt').value = '2'; click('#fiveRows [data-act="fiveAdd"]'); await wait(50);
     eq([A('S.library').length, list().length, names().sort()], [1, 2, ['Test Scout 1', 'Test Scout 2']]);
+    eq($$('.tile').length, 2, 'a csempék frissülnek');
   });
 });
 
@@ -709,7 +737,7 @@ describe('Mentett encounterek és új harc', () => {
   });
   test('„Új harc”: ellenfelek ki, játékosok maradnak, initiative és kör nullázva', () => {
     const [p] = add(pc('Rella')); add(mk(), 2);
-    p.init = 12; p.cond = [{name: 'Prone', rounds: null}]; W.step(1); W.step(1);
+    p.init = 12; p.cond = [{name: 'Prone', rounds: null}]; W.lep(1); W.lep(1);
     W.openMenu(); click('[data-act="newFight"]');
     eq([names(), p.init, p.cond, A('S.enc.round'), A('S.enc.active')], [['Rella'], null, [], 1, null]);
   });
@@ -802,7 +830,7 @@ describe('Játékos képernyő', () => {
     const [p] = add(pc('Rella')); const [g1, g2] = add(mk('Ogre', {hp: {max: 20}}), 2);
     const [h] = add(mk('Rejtett')); h.hiddenP = true;
     p.init = 20; g1.init = 10; g2.init = 5; g1.hp = 8; g1.cond = [{name: 'Prone', rounds: null}];
-    W.step(1); W.broadcast();
+    W.lep(1); W.broadcast();
     const doc = () => P.document.body.textContent;
     await until(() => doc().includes('Ogre 1'), 4000, 'játékos képernyő frissítése');
     has(doc(), 'Soron: Rella'); has(doc(), 'Súlyosan sérült'); has(doc(), 'Sértetlen'); has(doc(), 'Prone'); has(doc(), '30 / 30');
@@ -811,7 +839,7 @@ describe('Játékos képernyő', () => {
   });
   test('a player.html követi a következő lépést', async () => {
     const [p] = add(pc('Rella')), [g] = add(mk()); p.init = 20; g.init = 1;
-    W.step(1); W.step(1);
+    W.lep(1); W.lep(1);
     await until(() => P.document.querySelector('.e.active .name')?.textContent === 'Goblin', 4000, 'aktív frissítése');
   });
 });
@@ -819,7 +847,7 @@ describe('Játékos képernyő', () => {
 // ======================================================================
 describe('Felület', () => {
   test('a csempék initiative-sorrendben jelennek meg, az aktív kiemelve', () => {
-    const [a] = add(mk('A')), [b] = add(mk('B')); a.init = 5; b.init = 18; W.step(1);
+    const [a] = add(mk('A')), [b] = add(mk('B')); a.init = 5; b.init = 18; W.lep(1);
     eq($$('.tile .t-name').map(e => e.firstChild.textContent.trim()), ['B', 'A']);
     ok($$('.tile')[0].classList.contains('active'));
   });
@@ -900,7 +928,7 @@ describe('Felület', () => {
     eq([p.init, g1.init, g2.init], [2, 4, 7], 'mindenki külön dob');
   });
   test('csempe gombjai: koncentráció (a chipre kattintva is megszűnik), halott, rejtett; adatlapról vissza az aktuálishoz', () => {
-    const [a] = add(mk('A')), [b] = add(mk('B')); a.init = 10; b.init = 5; W.step(1);
+    const [a] = add(mk('A')), [b] = add(mk('B')); a.init = 10; b.init = 5; W.lep(1);
     const on = (x, sel) => click(`[data-cid="${x.cid}"] ${sel}`);
     on(b, 'button[data-act="toggleConc"]'); ok(b.conc, 'koncentrál');
     on(b, '.chip.conc'); ok(!b.conc, 'a chip megszünteti');
@@ -941,6 +969,16 @@ describe('Felület', () => {
     const dt = new W.DataTransfer(); dt.items.add(new W.File([content], name, {type}));
     input.files = dt.files; input.dispatchEvent(new W.Event('change', {bubbles: true}));
   };
+  test('teljes mentés fájlból: a csempék frissülnek', async () => {
+    const fi = $('#fileIn'); fi.click = () => {};
+    try {
+      add(mk('Régi')); eq($$('.tile').length, 1);
+      W.openMenu(); click('[data-act="importAll"]');
+      pickFile(fi, JSON.stringify({library: [], enc: {list: [], round: 1, active: null}, saved: []}), 'mentes.json');
+      await until(() => !$$('.tile').length, 2000, 'a csempe eltűnik');
+      eq($('#modal').hidden, true);
+    } finally { delete fi.click; }
+  });
   test('fájl importálása: lények (JSON fül), teljes mentés (Menü), hibás fájl', async () => {
     const fi = $('#fileIn'); let opened = 0; fi.click = () => opened++;
     try {
@@ -1124,7 +1162,7 @@ async function renderEverywhere() {
   // minden nézet kirajzolása, ahol a lény adatai megjelenhetnek
   W.render();
   const first = A('order()')[0];
-  if (first) { A(`selected = ${JSON.stringify(first.cid)}`); W.render(); W.step(1); }
+  if (first) { A(`selected = ${JSON.stringify(first.cid)}`); W.render(); W.lep(1); }
   for (const t of ['lib', 'enc']) W.openLib(t);
   if (A('S.library.length')) W.openEditor(A('S.library[0]'), () => {});
   W.closeModal(); W.openDiffInfo(); W.closeModal(); W.broadcast();
@@ -1243,8 +1281,10 @@ describe('Biztonsági mentések', () => {
     W.openMenu(); click('[data-act="openBackups"]'); await until(() => $$('[data-backup]').length === 1, 2000, 'lista');
     click('[data-act="backupNow"]'); await until(() => $$('[data-backup]').length === 2, 2000, '„Mentés most”');
     has($('#modalBox').textContent, 'kézi mentés');
+    add(mk('Utána'));
     click($$('[data-act="backupRestore"]')[1]); await wait(300);
     has(allLog(), 'visszaállítva');
+    ok(!$$('.tile').some(t => t.textContent.includes('Utána')), 'a visszaállítás után a csempék frissülnek');
   });
   test('emlékeztető a fájlba mentésre: üresen nincs, 7 nap után van, mentés után eltűnik', () => {
     W.render(); ok($('#backupNag').hidden, 'üres adatnál is megjelent');

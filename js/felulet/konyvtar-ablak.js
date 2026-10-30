@@ -1,7 +1,7 @@
 // Könyvtár ablak (felület): a fülek (könyvtár, 5e.tools, D&D Beyond, tárgyak, JSON, mentett encounterek) és a fájlbetöltés.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('konyvtar-ablak', N) és az index.html-ben a konyvtar-ablak.js?v=N és a VART_MODULOK.
 'use strict';
-modul('konyvtar-ablak', 1);
+modul('konyvtar-ablak', 2);
 
 let libTab = 'lib';
 // ---------- könyvtár ----------
@@ -169,7 +169,7 @@ function fajlBetoltesEsemenyek() {
       const obj = JSON.parse(await f.text());
       if (fileMode === 'all') {
         if (!confirm('Felülírja a jelenlegi könyvtárat és encountert. Folytatod?')) return;
-        importBackup(obj); closeModal();
+        importBackup(obj); render(); closeModal();
       } else {
         const res = await importAny(obj);
         openLib('lib');
