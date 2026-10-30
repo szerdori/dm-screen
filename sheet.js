@@ -525,6 +525,7 @@ window.Sheet = (() => {
       c.ok = c.ok.filter(k => A.skills[k]);
       for (const k of c.ok) A.skills[k] = {p: 2, src: A.skills[k].src + ' + expertise (' + c.src + ')'};
     }
+    // a választás kész állapota: az expertise szűrése után dől el
     for (const c of choices) c.done = c.ok.length >= c.n || ((c.kind === 'ability' || c.kind === 'saves') && c.ok.length >= listFrom(c).length);
   }
   function calcFelszereles(ctx) {
@@ -592,6 +593,7 @@ window.Sheet = (() => {
     if (b.levels.length) hpParts.push({v: mods.con * b.levels.length, src: `CON-módosító × ${b.levels.length}`});
     for (const x of A.hp) { const n = x.cls ? classes.find(c => c.name === x.cls)?.level || 0 : b.levels.length; hpParts.push({v: x.v * n, src: `${x.src} (${x.v} × ${n})`}); }
     const hpMax = val(ov, 'hpMax', Math.max(1, sum(hpParts)), hpParts);
+    // Initiative: DEX + Remarkable Athlete vagy Jack of All Trades + hatások
     const initParts = [{v: mods.dex, src: 'DEX-módosító'}, ...(A.remarkable && !jack ? [{v: halfUp, src: 'Remarkable Athlete'}] : jack ? [{v: Math.max(half, A.remarkable ? halfUp : 0), src: 'Jack of All Trades'}] : []), ...A.init];
     const init = val(ov, 'init', sum(initParts), initParts);
     ctx.hpMax = hpMax;
@@ -662,24 +664,24 @@ window.Sheet = (() => {
     }
     ctx.attacks = attacks;
   }
-  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok, calcHatasok, calcExpertise, calcFelszereles, calcKepessegek, calcMentokSkillek, calcHp, calcAc, calcSpeed, calcTamadasok];
-
-  function calc(s, rb = null) {
-    const ctx = calcKezdet(s, rb);
-    for (const lepes of CALC_LEPESEK) lepes(ctx);
-    const {b, ov, full, classes, L, PB, fxs, choices, missing, features, race, subrace, abil, A, worn, abilities, mods, jack, half, halfUp, saves, skills, passive, hpMax, init, armor, shield, ac, acNote, speed, attacks} = ctx;
-    const sl = slotsFor(classes);
+  function calcEroforrasok(ctx) {
+    const {rb, L, PB, A, mods} = ctx;
     // erőforrások (azonos névnél a nagyobb)
     const resources = [];
     for (const x of A.res) {
-      const ctx = {lvl: x.ctx.lvl || L, cols: classInfo(x.ctx.cls, rb).r?.cols, mods, pb: PB};
-      let max = evalMax(x.max, ctx) + num(x.add);
+      const kor = {lvl: x.ctx.lvl || L, cols: classInfo(x.ctx.cls, rb).r?.cols, mods, pb: PB};
+      let max = evalMax(x.max, kor) + num(x.add);
       if (x.min != null) max = Math.max(num(x.min), max);
-      const r = {name: str(x.n, 100), max: Math.min(99, max), reset: x.shortAt && ctx.lvl >= x.shortAt ? 'short' : RESETS.includes(x.reset) ? x.reset : 'long'};
+      const r = {name: str(x.n, 100), max: Math.min(99, max), reset: x.shortAt && kor.lvl >= x.shortAt ? 'short' : RESETS.includes(x.reset) ? x.reset : 'long'};
       const old = resources.find(y => y.name === r.name);
       if (!old) { if (r.max > 0) resources.push(r); } else if (r.max > old.max) Object.assign(old, r);
     }
+    ctx.resources = resources;
+  }
+  function calcVarazslas(ctx) {
+    const {rb, b, L, PB, classes, A, mods} = ctx;
     // varázslás osztályonként (multiclassnál eltérő képesség és DC)
+    const sl = slotsFor(classes);
     const casting = [];
     for (const c of classes) {
       const ci = classInfo(c.name, rb), sub = subclassOf(b, c.name, rb);
@@ -698,17 +700,33 @@ window.Sheet = (() => {
         if (!always.some(a => a.name.toLowerCase() === String(n).toLowerCase())) always.push({name: r ? r.n : String(n).replace(/(^|\s)\S/g, m => m.toUpperCase()), level: r ? num(r.l) : 0, ref: r ? r.n + '|' + r.s : ''});
       }
     }
-
+    ctx.sl = sl;
+    ctx.casting = casting;
+    ctx.always = always;
+  }
+  function calcTeendok(ctx) {
+    const {s, A, choices, missing} = ctx;
     const done = new Set(s.todoDone || []);
     const todos = [
       ...choices.filter(c => !c.done).map(c => ({key: c.key, kind: c.kind, src: c.src, text: `${c.src}: ${FX_LABEL[c.kind] || c.kind}` + (c.n > 1 ? ` (${c.ok.length} / ${c.n})` : '')})),
       ...A.todo.filter((t, i, l) => !done.has(t.key) && l.findIndex(x => x.key === t.key) === i).map(t => ({...t, kind: 'manual'})),
       ...missing.map(m => ({key: 'missing:' + m, kind: 'missing', text: m + ' – nincs a szabálykönyvben'}))
     ];
+    ctx.todos = todos;
+  }
+  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok, calcHatasok, calcExpertise, calcFelszereles, calcKepessegek, calcMentokSkillek, calcHp, calcAc, calcSpeed, calcTamadasok, calcEroforrasok, calcVarazslas, calcTeendok];
+  function calcEredmeny(ctx) {
+    const {full, L, PB, classes, abilities, mods, saves, skills, jack, passive, hpMax, init, ac, acNote, speed, sl, A, features, resources, attacks, casting, always, choices, todos, missing} = ctx;
     return {full, level: L, pb: PB, classes, abilities, mods, saves, skills, jack, passive, hpMax, init, ac, acNote, speed, slots: sl.slots, pact: sl.pact,
       profs: {armor: uniqCI(A.armor).join(', '), weapons: uniqCI(A.weapon).join(', '), tools: uniqCI(A.tool).join(', '), languages: uniqCI(A.lang).join(', ')},
       senses: A.dv ? `darkvision ${A.dv} ft.` : '', resist: uniqCI(A.resist).join(', '),
       features, resources, attacks, casting, always, choices, todos, missing};
+  }
+
+  function calc(s, rb = null) {
+    const ctx = calcKezdet(s, rb);
+    for (const lepes of CALC_LEPESEK) lepes(ctx);
+    return calcEredmeny(ctx);
   }
   // ASI-érték: összesen +2 (egy képességre +2 vagy kettőre +1)
   function asiInc(v) {
@@ -1166,7 +1184,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, materialize, ovEdits, refName,
+    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine};

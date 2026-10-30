@@ -2447,6 +2447,13 @@ describe('Szabálymotor: aranyminta (a Sheet.calc teljes kimenete)', () => {
     const [v, rbV] = aranyLapok().varazslok, c = W.Sheet.calc(v, rbV);
     ok(c.choices.some(x => x.key === 'opt:Beguiling Influence:skills'), 'a választott optional feature választása is bekerül (a ciklus közben)');
   });
+  test('a calc csak végigmegy a lépéseken; a lépések sorrendje rögzített (egy rossz sorrend csendben undefined-ot olvasna), és egyik sem hosszú', () => {
+    const H = W.Sheet;
+    eq(H.CALC_LEPESEK.map(f => f.name), ['calcFaj', 'calcOsztalyok', 'calcValasztasok', 'calcHatasok', 'calcExpertise', 'calcFelszereles', 'calcKepessegek', 'calcMentokSkillek',
+      'calcHp', 'calcAc', 'calcSpeed', 'calcTamadasok', 'calcEroforrasok', 'calcVarazslas', 'calcTeendok']);
+    ok(H.calc.toString().split('\n').length <= 5, 'a calc rövid');
+    for (const f of H.CALC_LEPESEK) ok(f.toString().split('\n').length <= 60, f.name + ' legfeljebb 60 sor');
+  });
 });
 
 describe('Választó-modul: további választástípusok (sheet.js)', () => {
