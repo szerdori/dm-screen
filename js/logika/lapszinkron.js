@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 1);
+modul('lapszinkron', 2);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -66,7 +66,7 @@ const setPath = (o, path, v) => { const ks = path.split('.'); ks.slice(0, -1).re
 // a DM oldali változások visszaírása a lapokra (doSave hívja; internet nélkül is lefut, ilyenkor csak helyben)
 function syncSheets(ops) {
   // a böngésző gyorsítótárából régi közös fájl (sheet.js, kozos.js) jött: a lapokra nem írunk, amíg az oldal nem frissül (a könyvtári változás megmarad)
-  if (regiFajl()) { if (!syncSheets.warned) log('⚠ Az oldal egy része régi változatból töltődött be: frissítsd (Ctrl + F5), addig a karakterlapokra nem írok.'); syncSheets.warned = true; return; }
+  if (regiFajl()) { if (!syncSheets.warned) Ertesito.naplo('⚠ Az oldal egy része régi változatból töltődött be: frissítsd (Ctrl + F5), addig a karakterlapokra nem írok.'); syncSheets.warned = true; return; }
   const now = new Date().toISOString(), by = authInfo.email || 'DM';
   for (const id of sheetOps.del) { delete SHEETS[id]; delete shadow[id]; if (Tar.kapcsolva()) ops.push(Tar.lapok.torol(id)); }
   sheetOps.del.clear();
@@ -125,7 +125,7 @@ function onSheets(docs) {
     SHEETS[d.id] = s; applySheet(d.id); changed = true;
   }
   for (const id of Object.keys(SHEETS)) if (!ids.has(id) && !sheetOps.set.has(id)) { delete SHEETS[id]; delete shadow[id]; changed = true; }
-  if (changed) { save(); render(); konyvtarFrissit(); }
+  if (changed) { save(); Ertesito.lapokValtoztak(); }
 }
 function createSheet(id, s) {
   const lib = S.library.find(c => c.id === id);

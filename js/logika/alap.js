@@ -1,7 +1,11 @@
 // Alapok és állapot (logika, DOM nélkül): a közös fájlok segédei, a DM Screen állapota (S) és a mindenhol használt kis segédek.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('alap', N) és az index.html-ben az alap.js?v=N és a VART_MODULOK.
 'use strict';
-modul('alap', 1);
+modul('alap', 2);
+
+// ---------- a logika üzenetei a felületnek ----------
+// A logika nem hívja a felületet: ide szól (napló, mentésjelző, telefonos lap változása), az indulas.js köti be. Ami gombra történik, azt a gomb kezelője rajzolja (AKCIOK).
+const Ertesito = {naplo() {}, mentesAllapot() {}, lapokValtoztak() {}};
 
 // ---------- alapok ----------
 // a sheet.js közös segédei (a karakter.html is ezeket használja)

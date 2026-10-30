@@ -297,6 +297,9 @@ describe('Körök és sorrend', () => {
     const rajzol = (mi, fn) => { n = 0; fn(); ok(n > 0, mi + ': nem rajzolt'); };
     try {
       n = 0; W.lep(1); eq([n, A('saveTimer')], [0, null], 'üres lista');
+      W.addToEncounter(mk('Halott'))[0].dead = true; A('clearTimeout(saveTimer); saveTimer = null');
+      n = 0; W.lep(1); eq([n, A('saveTimer')], [0, null], 'csupa halott ellenfél');
+      A('S.enc.list = []');
       W.upsertLibrary(W.normCreature(pc('Rella'))); const lib = W.upsertLibrary(W.normCreature(mk('Lib')));
       rajzol('libAdd', () => { W.openLib('lib'); click(`[data-lib="${lib.id}"] [data-act="libAdd"]`); });
       rajzol('addAllPcs', () => { W.openLib('lib'); click('[data-act="addAllPcs"]'); });
@@ -2411,6 +2414,7 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     f.store['sheets/p1'].hp = {max: 24, cur: 22, temp: 3}; f.store['sheets/p1'].inventory.push({name: 'Rope', qty: 1}); f.store['sheets/p1'].ac = 15;
     f.emit('sheets'); await wait(500);
     eq([A('S.enc.list[0].hp'), A('S.enc.list[0].temp'), A('S.enc.list[0].c.ac')], [22, 3, 15]);
+    has($('.tile .hpbar').textContent, '22 / 24', 'a csempe a telefonos változás után frissül');
     ok(lib().inventory.some(i => i.name === 'Rope'));
     ok(!f.log.some(l => /sheets\//.test(l)), 'nem írhat vissza: ' + f.log);
     ok(f.log.includes('set characters/p1'));
@@ -3149,6 +3153,24 @@ describe('Szerződés (szerzodes.js)', () => {
       if (felulet.includes(f)) eq(talal(kod, TAR_RE), [], f + ': a felület nem hívja a Tar-t');
     }
     has(await szoveg('js/adat/tar.js'), 'db.set(', 'a Tar ír');
+    // a logika nem hívja a felület függvényeit, csak az Ertesito-n át szól (kivétel a 6. lépésig: az importSheet kérdése)
+    const nevek = new Set(['confirm', 'alert', 'prompt']);
+    for (const f of felulet) for (const m of (await szoveg(f)).matchAll(/^(?:async )?function (\w+)|^const (\w+) = /gm)) nevek.add(m[1] || m[2]);
+    ok(nevek.has('render') && nevek.has('log') && nevek.has('setSaveState') && nevek.has('closeModal'), 'megtalálta a felület neveit');
+    const HIVAS_RE = new RegExp(`(?<![\\w.$])(${[...nevek].join('|')})\\(`, 'g');
+    for (const f of logika) {
+      const kod = (await szoveg(f)).replace(/^\s*\/\/.*$/gm, '');
+      eq(talal(kod, HIVAS_RE), f === 'js/logika/lapszinkron.js' ? ['confirm('] : [], f + ': a logika nem hívja a felületet');
+    }
+  });
+  test('Értesítő: a logika üzenetei eljutnak a felületre (napló, mentésjelző, telefonos lap változása)', () => {
+    A(`Ertesito.naplo('üzenet', 'warn')`);
+    eq([lastLog(), A('logLines[0].cls')], ['üzenet', 'warn']);
+    A(`Ertesito.mentesAllapot('próba')`); eq($('#saveState').textContent, 'próba');
+    add(mk()); W.openLib('lib');
+    A(`S.library.push(normCreature({name: 'Friss'})); S.enc.list[0].hp = 3; Ertesito.lapokValtoztak()`);
+    has($('#libRows').textContent, 'Friss', 'a Könyvtár lista frissül');
+    has($('.tile .hpbar').textContent, '3 / ', 'a csempe frissül');
   });
   test('rétegek: az index.html-ben csak a várt változatok (VART_MODULOK) maradtak, a kód a js/ fájlokban; az indulas.js töltődik utoljára', async () => {
     const html = await (await fetch('../index.html', {cache: 'no-store'})).text();

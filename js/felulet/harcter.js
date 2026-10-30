@@ -44,7 +44,7 @@ function render() {
   $('#roundNo').textContent = S.enc.round || 1;
   renderTiles(); renderDetail(); renderDiff(); renderNag(); broadcast();
 }
-// a soron következő csempe látszódjon (step)
+// a soron következő csempe látszódjon (lep)
 function aktivCsempeMutat() { document.querySelector('.tile.active')?.scrollIntoView({block: 'nearest', behavior: 'smooth'}); }
 // ---------- nehézség (megjelenítés) ----------
 const DIFF_HU = {trivial: 'Triviális', easy: 'Könnyű', medium: 'Közepes', hard: 'Nehéz', deadly: 'Halálos'};

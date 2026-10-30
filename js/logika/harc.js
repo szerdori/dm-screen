@@ -28,13 +28,13 @@ function rollHit(bonus, who, label, mode) {
   const tag = mode === 'adv' ? ` előny [${a},${a2}]` : mode === 'dis' ? ` hátrány [${a},${a2}]` : ` [${a}]`;
   const cls = d === 20 ? 'crit' : d === 1 ? 'fumble' : '';
   const html = `<span class="who">${esc(who)}</span> ${esc(label)}: <b>${d + b}</b> <small>d20${tag} ${sgn(b)}${d === 20 ? ' — KRITIKUS!' : d === 1 ? ' — elvétve' : ''}</small>`;
-  log(html, cls);
+  Ertesito.naplo(html, cls);
   return {html, cls, total: d + b};
 }
 function rollDmg(expr, who, label, crit) {
   if (crit) expr = expr.replace(/(\d*)d(\d+)/g, (m, n, d) => `${2 * (+n || 1)}d${d}`);
   const r = roll(expr);
-  log(`<span class="who">${esc(who)}</span> ${esc(label)}: <b>${r.total}</b> <small>${esc(expr)}${crit ? ' (krit)' : ''} ${esc(r.detail)}</small>`);
+  Ertesito.naplo(`<span class="who">${esc(who)}</span> ${esc(label)}: <b>${r.total}</b> <small>${esc(expr)}${crit ? ' (krit)' : ''} ${esc(r.detail)}</small>`);
 }
 function atkInfo(text) {
   const hit = (text.match(/([+\-]\d+)(?= to hit)/) || text.match(/Attack(?: Roll)?:\s?([+\-]\d+)/) || [])[1];
@@ -86,9 +86,9 @@ function startTurn(x) {
   const expired = [];
   x.cond.forEach(k => { if (k.rounds != null) { k.rounds--; if (k.rounds <= 0) expired.push(k); } });
   x.cond = x.cond.filter(k => !expired.includes(k));
-  log(`▶ ${esc(nameOf(x))} köre`, 'turn');
-  expired.forEach(k => log(`${esc(nameOf(x))}: ${esc(k.name)} lejárt`, 'warn'));
-  if (x.conc) log(`${esc(nameOf(x))} koncentrál`, 'warn');
+  Ertesito.naplo(`▶ ${esc(nameOf(x))} köre`, 'turn');
+  expired.forEach(k => Ertesito.naplo(`${esc(nameOf(x))}: ${esc(k.name)} lejárt`, 'warn'));
+  if (x.conc) Ertesito.naplo(`${esc(nameOf(x))} koncentrál`, 'warn');
 }
 // igazat ad, ha volt kire lépni (ilyenkor a hívó rajzol)
 function step(dir) {
@@ -100,12 +100,12 @@ function step(dir) {
   if (i < 0) {
     i = o.findIndex(x => !skip(x));
     S.enc.active = o[i].cid; S.enc.round = S.enc.round || 1;
-    log(`— ${S.enc.round}. kör —`, 'round'); startTurn(o[i]);
+    Ertesito.naplo(`— ${S.enc.round}. kör —`, 'round'); startTurn(o[i]);
   } else {
     let j = i;
     do {
       j += dir;
-      if (j >= o.length) { j = 0; S.enc.round++; log(`— ${S.enc.round}. kör —`, 'round'); }
+      if (j >= o.length) { j = 0; S.enc.round++; Ertesito.naplo(`— ${S.enc.round}. kör —`, 'round'); }
       if (j < 0) { j = o.length - 1; S.enc.round = Math.max(1, S.enc.round - 1); }
     } while (skip(o[j]));
     S.enc.active = o[j].cid;
@@ -125,7 +125,7 @@ function rollInitiative(mode) {
       x.init = groups[x.group];
     } else x.init = roll('1d20').total + initBonusOf(x.c);
   }
-  log('🎲 Initiative dobva', 'turn');
+  Ertesito.naplo('🎲 Initiative dobva', 'turn');
   save();
 }
 function damage(x, n) {
@@ -133,15 +133,15 @@ function damage(x, n) {
   let rem = n;
   if (x.temp) { const t = Math.min(x.temp, rem); x.temp -= t; rem -= t; }
   x.hp = Math.max(0, x.hp - rem);
-  log(`<span class="who">${esc(nameOf(x))}</span> −${esc(n)} HP → <b>${esc(x.hp)}</b>/${esc(max)}${x.temp ? ` (+${esc(x.temp)} temp)` : ''}`);
-  if (x.conc && n > 0) log(`⚠ ${esc(nameOf(x))}: koncentráció mentő, DC ${Math.max(10, Math.floor(n / 2))}`, 'warn');
+  Ertesito.naplo(`<span class="who">${esc(nameOf(x))}</span> −${esc(n)} HP → <b>${esc(x.hp)}</b>/${esc(max)}${x.temp ? ` (+${esc(x.temp)} temp)` : ''}`);
+  if (x.conc && n > 0) Ertesito.naplo(`⚠ ${esc(nameOf(x))}: koncentráció mentő, DC ${Math.max(10, Math.floor(n / 2))}`, 'warn');
   if (x.hp === 0) {
-    if (x.c.kind === 'pc') log(`⚠ ${esc(nameOf(x))} 0 HP-n – death save-ek!`, 'warn');
-    else { x.dead = true; log(`💀 ${esc(nameOf(x))} elesett`, 'warn'); }
+    if (x.c.kind === 'pc') Ertesito.naplo(`⚠ ${esc(nameOf(x))} 0 HP-n – death save-ek!`, 'warn');
+    else { x.dead = true; Ertesito.naplo(`💀 ${esc(nameOf(x))} elesett`, 'warn'); }
   }
 }
 function heal(x, n) {
   x.hp = Math.min(x.c.hp.max, x.hp + n);
   if (x.hp > 0) x.dead = false;
-  log(`<span class="who">${esc(nameOf(x))}</span> +${esc(n)} HP → <b>${esc(x.hp)}</b>/${esc(x.c.hp.max)}`);
+  Ertesito.naplo(`<span class="who">${esc(nameOf(x))}</span> +${esc(n)} HP → <b>${esc(x.hp)}</b>/${esc(x.c.hp.max)}`);
 }

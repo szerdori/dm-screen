@@ -45,7 +45,7 @@ async function doSave() {
   const ops = [];
   syncSheets(ops);
   try { localStorage.setItem(HELYI.allapot, JSON.stringify(S)); } catch {}
-  if (!Tar.kapcsolva()) { setSaveState(authInfo.status === 'unconfigured' ? '✓ böngészőben mentve' : ''); return; }
+  if (!Tar.kapcsolva()) { Ertesito.mentesAllapot(authInfo.status === 'unconfigured' ? '✓ böngészőben mentve' : ''); return; }
   try {
     const state = JSON.stringify({enc: S.enc, settings: S.settings});
     if (state !== lastSaved.state) { ops.push(Tar.allapot.ir(JSON.parse(state))); lastSaved.state = state; }
@@ -53,12 +53,12 @@ async function doSave() {
     syncCol(Tar.mentett, S.saved, 'saved', ops);
     syncSharing(ops);
     if (!ops.length) return;
-    setSaveState(navigator.onLine ? 'mentés…' : '⚠ nincs internet – a változások később töltődnek fel');
+    Ertesito.mentesAllapot(navigator.onLine ? 'mentés…' : '⚠ nincs internet – a változások később töltődnek fel');
     await Promise.all(ops);
-    setSaveState('✓ mentve');
+    Ertesito.mentesAllapot('✓ mentve');
   } catch (e) {
     lastSaved = {...emptySaved(), players: ''};  // legközelebb mindent újraírunk
-    setSaveState('⚠ mentés sikertelen' + (e.code ? ' (' + e.code + ')' : ''));
+    Ertesito.mentesAllapot('⚠ mentés sikertelen' + (e.code ? ' (' + e.code + ')' : ''));
   }
 }
 function applyLoaded(d) { S = sanitizeState({...S, ...d}, S.settings); }
