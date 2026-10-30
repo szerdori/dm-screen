@@ -146,6 +146,7 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 .chbox select,.chbox input:not([type=checkbox]){width:100%;margin-top:4px}
 .chopts{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:4px 10px}
 .chopts label{display:flex;align-items:center;gap:6px;font-size:14px}
+.chopts label[hidden]{display:none}
 .okk{color:var(--green);font-weight:700}
 .parts{margin:6px 0 0;padding-left:18px;font-size:13px;color:#d6d3cb}
 .lvrow{display:flex;gap:8px;align-items:center}
@@ -400,7 +401,7 @@ function spellRow(sp, i, ed, s) {
   const ch = ed && sp.level && castOpen === i ? castChoices(s, sp, r) : null;
   const pick = ch ? `<div class="row castpick">${ch.map(c => `<button class="small" data-act="cast" data-i="${i}" data-how="${esc(c.how)}">${esc(c.text)}</button>`).join('')
     || '<span class="hint">Nincs szabad slot ehhez a szinthez.</span>'}<button class="small" data-act="castOpen" data-i="${i}">Mégse</button></div>` : '';
-  return det('sp:' + sp.name, sum, `${r ? `<div class="tx">${esc(r.tx)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>'}${ed ? `<div class="row" style="margin-top:8px"><button class="small" data-act="spellRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`) + pick;
+  return det('sp:' + sp.name, sum, `${r ? `<div class="tx">${esc(r.tx)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>'}${ed && !sp.auto ? `<div class="row" style="margin-top:8px"><button class="small" data-act="spellRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`) + pick;
 }
 function tabVar(s, ed) {
   const sc = s.spellcasting, dis = ed ? '' : 'disabled', ab = H.spellAbility(s);
@@ -577,6 +578,20 @@ function calcOf(s) {
 const chId = k => 'ch-' + String(k).replace(/[^A-Za-z0-9_-]/g, '_');
 const optList = (opts, cur) => `<option value="">(válassz)</option>${cur && !opts.some(x => x.v === cur) ? `<option value="${esc(cur)}" selected>${esc(H.refName(cur))} (saját)</option>` : ''}`
   + opts.map(x => `<option value="${esc(x.v)}" ${x.v === cur ? 'selected' : ''} ${x.dis && x.v !== cur ? 'disabled' : ''}>${esc(x.l)}${x.note ? ' – ' + esc(x.note) : ''}</option>`).join('');
+// varázslat-választó: fölül a választottak, alatta keresés és szintenként összecsukva a többi (egy Wizard-lista több száz sor)
+const chSearch = {};
+const spellHidden = (key, x) => { const q = (chSearch[key] || '').trim().toLowerCase(); return q && !x.l.toLowerCase().includes(q); };
+function spellPicker(c, o) {
+  const K = esc(c.key), sel = new Set(c.ok), full = !o.over && sel.size >= c.n;
+  const item = x => `<label ${spellHidden(c.key, x) ? 'hidden' : ''} data-chl="${esc(x.l.toLowerCase())}"><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${!sel.has(x.v) && (full || x.dis) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`;
+  const rest = o.opts.filter(x => !sel.has(x.v)), szintek = [...new Set(rest.map(x => x.lvl))];
+  const off = c.ctx.off ? `<p class="hint" style="margin:4px 0">Ebből ${esc(c.ctx.off)} lehet a rendes listán kívül („kivétel”).</p>` : '';
+  return `${off}${sel.size ? `<div class="chopts">${o.opts.filter(x => sel.has(x.v)).map(item).join('')}</div>` : ''}
+    <input data-chq="${K}" value="${esc(chSearch[c.key] || '')}" placeholder="Keresés név szerint (angolul)…" autocomplete="off">
+    ${szintek.map(l => det('chl:' + c.key + ':' + l, `<b>${l ? esc(H.ORD[l]) + ' level' : 'Cantrip'}</b> <span class="hint">(${rest.filter(x => x.lvl === l).length})</span>`,
+      `<div class="chopts" style="margin-top:6px">${rest.filter(x => x.lvl === l).map(item).join('')}</div>`)).join('')}
+    ${o.opts.length ? '' : '<p class="hint">Nincs választható varázslat.</p>'}`;
+}
 // egy választási hely szerkesztője (a 3. fázis szintlépés-varázslója is ezt használja)
 function choiceBox(c, cr) {
   const o = H.choiceOptions(c, cr, RB()), K = esc(c.key);
@@ -590,7 +605,8 @@ function choiceBox(c, cr) {
       + (mode === 'feat' ? `<select data-ch="${K}" data-asi="feat">${optList(o.opts, feat)}</select>`
         : [0, 1].map(j => `<select data-ch="${K}" data-asi="a${j}"><option value="">(+1: válassz képességet)</option>${H.ABIL.map(a => `<option value="${a}" ${picks[j] === a ? 'selected' : ''}>+1 ${a.toUpperCase()} (${esc(cr.abilities[a].v)})</option>`).join('')}</select>`).join('')
           + (picks.length === 1 ? '<p class="hint" style="margin:4px 0 0">Még 1 pont kiosztható.</p>' : ''));
-  } else if (o.multi) {
+  } else if (H.SPELL_KINDS.includes(c.kind)) body = spellPicker(c, o);
+  else if (o.multi) {
     const sel = new Set(c.ok.map(String)), full = sel.size >= c.n;
     body = `<div class="chopts">${o.opts.map(x => `<label><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${!sel.has(x.v) && (full || x.dis) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`).join('')}</div>`
       + (!o.opts.length ? '<p class="hint">Nincs választható (pl. expertise-hez előbb jártasság kell).</p>' : '');
@@ -611,6 +627,11 @@ function choicePicked(t) {
     if (t.dataset.asi === 'mode') { asiMode[key] = t.value; v = {}; }
     else if (t.dataset.asi === 'feat') v = t.value ? {feat: t.value} : {};
     else { v = {}; for (const e of els.filter(e => /^a\d$/.test(e.dataset.asi) && e.value)) v[e.value] = (v[e.value] || 0) + 1; }
+  } else if (H.SPELL_KINDS.includes(c.kind)) {
+    // a pipa levétele a varázslat jegyzetét is viszi: telefonon egy véletlen koppintástól ne vesszen el
+    const noted = !t.checked && s.spells.find(x => x.auto && x.ref === t.value && x.note);
+    if (noted && !confirm(`Leveszed: ${noted.name}? A jegyzete is törlődik.`)) { t.checked = true; return; }
+    v = [...H.spellKept(c, H.choiceOptions(c, null, RB()), RB()), ...els.filter(e => e.checked).map(e => e.value)];
   } else if (H.choiceOptions(c, null, RB()).multi) v = els.filter(e => e.checked).map(e => e.value);
   else if (c.kind === 'subclass' || c.kind === 'subrace') v = els[0].value;
   else v = els.map(e => e.value.trim()).filter(Boolean);
@@ -727,7 +748,7 @@ function canCalc(s) {
   if (!s.auto || !rbInfo) return false;
   if (RB()?.classes?.length) return true;
   const b = s.build;
-  return !b.race && !b.subrace && !b.background && !Object.keys(b.sub).length && !JSON.stringify(b.ch).includes('|');
+  return !b.race && !b.subrace && !b.background && !Object.keys(b.sub).length && !JSON.stringify(b.ch).includes('|') && !Object.keys(b.spells || {}).length;
 }
 
 // ---------- írás: helyben azonnal, a felhőbe mezőnként ----------
@@ -745,6 +766,8 @@ function write(id, p) {
   if (next.auto) {
     const ov = H.ovEdits(s, next);
     if (Object.keys(ov).length) { next = H.norm({...next, ov: {...next.ov, ...ov}}); keys.add('ov'); }
+    // a meglévő varázslatok besorolása a választási helyekre: egyszer, az első számolás előtt
+    if (next.build.spells == null && RB()?.classes?.length && RB().spells?.length) { next = H.norm({...next, build: H.adoptSpells(next, RB())}); keys.add('build'); }
     if (canCalc(next) && sigOf(next) !== calcSig.get(id)) {
       const m = H.materialize(next, H.calc(next, RB()));
       next = H.norm({...next, ...m});
@@ -1051,6 +1074,12 @@ document.addEventListener('input', e => {
   if (t.id === 'spellQ') { searchQ.spell = t.value; spellResults(s); }
   if (t.id === 'itemQ') { searchQ.item = t.value; itemResults(s); }
   if (t.id === 'featQ') { searchQ.feat = t.value; featResults(s); }
+  if (t.dataset.chq != null) {
+    chSearch[t.dataset.chq] = t.value;
+    const box = t.closest('.chbox'), q = t.value.trim().toLowerCase();
+    box.querySelectorAll('label[data-chl]').forEach(l => { l.hidden = !!q && !l.dataset.chl.includes(q); });
+    if (q) box.querySelectorAll('details').forEach(d => { d.open = !!d.querySelector('label[data-chl]:not([hidden])'); });
+  }
   // a jegyzet gépelés közben is mentődik, de a lap nem rajzolódik újra (ne ugorjon a kurzor)
   if (t.id === 'notes' && canEdit(s)) {
     clearTimeout(notesTimer);

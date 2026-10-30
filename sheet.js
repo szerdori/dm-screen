@@ -226,6 +226,34 @@ window.Sheet = (() => {
     return {slots: Array.from({length: 9}, (_, i) => row[i] || 0), pact: PACT(wl) || {level: 0, max: 0}};
   }
 
+  // a legmagasabb tanulható spellszint az osztály egyedüli táblája szerint (multiclassnál is: nem a közös slot tábla számít)
+  function maxSpellLevel(type, lvl) {
+    if (type === 'pact') return Math.min(5, Math.ceil(lvl / 2));
+    const cl = type === 'full' ? lvl : type === 'artificer' ? Math.ceil(lvl / 2) : type === 'half' ? (lvl < 2 ? 0 : Math.ceil(lvl / 2)) : type === 'third' ? (lvl < 3 ? 0 : Math.ceil(lvl / 3)) : 0;
+    return (SLOTS[Math.min(20, cl)] || []).length;
+  }
+  // kitől tanul: az osztály listája, ez alól kivétel az EK / AT (a wizard listája, iskolához kötve, a 3/8/14/20. szinten egy-egy szabad hely)
+  // és a Bard (Magical Secrets: 10/14/18. szinten 2-2 bármely listáról, a known számába beleszámít; Lore 6.: 2, a known számán felül)
+  const BOOK_CLASS = 'Wizard', SUB_SPELLS = {
+    'Eldritch Knight': {list: 'Wizard', schools: ['abjuration', 'evocation'], free: [3, 8, 14, 20]},
+    'Arcane Trickster': {list: 'Wizard', schools: ['enchantment', 'illusion'], free: [3, 8, 14, 20]}
+  };
+  function spellRule(cls, lvl, sub) {
+    const x = sub && SUB_SPELLS[sub.short];
+    if (x) return {list: x.list, schools: x.schools, off: x.free.filter(l => l <= lvl).length, extra: 0};
+    if (cls === 'Bard') { const lore = sub?.short === 'Lore' && lvl >= 6 ? 2 : 0; return {list: cls, off: 2 * [10, 14, 18].filter(l => l <= lvl).length + lore, offAny: true, extra: lore}; }
+    return {list: sub?.caster ? null : cls, off: 0, extra: 0};   // saját (homebrew) varázsló alosztálynál nincs lista
+  }
+  // egy varázslat egy választási helyre: 'list' = a rendes listáról, 'off' = csak kivételként, '' = nem tanulható
+  function spellFit(sp, kind, k) {
+    const l = num(sp.l), inList = !k.list || (sp.cl || []).includes(k.list) || (k.expanded || []).includes(String(sp.n).toLowerCase());
+    if (kind === 'cantrips') return l === 0 && inList ? 'list' : '';
+    if (l === 0) return kind === 'known' && k.offAny && k.off ? 'off' : '';
+    if (l > k.max) return '';
+    if (inList && (!k.schools || k.schools.includes(sp.sc))) return 'list';
+    return k.off && (k.offAny || inList) ? 'off' : '';
+  }
+
   // ---------- szabálymotor (2. fázis): a lap felépítéséből (build) és a kézi felülírásokból (ov) számol ----------
   // A szabálykönyv elemei (faj, alfaj, háttér, feat, optional feature) hatáslistát (fx) hordoznak, az osztály-feature-ökét a FEATURE_FX adja.
   // Egy hatás egy objektum, pl.
@@ -269,7 +297,7 @@ window.Sheet = (() => {
   }
   const CHOICE_KIND = {abChoose: 'ability', skillChoose: 'skills', expertise: 'expertise', feat: 'feat', saveChoose: 'saves', langChoose: 'lang', toolChoose: 'tool'};
   const FX_LABEL = {ability: 'képességérték-növelés', skills: 'skill-jártasság', expertise: 'expertise', feat: 'feat', asi: 'ASI vagy feat', subclass: 'alosztály',
-    saves: 'mentő-jártasság', lang: 'nyelv', tool: 'eszköz-jártasság', subrace: 'alfaj', opt: 'választás'};
+    saves: 'mentő-jártasság', lang: 'nyelv', tool: 'eszköz-jártasság', subrace: 'alfaj', opt: 'választás', cantrips: 'cantrip', known: 'ismert varázslat', book: 'spellbook'};
 
   // Kézi hatástábla: csak mechanika, szabályszöveg nélkül (a szöveg a privát szabálykönyvből jön).
   // Kulcs: 'Osztály|Feature', 'Osztály|Alosztály|Feature', 'race|Faj vagy jellemző', 'feat|Név', 'opt|Név'. Az online teszt ellenőrzi, hogy minden kulcs létezik.
@@ -283,9 +311,7 @@ window.Sheet = (() => {
     'Bard|Bardic Inspiration': [{res: {n: 'Bardic Inspiration', max: 'mod:cha', min: 1, reset: 'long', shortAt: 5}}],
     'Bard|Jack of All Trades': [{jack: true}],
     'Bard|Expertise': [{expertise: {n: 2}}],
-    'Bard|Magical Secrets': [{todo: 'Magical Secrets: válassz 2 varázslatot bármely osztály listájáról'}],
     'Bard|Lore|Bonus Proficiencies': [{skillChoose: {from: 'any', n: 3}}],
-    'Bard|Lore|Additional Magical Secrets': [{todo: 'Additional Magical Secrets: válassz 2 varázslatot bármely osztály listájáról'}],
     'Cleric|Channel Divinity': [{res: {n: 'Channel Divinity', max: {lv: {2: 1, 6: 2, 18: 3}}, reset: 'short'}}],
     'Cleric|Life|Bonus Proficiency': [{armor: ['heavy']}],
     'Cleric|Knowledge|Blessings of Knowledge': [{langChoose: {n: 2}}, {skillChoose: {from: ['arcana', 'history', 'nature', 'religion'], n: 2}}, {expertise: {n: 2}}],
@@ -712,7 +738,7 @@ window.Sheet = (() => {
       if (!type || !ab) continue;
       const tbl = sub?.caster ? sub : ci.r || {};
       casting.push({cls: c.name, type, ab, dc: 8 + PB + mods[ab], atk: PB + mods[ab], cantrips: num(tbl.cantrips?.[c.level - 1]), known: num(tbl.known?.[c.level - 1]),
-        prepared: !sub?.caster && ci.r?.prep ? prepCount(ci.r.prep, c.level, mods) : 0});
+        prepared: !sub?.caster && ci.r?.prep ? prepCount(ci.r.prep, c.level, mods) : 0, maxSpell: maxSpellLevel(type, c.level)});
     }
     // mindig felkészített / ismert varázslatok (domain, oath, faji)
     const always = [];
@@ -727,6 +753,33 @@ window.Sheet = (() => {
     ctx.casting = casting;
     ctx.always = always;
   }
+  // varázslat-választási helyek osztályonként: 'Sorcerer:cantrips', 'Sorcerer:known', 'Wizard:book'; a darabszám a szinthez tartozó összes, a lista halmozódik.
+  // A spellbookban lehet több is a helyek számánál (talált, lemásolt varázslatok). Az érvénytelen választás nem számít, és nem kerül a lapra.
+  function calcVarazslatHelyek(ctx) {
+    const {rb, b, classes, casting, choices, A} = ctx, spells = rb?.spells || [];
+    const learned = [];
+    if (ctx.full && spells.length) for (const cast of casting) {
+      const lvl = classes.find(c => c.name === cast.cls).level, sub = subclassOf(b, cast.cls, rb), rule = spellRule(cast.cls, lvl, sub);
+      const expanded = A.spells.filter(x => x.t === 'expanded' && x.ctx.cls === cast.cls).flatMap(x => arr(x.sp, 30).map(n => String(n).toLowerCase()));
+      const kor = {cls: cast.cls, lvl, max: cast.maxSpell, list: rule.list, schools: rule.schools, off: rule.off, offAny: !!rule.offAny, expanded};
+      const helyek = [['cantrips', cast.cantrips, 'Cantrip'], ['known', cast.known ? cast.known + rule.extra : 0, 'Ismert varázslatok'], ['book', cast.cls === BOOK_CLASS ? 6 + 2 * (lvl - 1) : 0, 'Spellbook']];
+      for (const [kind, n, label] of helyek) {
+        if (!n) continue;
+        const value = b.spells?.[cast.cls]?.[kind] || [], ok = [];
+        let off = rule.off;
+        for (const ref of value) {
+          const sp = rbFind(spells, ref), f = sp ? spellFit(sp, kind, kor) : '', canon = sp ? sp.n + '|' + sp.s : '';
+          if (!f || ok.includes(canon) || (kind !== 'book' && ok.length >= n) || (f === 'off' && off < 1)) continue;
+          if (f === 'off') off--;
+          ok.push(canon);
+          learned.push({name: sp.n, level: num(sp.l), ref: canon, cls: cast.cls, book: kind === 'book'});
+        }
+        choices.push({key: `${cast.cls}:${kind}`, kind, src: `${label} (${cast.cls})`, n, ctx: kor, value, ok, done: ok.length >= n});
+      }
+    }
+    // null: a szabálykönyvben nincs varázslat, ilyenkor nem tudni, mi érvényes (a lapon lévő tanult varázslatok maradnak)
+    ctx.learned = ctx.full && !spells.length ? null : learned;
+  }
   function calcTeendok(ctx) {
     const {s, A, choices, missing} = ctx;
     const done = new Set(s.todoDone || []);
@@ -737,13 +790,13 @@ window.Sheet = (() => {
     ];
     ctx.todos = todos;
   }
-  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok, calcHatasok, calcExpertise, calcFelszereles, calcKepessegek, calcMentokSkillek, calcHp, calcAc, calcSpeed, calcTamadasok, calcEroforrasok, calcVarazslas, calcTeendok];
+  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok, calcHatasok, calcExpertise, calcFelszereles, calcKepessegek, calcMentokSkillek, calcHp, calcAc, calcSpeed, calcTamadasok, calcEroforrasok, calcVarazslas, calcVarazslatHelyek, calcTeendok];
   function calcEredmeny(ctx) {
-    const {full, L, PB, classes, abilities, mods, saves, skills, jack, passive, hpMax, init, ac, acNote, speed, sl, A, features, resources, attacks, casting, always, choices, todos, missing} = ctx;
+    const {full, L, PB, classes, abilities, mods, saves, skills, jack, passive, hpMax, init, ac, acNote, speed, sl, A, features, resources, attacks, casting, always, learned, choices, todos, missing} = ctx;
     return {full, level: L, pb: PB, classes, abilities, mods, saves, skills, jack, passive, hpMax, init, ac, acNote, speed, slots: sl.slots, pact: sl.pact,
       profs: {armor: uniqCI(A.armor).join(', '), weapons: uniqCI(A.weapon).join(', '), tools: uniqCI(A.tool).join(', '), languages: uniqCI(A.lang).join(', ')},
       senses: A.dv ? `darkvision ${A.dv} ft.` : '', resist: uniqCI(A.resist).join(', '),
-      features, resources, attacks, casting, always, choices, todos, missing};
+      features, resources, attacks, casting, always, learned, choices, todos, missing};
   }
 
   function calc(s, rb = null) {
@@ -783,7 +836,12 @@ window.Sheet = (() => {
         features: merge(s.features, c.features),
         resources: merge(s.resources, c.resources, r => { const o = s.resources.find(x => x.name === r.name); return {...r, used: Math.min(o?.used || 0, r.max)}; }),
         attacks: merge(s.attacks, c.attacks),
-        spells: merge(s.spells, c.always, x => ({name: x.name, level: x.level, prepared: false, always: true, note: '', ref: x.ref}))});
+        spells: merge(s.spells, [...c.always.map(x => ({...x, always: true})), ...(c.learned || s.spells.filter(x => x.auto && !x.always))].filter((x, i, l) => l.findIndex(y => y.name.toLowerCase() === x.name.toLowerCase()) === i), x => {
+          if (x.always) return {name: x.name, level: x.level, prepared: false, always: true, note: '', ref: x.ref};
+          // a felkészítés és a jegyzet a lapon marad; az újonnan tanult varázslat ismert casternél kész, a spellbookban még nem felkészített
+          const o = s.spells.find(y => y.name.toLowerCase() === x.name.toLowerCase());
+          return {name: x.name, level: x.level, prepared: o ? o.prepared : !x.book, always: false, note: o?.note || '', ref: x.ref, cls: x.cls, ...(x.book ? {book: true} : {})};
+        })});
     }
     const next = norm({...s, ...p}), out = {};
     for (const k of Object.keys(p)) if (JSON.stringify(next[k]) !== JSON.stringify(s[k])) out[k] = next[k];
@@ -888,7 +946,21 @@ window.Sheet = (() => {
       const race = refName(c.src.replace(/^Faj: /, ''));
       opts = (rb?.subraces || []).filter(x => x.race === race).map(x => ({v: x.n + '|' + x.s, l: /\(alap\)$/.test(x.n) ? race + ' (alap)' : x.n}));
     } else if (c.kind === 'asi') opts = refs(rb?.feats);
-    return {multi, free, n: c.n, opts};
+    else if (SPELL_KINDS.includes(c.kind)) {
+      multi = true;
+      const taken = new Set((cr?.always || []).map(x => x.name.toLowerCase()));
+      const offUsed = arr(c.ok, 120).filter(ref => { const sp = rbFind(rb?.spells, ref); return sp && spellFit(sp, c.kind, c.ctx) === 'off'; }).length;
+      opts = (rb?.spells || []).map(sp => ({sp, f: spellFit(sp, c.kind, c.ctx)})).filter(x => x.f).sort((x, y) => num(x.sp.l) - num(y.sp.l) || x.sp.n.localeCompare(y.sp.n)).map(({sp, f}) => {
+        const v = sp.n + '|' + sp.s, mine = arr(c.ok, 120).includes(v), got = taken.has(sp.n.toLowerCase());
+        return {v, l: sp.n, lvl: num(sp.l), note: got ? 'már megvan' : f === 'off' ? 'kivétel' : '', off: f === 'off', dis: !mine && (got || (f === 'off' && offUsed >= c.ctx.off))};
+      });
+    }
+    return {multi, free, n: c.n, opts, ...(c.kind === 'book' ? {over: true} : {})};
+  }
+  // a tárolt varázslat-refek közül azok, amelyeknek most nincs választósoruk (pl. a szabálykönyv változott): egy másik kattintástól ne vesszenek el
+  function spellKept(c, o, rb) {
+    const sorok = new Set(o.opts.map(x => x.v));
+    return arr(c.value, 120).filter(ref => { const sp = rbFind(rb?.spells, ref); return !sp || !sorok.has(sp.n + '|' + sp.s); });
   }
   // a választás beírása a felépítésbe (alosztály → sub, alfaj → subrace, a többi → ch); üres érték = törlés
   function setChoice(b, c, v) {
@@ -896,6 +968,7 @@ window.Sheet = (() => {
     const empty = v == null || v === '' || (Array.isArray(v) && !v.length) || (isObj(v) && !Object.keys(v).length);
     if (c.kind === 'subclass') { const cls = c.key.replace(/:sub$/, ''); if (empty) delete n.sub[cls]; else n.sub[cls] = String(v); }
     else if (c.kind === 'subrace') n.subrace = empty ? '' : String(v);
+    else if (SPELL_KINDS.includes(c.kind)) { const cls = c.ctx?.cls || c.key.split(':')[0]; n.spells = {...n.spells, [cls]: {...n.spells?.[cls], [c.kind]: empty ? [] : v}}; }
     else if (empty) delete n.ch[c.key];
     else n.ch[c.key] = v;
     return normBuild(n);
@@ -918,6 +991,27 @@ window.Sheet = (() => {
     if (c.speed.v !== s.speed) ov.speed = s.speed;
     if (c.init.v !== initiative(s)) ov.init = initiative(s);
     return {auto: true, build: b, ov: normOv(ov), todoDone: []};
+  }
+  // a szabálymotoros lap meglévő varázslatainak besorolása a felépítésbe (build.spells): ami egyértelműen egy helyre való, az oda kerül (a felkészítés és a jegyzet marad),
+  // a többi saját varázslat marad (pl. kétosztályos lapon a mindkét listán szereplő); a hiányzó helyek teendők lesznek. Csak egyszer fut: utána a build.spells nem null.
+  function adoptSpells(s, rb) {
+    if (!rb?.classes?.length || !rb.spells?.length) return s.build;
+    const cr = calc({...s, build: {...s.build, spells: {}}}, rb), helyek = cr.choices.filter(c => SPELL_KINDS.includes(c.kind));
+    const fel = {}, off = Object.fromEntries(helyek.map(h => [h.key, h.ctx.off]));
+    // a felkészítős osztály (Cleric, Druid, Paladin, Artificer) leveled varázslatainak nincs helye: ami az ő listájukon is rajta van, az saját marad
+    const prep = cr.casting.filter(x => x.prepared && !helyek.some(h => h.ctx.cls === x.cls && h.kind !== 'cantrips')).map(x => x.cls);
+    const sajat = s.spells.filter(x => !x.auto && !x.always).map(x => rbFind(rb.spells, x.ref || x.name)).filter(sp => sp && !(num(sp.l) && prep.some(p => (sp.cl || []).includes(p))));
+    for (const fit of ['list', 'off']) for (const sp of sajat) {
+      const ref = sp.n + '|' + sp.s;
+      if (helyek.some(h => fel[h.key]?.includes(ref))) continue;
+      const jo = helyek.filter(h => spellFit(sp, h.kind, h.ctx) === fit && (h.kind === 'book' || (fel[h.key]?.length || 0) < h.n) && (fit === 'list' || off[h.key] > 0));
+      if (jo.length !== 1) continue;
+      (fel[jo[0].key] = fel[jo[0].key] || []).push(ref);
+      if (fit === 'off') off[jo[0].key]--;
+    }
+    const spells = {};
+    for (const h of helyek) if (fel[h.key]) (spells[h.ctx.cls] = spells[h.ctx.cls] || {})[h.kind] = fel[h.key];
+    return normBuild({...s.build, spells});
   }
   // ---------- faji és feat-képességbónusz a kézi lapon (a beírt értékekhez adva) ----------
   // fixed: azonnal hozzáadható; choose: a játékos választ (pl. Half-Elf 2× +1, Resilient)
@@ -1207,7 +1301,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName,
+    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine};
