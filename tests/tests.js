@@ -32,7 +32,7 @@ try { localStorage.removeItem('dmscreen'); localStorage.removeItem('dmscreen-she
 
 const $ = s => W.document.querySelector(s);
 const $$ = s => [...W.document.querySelectorAll(s)];
-const click = (el, opts = {}) => { if (typeof el === 'string') el = $(el); ok(el, 'nincs ilyen elem'); el.dispatchEvent(new W.MouseEvent('click', {bubbles: true, ...opts})); };
+const click = (el, opts = {}) => { const mi = el; if (typeof el === 'string') el = $(el); ok(el, 'nincs ilyen elem: ' + mi); el.dispatchEvent(new W.MouseEvent('click', {bubbles: true, ...opts})); };
 const key = (el, k, opts = {}) => { (el || W.document.body).dispatchEvent(new W.KeyboardEvent('keydown', {key: k, bubbles: true, ...opts})); };
 const setVal = (el, v, evt = 'change') => { if (typeof el === 'string') el = $(el); el.value = v; el.dispatchEvent(new W.Event(evt, {bubbles: true})); };
 const list = () => A('S.enc.list');
@@ -653,6 +653,7 @@ describe('Könyvtár', () => {
     W.upsertLibrary(W.normCreature(mk()));
     W.openLib('lib'); $('#libRows .cnt').value = '3'; click('#libRows [data-act="libAdd"]');
     eq(names().sort(), ['Goblin 1', 'Goblin 2', 'Goblin 3']);
+    has(lastLog(), '3× Goblin', 'napló');
   });
   test('a könyvtárban szerkesztett lény az új példányokban jelenik meg, a meglévőkben nem', () => {
     const c = W.upsertLibrary(W.normCreature(mk()));
@@ -3117,6 +3118,44 @@ describe('Szerződés (szerzodes.js)', () => {
     ok(html.indexOf('const VART_MODULOK') < html.indexOf('<script src="kozos.js'), 'a VART_MODULOK a fájlok előtt áll');
     const srcek = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => s !== 'firebase-config.js');
     ok(srcek.at(-1).startsWith('js/indulas.js?'), 'az utolsó: ' + srcek.at(-1));
+  });
+  test('gombok: minden data-act-hoz van AKCIOK-bejegyzés és viszont; mind szó szerinti név (docs/dontesek/0006)', async () => {
+    const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();
+    const html = await szoveg('index.html');
+    const fajlok = [...html.matchAll(/<script src="(js\/[\w\/-]+\.js)\?v=\d+"><\/script>/g)].map(m => m[1]);
+    const kod = [html, ...await Promise.all(fajlok.map(szoveg))].join('\n').replace(/^\s*\/\/.*$/gm, '');
+    eq([...kod.matchAll(/data-act=(?!"\w+")[^\s>]*/g)].map(m => m[0]), [], 'összerakott data-act');
+    const gombok = [...new Set([...kod.matchAll(/data-act="(\w+)"/g)].map(m => m[1]))].sort();
+    ok(gombok.length >= 70, 'megtalálta a gombokat: ' + gombok.length);
+    eq(gombok, A('Object.keys(AKCIOK)').sort());
+  });
+  test('kattintás: a dobás megelőzi a körülötte lévő gombot; ismeretlen data-act nem csinál semmit; Shift/Ctrl közös segéd', () => {
+    W.addToEncounter(mk());
+    W.renderGate('<button data-act="next"><span class="roll" data-roll="1d6" data-label="Próba">1d6</span></button><button id="ism" data-act="constructor">x</button>');
+    stubRnd(4); click('#gate .roll');
+    eq(A('S.enc.active'), null, 'a gomb nem futott le'); has(lastLog(), 'Próba');
+    click('#ism'); eq(A('S.enc.active'), null);
+    W.renderGate(null);
+    eq(['shiftKey', 'ctrlKey', 'x'].map(k => A(`dobasMod({${k}: true})`)), ['adv', 'dis', '']);
+  });
+  test('kattintás: a fejléc és a kereső gombjai (ablakok, játékos képernyő, belépés)', async () => {
+    const eredeti = {open: W.open, fiveSearch: W.fiveSearch, DMAuth: W.DMAuth}, hivas = [];
+    try {
+      W.open = (...a) => { hivas.push(a[0]); return null; };
+      W.fiveSearch = () => { hivas.push('keres'); };
+      W.DMAuth = {signIn: () => hivas.push('be'), signOut: () => hivas.push('ki')};
+      click('[data-act="openPlayer"]'); click('[data-act="openCharApp"]');
+      eq(hivas, ['player.html', 'karakter.html']);
+      A('fiveIndex = {}'); W.openLib('five'); click('[data-act="fiveSearch"]');
+      W.renderGate('<button data-act="signIn">x</button><button data-act="signOut">y</button>');
+      click('#gate [data-act="signIn"]'); click('#gate [data-act="signOut"]'); W.renderGate(null);
+      eq(hivas.slice(2), ['keres', 'be', 'ki']);
+      eq($('#modal').hidden, true, 'a kilépés bezárja az ablakot');
+      click('[data-act="openLib"]'); ok($('#libRoot'), 'könyvtár');
+      W.closeModal(); click('[data-act="menu"]'); has($('#modalBox').textContent, 'Exportálás');
+      W.closeModal(); click('[data-act="openLoot"]'); ok(!$('#modal').hidden, 'zsákmány');
+      W.closeModal(); click('[data-act="openParty"]'); ok(!$('#modal').hidden, 'Csapat nézet');
+    } finally { Object.assign(W, eredeti); W.closeModal(); }
   });
   test('a felület segédei a Tar helyett: felhoben() és szabalyMeta()', async () => {
     try {

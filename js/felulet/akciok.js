@@ -1,4 +1,4 @@
-// Események (felület): kattintás, módosítás, gépelés, billentyűk és beillesztés kezelése; a gombok data-act alapján (az AKCIOK nyilvántartás az 5. lépésben).
+// Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
 modul('akciok', 1);
@@ -219,20 +219,14 @@ const AKCIOK = {
   },
 };
 
-// ---------- események ----------
-// a gombok és mezők eseményei (document szinten, data-act / data-* alapján); induláskor kapcsoljuk fel.
-// A törzs szándékosan nincs behúzva, hogy a többsoros szövegek betűre változatlanok maradjanak (az 5. lépés az AKCIOK nyilvántartásra bontja).
-function akciokEsemenyek() {
-document.addEventListener('click', async e => {
-  const t = e.target;
+// ---------- kattintásszabályok: a dobások és fülek, nem gombok ----------
+// A data-act gombok előtt, ebben a sorrendben nézzük; az első illeszkedő dönt (egy gomb belsejében lévő dobás is csak dob).
+const KATTINTASOK = [
   // Csapat nézet: titkos skill-dobás egy játékosnak
-  const sk = t.closest('td.sk');
-  if (sk) { partyRoll([sk.dataset.pc], sk.dataset.sk, dobasMod(e)); return; }
-  const th = t.closest('th.sortable');
-  if (th) { setPartySort(th.dataset.sort, /^\d+$/.test(th.dataset.col) ? +th.dataset.col : th.dataset.col); rerenderParty(); return; }
+  ['td.sk', (sk, e) => { partyRoll([sk.dataset.pc], sk.dataset.sk, dobasMod(e)); }],
+  ['th.sortable', th => { setPartySort(th.dataset.sort, /^\d+$/.test(th.dataset.col) ? +th.dataset.col : th.dataset.col); rerenderParty(); }],
   // dobások
-  const r = t.closest('.roll');
-  if (r) {
+  ['.roll', (r, e) => {
     const cidEl = r.closest('[data-cid]');
     const x = cidEl ? byId(cidEl.dataset.cid) : null;
     const who = x ? nameOf(x) : '';
@@ -243,77 +237,84 @@ document.addEventListener('click', async e => {
       const d = rnd(6), ok = d >= +r.dataset.rech;
       log(`<span class="who">${esc(who)}</span> ${esc(label || 'Recharge')}: d6 = <b>${d}</b> — ${ok ? 'feltöltődött ✓' : 'nem töltődött'}`, ok ? 'crit' : '');
     }
-    return;
-  }
-  const chk = t.closest('[data-check],[data-save]');
-  if (chk) {
+  }],
+  ['[data-check],[data-save]', (chk, e) => {
     const x = byId(chk.closest('[data-cid]')?.dataset.cid); if (!x) return;
-    const sv = t.closest('[data-save]');
+    const sv = e.target.closest('[data-save]');
     if (sv) rollHit(sgn(+x.c.saves[sv.dataset.save]), nameOf(x), ABIL_FULL[sv.dataset.save] + ' mentő', dobasMod(e));
     else { const a = chk.dataset.check; rollHit(sgn(mod(x.c.abilities[a])), nameOf(x), ABIL_FULL[a] + ' próba', dobasMod(e)); }
-    return;
-  }
-  if (t.dataset.die) { rollDmg(t.dataset.die, '', t.dataset.die.replace('1', '')); return; }
-  if (t.dataset.tab) { libTab = t.dataset.tab; renderLib(); return; }
+  }],
+  ['[data-die]', d => { rollDmg(d.dataset.die, '', d.dataset.die.replace('1', '')); }],
+  ['[data-tab]', f => { libTab = f.dataset.tab; renderLib(); }],
+];
 
-  const el = t.closest('[data-act]'); if (!el) return;
-  const act = el.dataset.act;
-  if (Object.hasOwn(AKCIOK, act)) await AKCIOK[act](el, e);
-});
+// ---------- események ----------
+// a gombok és mezők eseményei (document szinten, data-act / data-* alapján); induláskor kapcsoljuk fel.
+function akciokEsemenyek() {
+  document.addEventListener('click', async e => {
+    const t = e.target;
+    for (const [valaszto, fn] of KATTINTASOK) {
+      const el = t.closest(valaszto);
+      if (el) { fn(el, e); return; }
+    }
+    const el = t.closest('[data-act]'); if (!el) return;
+    const act = el.dataset.act;
+    if (Object.hasOwn(AKCIOK, act)) await AKCIOK[act](el, e);
+  });
 
-document.addEventListener('change', e => {
-  const t = e.target;
-  if (t.dataset.setting) { S.settings[t.dataset.setting] = t.checked; save(); return; }
-  if (t.dataset.src) {
-    const s = new Set(S.settings.sources);
-    t.checked ? s.add(t.dataset.src) : s.delete(t.dataset.src);
-    S.settings.sources = [...s]; save(); return;
-  }
-  if (t.id === 'libKind') { filterLib(); return; }
-  if (t.id === 'partyAddSel') { if (t.value) { setPartyMember(t.value, true); rerenderParty(); } return; }
-  const x = byId(t.closest('[data-cid]')?.dataset.cid);
-  if (!x) return;
-  if (t.classList.contains('init')) { x.init = t.value === '' ? null : +t.value; save(); render(); return; }
-  const f = t.dataset.f;
-  if (!f || f === 'notes') return;
-  if (f === 'conc') x.conc = t.checked;
-  else if (f === 'init') x.init = t.value === '' ? null : +t.value;
-  else if (f === 'hp') { x.hp = Math.max(0, +t.value || 0); x.dead = x.hp === 0 && x.c.kind !== 'pc'; }
-  else if (f === 'max') x.c.hp.max = Math.max(1, +t.value || 1);
-  else if (f === 'temp') x.temp = Math.max(0, +t.value || 0);
-  else if (f === 'ac') x.c.ac = +t.value || 0;
-  else if (f === 'side') x.side = t.value;
-  else if (f === 'hiddenP') x.hiddenP = t.checked;
-  else if (f === 'pubName') x.publicName = t.value.trim();
-  save(); render();
-});
-document.addEventListener('input', e => {
-  const t = e.target;
-  if (t.id === 'libSearch') filterLib();
-  if (t.id === 'itemQ') filterItems();
-  if (t.id === 'partySearch') filterPartyItems(t.value);
-  if (t.dataset.f === 'notes') { const x = byId(t.closest('[data-cid]')?.dataset.cid); if (x) { x.notes = t.value; save(); } }
-});
-document.addEventListener('keydown', e => {
-  const t = e.target;
-  if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (selected) { selected = null; render(); } return; }
-  if (t.classList?.contains('hpin') && e.key === 'Enter') {
-    const x = byId(t.closest('[data-cid]').dataset.cid), n = parseInt(t.value);
-    if (n > 0) damage(x, n); else if (n < 0) heal(x, -n);
-    if (n) { save(); render(); }
-    return;
-  }
-  if (t.id === 'diceInput' && e.key === 'Enter') { const v = t.value.trim(); if (v) rollDmg(v, '', v); return; }
-  if (t.id === 'fiveQ' && e.key === 'Enter') { fiveSearch(); return; }
-  if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || !$('#modal').hidden) return;
-  if (e.key === 'n' || e.key === 'N' || e.key === ' ') { e.preventDefault(); step(1); }
-  else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); step(-1); }
-});
+  document.addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.setting) { S.settings[t.dataset.setting] = t.checked; save(); return; }
+    if (t.dataset.src) {
+      const s = new Set(S.settings.sources);
+      t.checked ? s.add(t.dataset.src) : s.delete(t.dataset.src);
+      S.settings.sources = [...s]; save(); return;
+    }
+    if (t.id === 'libKind') { filterLib(); return; }
+    if (t.id === 'partyAddSel') { if (t.value) { setPartyMember(t.value, true); rerenderParty(); } return; }
+    const x = byId(t.closest('[data-cid]')?.dataset.cid);
+    if (!x) return;
+    if (t.classList.contains('init')) { x.init = t.value === '' ? null : +t.value; save(); render(); return; }
+    const f = t.dataset.f;
+    if (!f || f === 'notes') return;
+    if (f === 'conc') x.conc = t.checked;
+    else if (f === 'init') x.init = t.value === '' ? null : +t.value;
+    else if (f === 'hp') { x.hp = Math.max(0, +t.value || 0); x.dead = x.hp === 0 && x.c.kind !== 'pc'; }
+    else if (f === 'max') x.c.hp.max = Math.max(1, +t.value || 1);
+    else if (f === 'temp') x.temp = Math.max(0, +t.value || 0);
+    else if (f === 'ac') x.c.ac = +t.value || 0;
+    else if (f === 'side') x.side = t.value;
+    else if (f === 'hiddenP') x.hiddenP = t.checked;
+    else if (f === 'pubName') x.publicName = t.value.trim();
+    save(); render();
+  });
+  document.addEventListener('input', e => {
+    const t = e.target;
+    if (t.id === 'libSearch') filterLib();
+    if (t.id === 'itemQ') filterItems();
+    if (t.id === 'partySearch') filterPartyItems(t.value);
+    if (t.dataset.f === 'notes') { const x = byId(t.closest('[data-cid]')?.dataset.cid); if (x) { x.notes = t.value; save(); } }
+  });
+  document.addEventListener('keydown', e => {
+    const t = e.target;
+    if (e.key === 'Escape') { if (!$('#modal').hidden) closeModal(); else if (selected) { selected = null; render(); } return; }
+    if (t.classList?.contains('hpin') && e.key === 'Enter') {
+      const x = byId(t.closest('[data-cid]').dataset.cid), n = parseInt(t.value);
+      if (n > 0) damage(x, n); else if (n < 0) heal(x, -n);
+      if (n) { save(); render(); }
+      return;
+    }
+    if (t.id === 'diceInput' && e.key === 'Enter') { const v = t.value.trim(); if (v) rollDmg(v, '', v); return; }
+    if (t.id === 'fiveQ' && e.key === 'Enter') { fiveSearch(); return; }
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || !$('#modal').hidden) return;
+    if (e.key === 'n' || e.key === 'N' || e.key === ' ') { e.preventDefault(); step(1); }
+    else if (e.key === 'p' || e.key === 'P') { e.preventDefault(); step(-1); }
+  });
 
-// beillesztéskor magától importál
-document.addEventListener('paste', e => {
-  if (e.target.id !== 'ddbPaste') return;
-  const t = e.clipboardData?.getData('text');
-  if (t && t.trim().startsWith('{')) { e.preventDefault(); ddbImportText(t); }
-});
+  // beillesztéskor magától importál
+  document.addEventListener('paste', e => {
+    if (e.target.id !== 'ddbPaste') return;
+    const t = e.clipboardData?.getData('text');
+    if (t && t.trim().startsWith('{')) { e.preventDefault(); ddbImportText(t); }
+  });
 }
