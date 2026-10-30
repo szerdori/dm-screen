@@ -584,6 +584,10 @@ describe('D&D Beyond átalakítás', () => {
     eq([c.cr, c.hp.max, c.hp.cur, c.speed, c.kind, c.ddbId], ['Szint 5', 67, 57, '35 ft.', 'pc', 424242]);
     eq(c.type, 'Wood Elf — Fighter 3 (Eldritch Knight) / Rogue 2');
   });
+  test('HP: a kézi felülírás számít, és a jelenlegi nem megy 0 alá', () => {
+    const d = structuredClone(DDB); d.data.overrideHitPoints = 50; d.data.removedHitPoints = 80;
+    const {hp} = W.convertDDB(d); eq([hp.max, hp.cur], [50, 0]);
+  });
   test('AC: közepes páncél (max +2 DEX) + pajzs + bónuszok, a nem viselt páncél nem számít', () => eq(W.convertDDB(DDB).ac, 20));
   test('AC páncél nélkül: 10 + DEX + Unarmored Defense (CON)', () => {
     const d = structuredClone(DDB); d.data.inventory = []; d.data.modifiers.class.push({type: 'set', subType: 'unarmored-armor-class', statId: 3});

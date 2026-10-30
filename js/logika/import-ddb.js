@@ -7,29 +7,39 @@ modul('import-ddb', 1);
 const WEAPON_ARMOR_PROF = /^(simple|martial)-weapons$|-armor$|^shields$|^(club|dagger|greatclub|handaxe|javelin|light-hammer|mace|quarterstaff|sickle|spear|crossbow-light|crossbow-heavy|crossbow-hand|dart|shortbow|sling|battleaxe|flail|glaive|greataxe|greatsword|halberd|lance|longsword|maul|morningstar|pike|rapier|scimitar|shortsword|trident|war-pick|warhammer|whip|blowgun|longbow|net|firearms)$/;
 // külön, nem megjelenített dokumentumban bontjuk ki: a beillesztett HTML képei nem töltődnek be, és a szkriptjei nem futnak
 function stripHtml(h) { return new DOMParser().parseFromString(String(h || ''), 'text/html').documentElement.textContent.replace(/\s+\n/g, '\n').trim(); }
-function convertDDB(raw) {
-  const d = raw.data || raw;
-  if (!Array.isArray(d.stats)) throw new Error('Ez nem D&D Beyond karakter JSON');
-  const mods = Object.values(d.modifiers || {}).flat().filter(Boolean);
-  const SUB = {str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma'};
-  const sum = (type, sub) => mods.filter(m => m.type === type && m.subType === sub).reduce((s, m) => s + (m.value || 0), 0);
+const DDB_SUB = {str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma'};
+function ddbKepessegek(d, mods, sum) {
   const abilities = {};
   ABIL.forEach((a, i) => {
     const id = i + 1;
     const over = d.overrideStats?.find(s => s.id === id)?.value;
-    let v = (d.stats.find(s => s.id === id)?.value || 10) + (d.bonusStats?.find(s => s.id === id)?.value || 0) + sum('bonus', SUB[a] + '-score');
-    const sets = mods.filter(m => m.type === 'set' && m.subType === SUB[a] + '-score').map(m => m.value || 0);
+    let v = (d.stats.find(s => s.id === id)?.value || 10) + (d.bonusStats?.find(s => s.id === id)?.value || 0) + sum('bonus', DDB_SUB[a] + '-score');
+    const sets = mods.filter(m => m.type === 'set' && m.subType === DDB_SUB[a] + '-score').map(m => m.value || 0);
     if (sets.length) v = Math.max(v, ...sets);
     abilities[a] = over || v;
   });
+  return abilities;
+}
+// a közös alap (k), amiből a részek számolnak: a nyers adat, a módosítók, a képességek, a szint és a jártassági bónusz
+function ddbAlap(raw) {
+  const d = raw.data || raw;
+  if (!Array.isArray(d.stats)) throw new Error('Ez nem D&D Beyond karakter JSON');
+  const mods = Object.values(d.modifiers || {}).flat().filter(Boolean);
+  const sum = (type, sub) => mods.filter(m => m.type === type && m.subType === sub).reduce((s, m) => s + (m.value || 0), 0);
+  const abilities = ddbKepessegek(d, mods, sum);
   const M = a => mod(abilities[a]);
   const classes = d.classes || [];
   const level = classes.reduce((s, c) => s + (c.level || 0), 0) || 1;
   const pb = Math.floor((level - 1) / 4) + 2;
-  const hpMax = d.overrideHitPoints || ((d.baseHitPoints || 0) + (d.bonusHitPoints || 0) + (M('con') + sum('bonus', 'hit-points-per-level')) * level);
-  const hpCur = Math.max(0, hpMax - (d.removedHitPoints || 0));
-  // AC
-  const inv = (d.inventory || []).filter(i => i.equipped && i.definition);
+  return {d, mods, sum, abilities, M, classes, level, pb};
+}
+function ddbHp({d, sum, M, level}) {
+  const max = d.overrideHitPoints || ((d.baseHitPoints || 0) + (d.bonusHitPoints || 0) + (M('con') + sum('bonus', 'hit-points-per-level')) * level);
+  return {max, cur: Math.max(0, max - (d.removedHitPoints || 0)), formula: ''};
+}
+const ddbFelszerelt = d => (d.inventory || []).filter(i => i.equipped && i.definition);
+function ddbAc({d, mods, sum, abilities, M}) {
+  const inv = ddbFelszerelt(d);
   const armor = inv.find(i => [1, 2, 3].includes(i.definition.armorTypeId));
   const shield = inv.find(i => i.definition.armorTypeId === 4);
   const dex = M('dex');
@@ -46,10 +56,14 @@ function convertDDB(raw) {
     ac += sum('bonus', 'unarmored-armor-class');
   }
   if (shield) ac += shield.definition.armorClass || 2;
-  ac += sum('bonus', 'armor-class');
+  return ac + sum('bonus', 'armor-class');
+}
+function convertDDB(raw) {
+  const alap = ddbAlap(raw), {d, mods, sum, abilities, M, classes, level, pb} = alap;
+  const inv = ddbFelszerelt(d), dex = M('dex');
   const prof = sub => mods.some(m => m.type === 'proficiency' && m.subType === sub);
   const expert = sub => mods.some(m => m.type === 'expertise' && m.subType === sub);
-  const saves = {}; ABIL.forEach(a => { if (prof(SUB[a] + '-saving-throws')) saves[a] = M(a) + pb; });
+  const saves = {}; ABIL.forEach(a => { if (prof(DDB_SUB[a] + '-saving-throws')) saves[a] = M(a) + pb; });
   // skillek: jártasság / expertise / fél jártasság (Jack of All Trades) + tárgyakból, képességekből jövő bónuszok
   const halfProf = mods.some(m => m.type === 'half-proficiency' && m.subType === 'ability-checks') ? Math.floor(pb / 2) : 0;
   const skillMods = {};
@@ -115,7 +129,7 @@ function convertDDB(raw) {
   return normCreature({
     name: d.name, kind: 'pc', source: 'D&D Beyond', ddbId: d.id,
     type: [d.race?.fullName, clsStr].filter(Boolean).join(' — '), cr: 'Szint ' + level,
-    ac, hp: {max: hpMax, cur: hpCur, formula: ''},
+    ac: ddbAc(alap), hp: ddbHp(alap),
     speed: (d.race?.weightSpeeds?.normal?.walk || 30) + ' ft.',
     abilities, saves, skills,
     senses: [dv ? `darkvision ${dv} ft.` : '', `passive Perception ${passive}`].filter(Boolean).join(', '),
