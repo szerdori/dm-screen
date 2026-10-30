@@ -379,6 +379,9 @@ window.Sheet = (() => {
   });
   // a képesség- és mentőválasztás lehetőségei (ha nincs megadva: mind)
   const listFrom = c => Array.isArray(c.from) ? c.from : ABIL;
+  // számolt érték a kézi felülírással együtt
+  const val = (ov, key, v, parts) => (key in ov && ov[key] !== v ? {v: ov[key], calc: v, ov: true, parts} : {v, calc: v, ov: false, parts});
+  const sum = parts => parts.reduce((t, p) => t + p.v, 0);
   function calcKezdet(s, rb) {
     const b = s.build || normBuild({}), L = Math.max(1, Math.min(20, b.levels.length));
     return {s, rb, b, ov: s.ov || {}, full: !!rb?.classes?.length, classes: buildClasses(b, rb), L, PB: Math.floor((L - 1) / 4) + 2, fxs: [], choices: [], missing: [], features: []};
@@ -536,14 +539,8 @@ window.Sheet = (() => {
     }
     ctx.worn = worn;
   }
-  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok, calcHatasok, calcExpertise, calcFelszereles];
-
-  function calc(s, rb = null) {
-    const ctx = calcKezdet(s, rb);
-    for (const lepes of CALC_LEPESEK) lepes(ctx);
-    const {b, ov, full, classes, L, PB, fxs, choices, missing, features, race, subrace, abil, A, worn} = ctx;
-    const val = (key, v, parts) => (key in ov && ov[key] !== v ? {v: ov[key], calc: v, ov: true, parts} : {v, calc: v, ov: false, parts});
-    const sum = parts => parts.reduce((t, p) => t + p.v, 0);
+  function calcKepessegek(ctx) {
+    const {ov, abil} = ctx;
     const abilities = {}, mods = {};
     for (const a of ABIL) {
       const x = abil[a], tot = sum(x.parts);
@@ -551,9 +548,14 @@ window.Sheet = (() => {
       const parts = [...x.parts];
       if (v < tot) parts.push({v: v - tot, src: 'legfeljebb 20'});
       if (x.set && x.set.v > v) { parts.push({v: x.set.v - v, src: x.set.src + ` (legalább ${x.set.v})`}); v = x.set.v; }
-      abilities[a] = val('ab:' + a, v, parts);
+      abilities[a] = val(ov, 'ab:' + a, v, parts);
       mods[a] = mod(abilities[a].v);
     }
+    ctx.abilities = abilities;
+    ctx.mods = mods;
+  }
+  function calcMentokSkillek(ctx) {
+    const {ov, PB, A, mods} = ctx;
     const jack = !!A.jack, half = Math.floor(PB / 2), halfUp = Math.ceil(PB / 2);
     const saves = {};
     for (const a of ABIL) {
@@ -572,6 +574,15 @@ window.Sheet = (() => {
         parts: [{v: mods[a], src: a.toUpperCase() + '-módosító'}, ...(p ? [{v: pv, src: label + (A.skills[k] && p === pc ? ' – ' + A.skills[k].src : '')}] : [])]};
     }
     const passive = Object.fromEntries(['perception', 'investigation', 'insight'].map(k => [k, 10 + skills[k].v + (A.passive[k] || 0)]));
+    ctx.jack = jack;
+    ctx.half = half;
+    ctx.halfUp = halfUp;
+    ctx.saves = saves;
+    ctx.skills = skills;
+    ctx.passive = passive;
+  }
+  function calcHp(ctx) {
+    const {rb, b, ov, classes, A, mods, jack, half, halfUp} = ctx;
     // HP: az első szinten a hit die maximuma, utána a tárolt dobás vagy az átlag; + CON-módosító és szintenkénti bónuszok szintenként
     const hpParts = [];
     b.levels.forEach((l, i) => {
@@ -580,9 +591,18 @@ window.Sheet = (() => {
     });
     if (b.levels.length) hpParts.push({v: mods.con * b.levels.length, src: `CON-módosító × ${b.levels.length}`});
     for (const x of A.hp) { const n = x.cls ? classes.find(c => c.name === x.cls)?.level || 0 : b.levels.length; hpParts.push({v: x.v * n, src: `${x.src} (${x.v} × ${n})`}); }
-    const hpMax = val('hpMax', Math.max(1, sum(hpParts)), hpParts);
+    const hpMax = val(ov, 'hpMax', Math.max(1, sum(hpParts)), hpParts);
     const initParts = [{v: mods.dex, src: 'DEX-módosító'}, ...(A.remarkable && !jack ? [{v: halfUp, src: 'Remarkable Athlete'}] : jack ? [{v: Math.max(half, A.remarkable ? halfUp : 0), src: 'Jack of All Trades'}] : []), ...A.init];
-    const init = val('init', sum(initParts), initParts);
+    const init = val(ov, 'init', sum(initParts), initParts);
+    ctx.hpMax = hpMax;
+    ctx.init = init;
+  }
+  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok, calcHatasok, calcExpertise, calcFelszereles, calcKepessegek, calcMentokSkillek, calcHp];
+
+  function calc(s, rb = null) {
+    const ctx = calcKezdet(s, rb);
+    for (const lepes of CALC_LEPESEK) lepes(ctx);
+    const {b, ov, full, classes, L, PB, fxs, choices, missing, features, race, subrace, abil, A, worn, abilities, mods, jack, half, halfUp, saves, skills, passive, hpMax, init} = ctx;
     const sl = slotsFor(classes);
 
     const armor = worn.find(x => ARMOR_TC.includes(x.r.tc)), shield = worn.find(x => x.r.tc === 'S');
@@ -604,7 +624,7 @@ window.Sheet = (() => {
       acParts.push({v: num(x.r.bAc), src: x.i.name});
     }
     if (armor) acParts.push(...A.acBonus);
-    const ac = val('ac', sum(acParts), acParts);
+    const ac = val(ov, 'ac', sum(acParts), acParts);
     const acNote = [armor ? armor.i.name : best.parts[0].src, best.useShield ? shield.i.name : ''].filter(Boolean).join(', ');
     // speed: faj (az alfaj felülírhatja) + feature-ök (feltétellel) ; heavy armor STR alatt −10 (törpének nem)
     const sp = {walk: 30, ...(race?.sp || {}), ...(subrace?.sp || {})};
@@ -616,7 +636,7 @@ window.Sheet = (() => {
     }
     if (armor?.r.str && abilities.str.v < num(armor.r.str) && !A.heavyOk) spParts.push({v: -10, src: `${armor.i.name}: STR ${armor.r.str} alatt`});
     const walk = sum(spParts);
-    const speed = val('speed', [`${walk} ft.`, ...['fly', 'swim', 'climb', 'burrow'].filter(k => num(sp[k])).map(k => `${k} ${sp[k]} ft.`)].join(', '), spParts);
+    const speed = val(ov, 'speed', [`${walk} ft.`, ...['fly', 'swim', 'climb', 'burrow'].filter(k => num(sp[k])).map(k => `${k} ${sp[k]} ft.`)].join(', '), spParts);
 
     // támadások a felszerelt fegyverekből
     const wprof = uniqCI(A.weapon).map(x => x.toLowerCase());
