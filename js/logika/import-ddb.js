@@ -95,15 +95,8 @@ function ddbFelszereles({d}) {
   const currency = {}; for (const k of ['pp', 'gp', 'ep', 'sp', 'cp']) currency[k] = num(d.currencies?.[k], 0);
   return {inventory, currency};
 }
-function convertDDB(raw) {
-  const alap = ddbAlap(raw), {d, mods, sum, abilities, M, classes, level, pb} = alap;
-  const inv = ddbFelszerelt(d), dex = M('dex');
-  const {skillMods, skills, passiveBonus, passive} = ddbSkillek(alap), {inventory, currency} = ddbFelszereles(alap);
-  const dv = Math.max(0, ...mods.filter(m => m.subType === 'darkvision').map(m => m.value || 0));
-  const langs = [...new Set(mods.filter(m => m.type === 'language').map(m => m.friendlySubtypeName))].join(', ');
-  // támadások
-  const actions = [], bonusActions = [], reactions = [], traits = [];
-  inv.filter(i => i.definition.damage || i.definition.filterType === 'Weapon').forEach(w => {
+function ddbFegyverek({d, M, pb}) {
+  return ddbFelszerelt(d).filter(i => i.definition.damage || i.definition.filterType === 'Weapon').map(w => {
     const def = w.definition;
     const props = (def.properties || []).map(p => p.name);
     const ranged = def.attackType === 2;
@@ -115,26 +108,39 @@ function convertDDB(raw) {
     let text = `${ranged ? 'Ranged' : 'Melee'} Weapon Attack: ${sgn(hit)} to hit, ${reach} Hit: ${dice}${dm ? sgn(dm) : ''} ${(def.damageType || '').toLowerCase()} damage.`;
     const vers = def.properties?.find(p => p.name === 'Versatile')?.notes;
     if (vers) text += ` Versatile: ${vers}${dm ? sgn(dm) : ''}.`;
-    actions.push({name: w.definition.name, text});
+    return {name: w.definition.name, text};
   });
+}
+// a D&D Beyond akciói az aktiválás módja szerint
+function ddbAkciok({d}) {
+  const actions = [], bonusActions = [], reactions = [], traits = [];
   Object.values(d.actions || {}).flat().filter(Boolean).forEach(a => {
     const e = {name: a.name, text: stripHtml(a.snippet || a.description).slice(0, 500)};
     const t = a.activation?.activationType;
     (t === 1 ? actions : t === 3 ? bonusActions : t === 4 ? reactions : traits).push(e);
   });
-  // varázslatok
+  return {actions, bonusActions, reactions, traits};
+}
+// a varázslatok egyetlen tulajdonságként (ha nincs varázslat, üres lista)
+function ddbVarazslatok({d, classes, M, pb}) {
   const byLvl = {};
   const addSpell = s => { const def = s.definition; if (!def) return; (byLvl[def.level] = byLvl[def.level] || new Set()).add(def.name); };
   (d.classSpells || []).forEach(cs => (cs.spells || []).filter(s => s.prepared || s.alwaysPrepared || s.definition?.level === 0 || s.countsAsKnownSpell).forEach(addSpell));
   Object.values(d.spells || {}).flat().filter(Boolean).forEach(addSpell);
   const lvls = Object.keys(byLvl).sort((a, b) => a - b);
-  if (lvls.length) {
-    const casters = classes.filter(c => c.definition?.spellCastingAbilityId).map(c => {
-      const a = ABIL[c.definition.spellCastingAbilityId - 1];
-      return `${c.definition.name}: spell save DC ${8 + pb + M(a)}, ${sgn(pb + M(a))} to hit`;
-    });
-    traits.push({name: 'Varázslatok', text: [...casters, ...lvls.map(l => `${l == 0 ? 'Cantrips' : ordinal(+l) + ' level'}: ${[...byLvl[l]].join(', ')}`)].join('\n')});
-  }
+  if (!lvls.length) return [];
+  const casters = classes.filter(c => c.definition?.spellCastingAbilityId).map(c => {
+    const a = ABIL[c.definition.spellCastingAbilityId - 1];
+    return `${c.definition.name}: spell save DC ${8 + pb + M(a)}, ${sgn(pb + M(a))} to hit`;
+  });
+  return [{name: 'Varázslatok', text: [...casters, ...lvls.map(l => `${l == 0 ? 'Cantrips' : ordinal(+l) + ' level'}: ${[...byLvl[l]].join(', ')}`)].join('\n')}];
+}
+function convertDDB(raw) {
+  const alap = ddbAlap(raw), {d, mods, sum, abilities, M, classes, level, pb} = alap;
+  const {skillMods, skills, passiveBonus, passive} = ddbSkillek(alap), {inventory, currency} = ddbFelszereles(alap);
+  const akciok = ddbAkciok(alap);
+  const dv = Math.max(0, ...mods.filter(m => m.subType === 'darkvision').map(m => m.value || 0));
+  const langs = [...new Set(mods.filter(m => m.type === 'language').map(m => m.friendlySubtypeName))].join(', ');
   const clsStr = classes.map(c => `${c.definition?.name || ''} ${c.level}${c.subclassDefinition ? ' (' + c.subclassDefinition.name + ')' : ''}`).join(' / ');
   return normCreature({
     name: d.name, kind: 'pc', source: 'D&D Beyond', ddbId: d.id,
@@ -144,9 +150,10 @@ function convertDDB(raw) {
     abilities, saves: ddbMentok(alap), skills,
     senses: [dv ? `darkvision ${dv} ft.` : '', `passive Perception ${passive}`].filter(Boolean).join(', '),
     languages: langs,
-    initBonus: dex + sum('bonus', 'initiative') + (mods.some(m => m.type === 'half-proficiency' && m.subType === 'initiative') ? Math.floor(pb / 2) : 0),
+    initBonus: M('dex') + sum('bonus', 'initiative') + (mods.some(m => m.type === 'half-proficiency' && m.subType === 'initiative') ? Math.floor(pb / 2) : 0),
     portrait: d.decorations?.avatarUrl || d.avatarUrl || '',
-    traits, actions, bonusActions, reactions,
+    traits: [...akciok.traits, ...ddbVarazslatok(alap)], actions: [...ddbFegyverek(alap), ...akciok.actions],
+    bonusActions: akciok.bonusActions, reactions: akciok.reactions,
     skillMods, passiveBonus, tools: ddbEszkozok(alap), inventory, currency, importedAt: new Date().toISOString().slice(0, 10)
   });
 }

@@ -598,6 +598,10 @@ describe('D&D Beyond átalakítás', () => {
     ok(inv('Öreg zsák (Zsák)'), 'egyedi név');
     eq([inv('Kötél').container, inv('Lámpás').container], ['Öreg zsák', ''], 'tároló neve');
   });
+  test('varázslat nélküli karakternek nincs „Varázslatok” tulajdonsága', () => {
+    const d = structuredClone(DDB).data; d.classSpells = []; d.spells = {};
+    ok(!W.convertDDB(d).traits.some(t => t.name === 'Varázslatok'));
+  });
   test('HP: a kézi felülírás számít, és a jelenlegi nem megy 0 alá', () => {
     const d = structuredClone(DDB); d.data.overrideHitPoints = 50; d.data.removedHitPoints = 80;
     const {hp} = W.convertDDB(d); eq([hp.max, hp.cur], [50, 0]);
