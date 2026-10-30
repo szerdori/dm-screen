@@ -348,39 +348,41 @@ window.Sheet = (() => {
   const ARMOR_TC = ['LA', 'MA', 'HA'];
   const uniqCI = list => { const seen = new Set(); return list.map(x => String(x).trim()).filter(x => x && !seen.has(x.toLowerCase()) && seen.add(x.toLowerCase())); };
 
-  function calc(s, rb = null) {
-    const b = s.build || normBuild({}), ov = s.ov || {};
-    const full = !!rb?.classes?.length;
-    const classes = buildClasses(b, rb);
-    const L = Math.max(1, Math.min(20, b.levels.length)), PB = Math.floor((L - 1) / 4) + 2;
-    const fxs = [], choices = [], missing = [], features = [];
-    const keyOf = base => { let k = base, i = 2; while (choices.some(c => c.key === k)) k = base + i++; return k; };
-    // egy forrás hatásai; a választást kérők kulcsot kapnak, és bekerülnek a választási helyek közé
-    function addFx(list, src, prefix, ctx = {}, depth = 0) {
-      for (const fx of Array.isArray(list) ? list : []) {
-        if (!isObj(fx)) continue;
-        const rec = {fx, src, ctx, ch: {}};
-        for (const [t, kind] of Object.entries(CHOICE_KIND)) {
-          if (!fx[t]) continue;
-          const o = isObj(fx[t]) ? fx[t] : {}, key = keyOf(`${prefix}:${kind}`);
-          const c = {key, kind, src, n: Math.max(1, num(o.n, 1)), amt: num(o.amt, 1), from: o.from, value: b.ch[key]};
-          choices.push(c); rec.ch[kind] = c;
-          if (t === 'feat' && depth < 2) for (const ref of arr(b.ch[key], c.n)) featFx(ref, depth);
-        }
-        fxs.push(rec);
+  // ---------- a Sheet.calc lépései: mindegyik a közös ctx-et olvassa és bővíti; a sorrendjük (CALC_LEPESEK) számít ----------
+  // Ha egy választás kulcsa már foglalt, számot kap (…:skills2). A lapon ezek alatt a kulcsok alatt vannak a játékos választásai, ezért a hatások felvételi sorrendje nem változhat.
+  const keyOf = (ctx, base) => { let k = base, i = 2; while (ctx.choices.some(c => c.key === k)) k = base + i++; return k; };
+  // egy forrás hatásai; a választást kérők kulcsot kapnak, és bekerülnek a választási helyek közé (kor: melyik osztály, hányadik szint)
+  function addFx(ctx, list, src, prefix, kor = {}, depth = 0) {
+    const {b, choices, fxs} = ctx;
+    for (const fx of Array.isArray(list) ? list : []) {
+      if (!isObj(fx)) continue;
+      const rec = {fx, src, ctx: kor, ch: {}};
+      for (const [t, kind] of Object.entries(CHOICE_KIND)) {
+        if (!fx[t]) continue;
+        const o = isObj(fx[t]) ? fx[t] : {}, key = keyOf(ctx, `${prefix}:${kind}`);
+        const c = {key, kind, src, n: Math.max(1, num(o.n, 1)), amt: num(o.amt, 1), from: o.from, value: b.ch[key]};
+        choices.push(c); rec.ch[kind] = c;
+        if (t === 'feat' && depth < 2) for (const ref of arr(b.ch[key], c.n)) featFx(ctx, ref, depth);
       }
+      fxs.push(rec);
     }
-    function featFx(ref, depth) {
-      const f = rbFind(rb?.feats, ref);
-      if (!f) { if (ref) missing.push('Feat: ' + refName(ref)); return; }
-      features.push({name: f.n, text: f.tx || '', src: 'Feat'});
-      addFx([...(f.fx || []), ...(FEATURE_FX['feat|' + f.n] || [])], 'Feat: ' + f.n, 'feat:' + ref, {}, depth + 1);
-    }
-    const traitFx = (traits, src, prefix) => (traits || []).forEach(t => {
-      features.push({name: t.n, text: t.tx || '', src});
-      if (FEATURE_FX['race|' + t.n]) addFx(FEATURE_FX['race|' + t.n], `${t.n} (${src})`, prefix);
-    });
-
+  }
+  function featFx(ctx, ref, depth) {
+    const f = rbFind(ctx.rb?.feats, ref);
+    if (!f) { if (ref) ctx.missing.push('Feat: ' + refName(ref)); return; }
+    ctx.features.push({name: f.n, text: f.tx || '', src: 'Feat'});
+    addFx(ctx, [...(f.fx || []), ...(FEATURE_FX['feat|' + f.n] || [])], 'Feat: ' + f.n, 'feat:' + ref, {}, depth + 1);
+  }
+  const traitFx = (ctx, traits, src, prefix) => (traits || []).forEach(t => {
+    ctx.features.push({name: t.n, text: t.tx || '', src});
+    if (FEATURE_FX['race|' + t.n]) addFx(ctx, FEATURE_FX['race|' + t.n], `${t.n} (${src})`, prefix);
+  });
+  function calcKezdet(s, rb) {
+    const b = s.build || normBuild({}), L = Math.max(1, Math.min(20, b.levels.length));
+    return {s, rb, b, ov: s.ov || {}, full: !!rb?.classes?.length, classes: buildClasses(b, rb), L, PB: Math.floor((L - 1) / 4) + 2, fxs: [], choices: [], missing: [], features: []};
+  }
+  function calcFaj(ctx) {
+    const {b, rb, fxs, choices, features, missing} = ctx;
     // faj, alfaj, háttér
     const race = rbFind(rb?.races, b.race);
     const subrace = rbFind((rb?.subraces || []).filter(x => !race || x.race === race.n), b.subrace);
@@ -393,50 +395,58 @@ window.Sheet = (() => {
     const keep = list => (list || []).filter(fx => !(isObj(fx) && Object.keys(fx).some(k => drop.has(k))));
     if (race) {
       if (race.subs) choices.push({key: 'race:subrace', kind: 'subrace', src: 'Faj: ' + race.n, n: 1, value: subrace ? b.subrace : ''});
-      addFx([...keep(race.fx), ...(FEATURE_FX['race|' + race.n] || [])], 'Faj: ' + race.n, 'race');
-      traitFx(race.traits, 'Faj: ' + race.n, 'race');
+      addFx(ctx, [...keep(race.fx), ...(FEATURE_FX['race|' + race.n] || [])], 'Faj: ' + race.n, 'race');
+      traitFx(ctx, race.traits, 'Faj: ' + race.n, 'race');
     }
-    if (subrace) { addFx(b.origin ? keep(subrace.fx) : subrace.fx, 'Alfaj: ' + subrace.n, 'subrace'); traitFx(subrace.traits, 'Alfaj: ' + subrace.n, 'subrace'); }
+    if (subrace) { addFx(ctx, b.origin ? keep(subrace.fx) : subrace.fx, 'Alfaj: ' + subrace.n, 'subrace'); traitFx(ctx, subrace.traits, 'Alfaj: ' + subrace.n, 'subrace'); }
     if (b.origin) fxs.push({fx: {ab: b.origin}, src: 'Faj (áthelyezett bónusz, TCE)', ctx: {}, ch: {}});
     if (bg) {
-      addFx(bg.fx, 'Háttér: ' + bg.n, 'bg');
+      addFx(ctx, bg.fx, 'Háttér: ' + bg.n, 'bg');
       if (bg.feature) features.push({name: bg.feature.n, text: bg.feature.tx || '', src: 'Háttér: ' + bg.n});
     }
+    ctx.race = race;
+    ctx.subrace = subrace;
+  }
+  const CALC_LEPESEK = [calcFaj];
 
+  function calc(s, rb = null) {
+    const ctx = calcKezdet(s, rb);
+    for (const lepes of CALC_LEPESEK) lepes(ctx);
+    const {b, ov, full, classes, L, PB, fxs, choices, missing, features, race, subrace} = ctx;
     // osztályok: az első osztály mentői és jártasságai, a többié a multiclass-jártasság; alosztály, ASI, feature-ök, optional feature-választások
     const optChoices = [];
     classes.forEach((c, idx) => {
-      const ci = classInfo(c.name, rb), rc = ci.r, sub = subclassOf(b, c.name, rb), ctx = {cls: c.name, lvl: c.level};
+      const ci = classInfo(c.name, rb), rc = ci.r, sub = subclassOf(b, c.name, rb), kor = {cls: c.name, lvl: c.level};
       if (idx === 0) {
-        fxs.push({fx: {save: ci.saves}, src: c.name + ' (első osztály)', ctx, ch: {}});
-        addFx(rc?.fx, c.name + ' 1', c.name + ':1', ctx);
-      } else addFx(rc?.mc?.fx, c.name + ' (multiclass)', c.name + ':mc', ctx);
+        fxs.push({fx: {save: ci.saves}, src: c.name + ' (első osztály)', ctx: kor, ch: {}});
+        addFx(ctx, rc?.fx, c.name + ' 1', c.name + ':1', kor);
+      } else addFx(ctx, rc?.mc?.fx, c.name + ' (multiclass)', c.name + ':mc', kor);
       if (c.level >= ci.subLvl) choices.push({key: c.name + ':sub', kind: 'subclass', src: `${c.name} ${ci.subLvl}`, n: 1, value: b.sub[c.name] || ''});
       if (b.sub[c.name] && rb?.subclasses?.length && !sub) missing.push('Alosztály: ' + refName(b.sub[c.name]));
       for (const lv of ci.asi.filter(x => x <= c.level)) {
         const key = `${c.name}:${lv}:asi`, v = b.ch[key], src = `ASI (${c.name} ${lv})`;
         choices.push({key, kind: 'asi', src, n: 1, value: v});
-        if (isObj(v) && typeof v.feat === 'string' && v.feat) featFx(v.feat, 0);
-        else if (isObj(v)) { const inc = asiInc(v); if (inc) fxs.push({fx: {ab: inc}, src, ctx, ch: {}}); }
+        if (isObj(v) && typeof v.feat === 'string' && v.feat) featFx(ctx, v.feat, 0);
+        else if (isObj(v)) { const inc = asiInc(v); if (inc) fxs.push({fx: {ab: inc}, src, ctx: kor, ch: {}}); }
       }
       const featText = (n, lvl, sb) => (rb?.features || []).find(x => x.cls === c.name && x.n === n && x.lvl === lvl && (sb ? x.sub === sb.short && x.ss === sb.s : !x.sub))?.tx || '';
       for (const f of rc?.feats || []) {
         // az ASI-t a választás kezeli, az alosztály-helyőrzőt (pl. „Martial Archetype feature”) az alosztály feature-jei váltják ki
         if (f.lvl > c.level || f.opt || f.n === 'Ability Score Improvement' || (f.sub && f.lvl > ci.subLvl)) continue;
         features.push({name: f.n, text: featText(f.n, f.lvl), src: `${c.name} ${f.lvl}`});
-        addFx(FEATURE_FX[`${c.name}|${f.n}`], `${f.n} (${c.name} ${f.lvl})`, `${c.name}:${f.lvl}`, ctx);
+        addFx(ctx, FEATURE_FX[`${c.name}|${f.n}`], `${f.n} (${c.name} ${f.lvl})`, `${c.name}:${f.lvl}`, kor);
       }
       if (sub) {
-        addFx(sub.fx, sub.n, `${c.name}:${sub.short}`, ctx);
+        addFx(ctx, sub.fx, sub.n, `${c.name}:${sub.short}`, kor);
         for (const f of (rb.features || []).filter(x => x.cls === c.name && x.sub === sub.short && x.ss === sub.s && x.lvl <= c.level)) {
           features.push({name: f.n, text: f.tx || '', src: `${sub.short} ${f.lvl}`});
-          addFx(FEATURE_FX[`${c.name}|${sub.short}|${f.n}`], `${f.n} (${sub.short} ${f.lvl})`, `${c.name}:${f.lvl}`, ctx);
+          addFx(ctx, FEATURE_FX[`${c.name}|${sub.short}|${f.n}`], `${f.n} (${sub.short} ${f.lvl})`, `${c.name}:${f.lvl}`, kor);
         }
       }
       for (const [o, pre] of [...(rc?.opt || []).map(o => [o, c.name]), ...(sub?.opt || []).map(o => [o, c.name + ':' + sub.short])]) {
         const n = num(o.p?.[c.level - 1]);
         if (!n) continue;
-        const key = `${pre}:opt:${o.n}`, ch = {key, kind: 'opt', src: `${o.n} (${c.name})`, n, from: o.t || [], ctx, value: b.ch[key]};
+        const key = `${pre}:opt:${o.n}`, ch = {key, kind: 'opt', src: `${o.n} (${c.name})`, n, from: o.t || [], ctx: kor, value: b.ch[key]};
         choices.push(ch); optChoices.push(ch);
       }
     });
@@ -462,7 +472,7 @@ window.Sheet = (() => {
       if (c.kind === 'opt') for (const ref of c.ok) {
         const o = rbFind(rb.optfeatures, ref);
         features.push({name: o.n, text: o.tx || '', src: c.src});
-        addFx([...(o.fx || []), ...(FEATURE_FX['opt|' + o.n] || [])], o.n, 'opt:' + o.n, c.ctx);
+        addFx(ctx, [...(o.fx || []), ...(FEATURE_FX['opt|' + o.n] || [])], o.n, 'opt:' + o.n, c.ctx);
       }
     }
 
