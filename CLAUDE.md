@@ -55,6 +55,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 ## Nyitott / félretett ügyek (2026-10-29)
 - **1. fázis élesítése:** a `firestore.rules` a konzolban és a szabálykönyv feltöltve (a felhasználó szerint, 2026-10-29). Még hátra: a többi játékos lapjának létrehozása (Könyvtár → 📱, vagy Claude-dal megírt JSON importja; az állás a `CLAUDE.local.md`-ben), és ellenőrzés egy játékos telefonján.
 - **Későbbre (a felhasználó kérésére elhalasztva, 2026-10-28):** a régi `dmscreen`, `dmscreen_library`, `dmscreen_saved`, `dmscreen_backup` gyűjtemények törlése a `hazi-naplo` projektből. A 0. fázis élesben van (új projekt `dm-screen-afc89`, az adatok átköltöztek, ellenőrizve). A törlést a felhasználó végzi a konzolban, kattintásonkénti leírással; előtte érdemes friss fájlmentést kérni.
+- **ToDo (a 3. fázis után, opcionális):** a refaktor 8. lépése: a `karakter.html` rétegekre bontása és a `Sheet` névterekre bontása (`Sheet.formatum`, `Sheet.motor`, `Sheet.konyv`) – `TERV-refaktor.md`, 8. lépés.
 - Kilépéskor a helyi másolat törlése – nem kérte.
 - Kampánnyal kapcsolatos függő ügyek: `CLAUDE.local.md`.
 - Feltöltés után a felhasználónak újra kell importálnia a játékosokat a könyvjelzővel, ha az import új mezőt kap.
