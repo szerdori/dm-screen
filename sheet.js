@@ -1014,6 +1014,8 @@ window.Sheet = (() => {
     return normBuild({...s.build, spells});
   }
   // ---------- szintlépés: a varázsló egy ideiglenes felépítésen dolgozik; a „mi változott” a motor két futásának különbsége ----------
+  // kulcssorrendtől független szöveg (a Firestore más sorrendben adja vissza a mezőket, mint ahogy beírtuk)
+  const stableJson = v => JSON.stringify(v, (_, x) => isObj(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x);
   const levelUpBuild = (s, cls) => normBuild({...s.build, levels: [...s.build.levels, {c: cls, hp: null}]});
   const LU_ORDER = {subclass: 0, asi: 1, feat: 2, ability: 2, saves: 2, skills: 3, expertise: 3, lang: 3, tool: 3, opt: 4};
   // a felülírás a számolt érték változásával együtt mozdul, különben a max HP nem nőne, és az ASI nem hatna (a többi felülírás marad)
@@ -1038,7 +1040,7 @@ window.Sheet = (() => {
     const item = c => {
       const r = regi.get(c.key), uj = !r || c.n > r.n;
       const known = c.kind === 'known' && c.ctx?.cls === cls, inv = c.kind === 'opt' && c.ctx?.cls === cls && /Invocation/.test(c.key), man = c.kind === 'opt' && /Maneuver/.test(c.key) && uj;
-      return {c, uj, locked: r ? r.ok.filter(v => typeof v === 'string') : [], csere: !!r && (known || inv || man), missing: uj ? choiceMissing(c, nw, rb) : 0};
+      return {c, uj, locked: r ? r.ok.filter(v => typeof v === 'string') : [], csere: !!r && (known || inv || man), missing: uj || ((known || inv) && r.ok.length > c.ok.length) ? choiceMissing(c, nw, rb) : 0};
     };
     const all = nw.choices.filter(c => c.kind !== 'subrace').map(item);
     const shown = all.filter(x => x.uj || x.csere || !x.c.done);
@@ -1357,7 +1359,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, levelUpBuild, levelUpPlan, levelUpApply, restorePatch,
+    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine};

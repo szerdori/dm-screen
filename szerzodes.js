@@ -27,7 +27,7 @@ window.Szerzodes = (() => {
     szabalyMeta: 'rules/meta',            // szabálykönyv (sheet.js: loadRulebook)
     szabalyDarab: id => 'rules/' + id,
   };
-  const HELYI = {allapot: 'dmscreen', lapok: 'dmscreen-sheets'};
+  const HELYI = {allapot: 'dmscreen', lapok: 'dmscreen-sheets', szintlepes: id => 'dmscreen-szintlepes-' + id};  // szintlepes: a varázsló piszkozata a telefonon
   const CSATORNA = 'dmscreen-player';
 
   // ---------- lények ----------

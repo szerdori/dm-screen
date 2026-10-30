@@ -2,7 +2,7 @@
 
 *Elfogadva 2026-10-19; a CLAUDE.md-ből kiemelve 2026-10-29. Részletes tervek: `TERV-2-fazis.md`, `TERV-3-4-fazis.md`; a refaktor: `TERV-refaktor.md`.*
 
-**Állapot (2026-10-29):** az alábbi fázisleírások a 2026-10-28-i állapotot őrzik. Azóta: a 2. fázis 1–4. lépése és a 3. fázis 0. lépése (Felépítés-fül, választó-modul, Átállítás) commitolva és a `main`-en (79cbc10, utána javítások). A 3. fázis többi része a refaktor (`TERV-refaktor.md`) után folytatódik.
+**Állapot (2026-10-30):** a 3. fázis kódja kész az ágán, lásd `TERV-3-4-fazis.md`; a részletes viselkedés: `docs/mukodes.md`. Az alábbi fázisleírások a 2026-10-28-i állapotot őrzik. Azóta: a 2. fázis 1–4. lépése és a 3. fázis 0. lépése (Felépítés-fül, választó-modul, Átállítás) commitolva és a `main`-en (79cbc10, utána javítások). A 3. fázis többi része a refaktor (`TERV-refaktor.md`) után folytatódik.
 
 A játékosok (Google-fiókkal) a telefonjukon kezelik a saját karakterüket (D&D Beyond-szerűen), szintlépés-varázslóval. **Az új app lesz az egyetlen karakterlap.** A D&D Beyond import megmarad (később is kellhet), de nem bővítjük.
 

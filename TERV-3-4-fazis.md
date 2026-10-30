@@ -123,6 +123,7 @@ spells: [{name, level, prepared, always, ref, cls: 'Wizard', auto: true, book: t
 2. **Engedély és előzmény:** `levelUp` mező, DM-gomb a Könyvtárban és a Csapatnál, sáv a telefonon, `hist` alkollekció írása / olvasása, `firestore.rules`. Tesztek: a játékos nem tud szintet adni magának (szabálytükör), az engedély mentéskor törlődik, a pillanatkép megvan.
 3. **Varázsló-felület:** a 6 lépés a `ChoiceUI`-val, piszkozat, HP-dobás rögzítve, összegzés, mentés. 320 px-en is (teszt). Tesztek a fenti esetekre a felületen át.
 4. **Előzmények és visszaállítás** a felületen (játékos / DM jogosultság szerint, lásd 4. nyitott kérdés).
+*(A 3. fázis 1–5. lépése kész 2026-10-30, a `claude/fazis-3-szintlepes-varazslo-06749a` ágon. Felfedezett hiba a robot-tesztből: a szabálykönyv az opcionális feature-ök objektum alakú progressziójában (Metamagic, Maneuvers) összeadta a darabszámokat, pedig azok teljes számok, ezért élesítéskor a szabálykönyvet újra kell tölteni.)* – sehol nem akadhat el, nem maradhat érvénytelen választás, a slotok és erőforrások a PHB táblái szerint (kézzel ellenőrzött mintaszinteken). Online teszt a valódi szabálykönyvvel. CLAUDE.md, README, élesítési teendők.
 5. **Robot-teszt és lezárás:** mind a 13 osztály 1 → 20 a varázsló logikájával, minden választást az első érvényes opcióval kitöltve – sehol nem akadhat el, nem maradhat érvénytelen választás, a slotok és erőforrások a PHB táblái szerint (kézzel ellenőrzött mintaszinteken). Online teszt a valódi szabálykönyvvel. CLAUDE.md, README, élesítési teendők.
 
 ### 4. fázis

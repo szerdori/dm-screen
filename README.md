@@ -7,6 +7,7 @@ Harckezelő D&D 5e (2014) mesélőknek: initiative-sorrend csempéken, HP, AC, t
 - Ellenfelek importálása az 5e.tools adataiból, játékosok a D&D Beyondról (könyvjelző-gombbal), saját lények űrlappal vagy JSON-sablonnal.
 - Az adatok a Firebase-ben (Firestore) vannak, Google-belépéssel érhetők el; a tárolóban csak a program kódja van.
 - Az Initiative tracker (`player.html`) a DM ablakból nyílik, és ugyanabban a böngészőben élőben követi a harcot.
+- A játékosok a telefonjukon kezelik a karakterüket (`karakter.html`); a DM engedélyére szintlépés-varázslóval lépnek szintet, és az utolsó szintlépés visszavonható.
 
 Frissítés feltöltése: `.\feltoltes.ps1 "Mit változtattunk"` – előtte automatikusan lefutnak a tesztek, és hiba esetén nem tölt fel.
 

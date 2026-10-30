@@ -1,7 +1,7 @@
 // Szabálykönyv a játékos appnak (logika, DOM nélkül): az 5e.tools adatainak letöltése, átalakítása (fx hatáslisták), feltöltése, és a tárgykeresés.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('szabalykonyv', N) és az index.html-ben a szabalykonyv.js?v=N és a VART_MODULOK.
 'use strict';
-modul('szabalykonyv', 1);
+modul('szabalykonyv', 2);
 
 // ---------- szabálykönyv a játékos appnak (rules/*) ----------
 // Az 5e.tools-tükörből letölti a PHB / XGE / TCE varázslatait és featjeit, a PHB / DMG / XGE / TCE tárgyait (2024-es könyvek nélkül),
@@ -139,7 +139,8 @@ function colVal(v) {
   if (v?.type === 'bonus' || v?.type === 'bonusSpeed') return v.value;
   return '';
 }
-const progArr = p => Array.isArray(p) ? p.slice(0, 20) : Array.from({length: 20}, (_, i) => Object.entries(p || {}).filter(([l]) => +l <= i + 1).reduce((t, [, n]) => t + n, 0));
+// az 5e.tools progression objektuma az adott szinttől érvényes teljes darabszám (Metamagic: {3: 2, 10: 3, 17: 4}), nem a növekmény
+const progArr = p => Array.isArray(p) ? p.slice(0, 20) : Array.from({length: 20}, (_, i) => Object.entries(p || {}).filter(([l]) => +l <= i + 1).reduce((t, [, n]) => n, 0));
 // 'Név|Osztály|OsztályForrás|Szint|Forrás' és 'Név|Osztály|OsztályForrás|Alosztály|AlosztályForrás|Szint|Forrás'
 function convClassFile(file, out) {
   const cls = (file.class || []).find(c => RB_CLASS.includes(c.source) && c.edition !== 'one');
