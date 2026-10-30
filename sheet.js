@@ -377,6 +377,8 @@ window.Sheet = (() => {
     ctx.features.push({name: t.n, text: t.tx || '', src});
     if (FEATURE_FX['race|' + t.n]) addFx(ctx, FEATURE_FX['race|' + t.n], `${t.n} (${src})`, prefix);
   });
+  // a képesség- és mentőválasztás lehetőségei (ha nincs megadva: mind)
+  const listFrom = c => Array.isArray(c.from) ? c.from : ABIL;
   function calcKezdet(s, rb) {
     const b = s.build || normBuild({}), L = Math.max(1, Math.min(20, b.levels.length));
     return {s, rb, b, ov: s.ov || {}, full: !!rb?.classes?.length, classes: buildClasses(b, rb), L, PB: Math.floor((L - 1) / 4) + 2, fxs: [], choices: [], missing: [], features: []};
@@ -407,14 +409,9 @@ window.Sheet = (() => {
     ctx.race = race;
     ctx.subrace = subrace;
   }
-  const CALC_LEPESEK = [calcFaj];
-
-  function calc(s, rb = null) {
-    const ctx = calcKezdet(s, rb);
-    for (const lepes of CALC_LEPESEK) lepes(ctx);
-    const {b, ov, full, classes, L, PB, fxs, choices, missing, features, race, subrace} = ctx;
+  function calcOsztalyok(ctx) {
+    const {b, rb, classes, choices, fxs, features, missing} = ctx;
     // osztályok: az első osztály mentői és jártasságai, a többié a multiclass-jártasság; alosztály, ASI, feature-ök, optional feature-választások
-    const optChoices = [];
     classes.forEach((c, idx) => {
       const ci = classInfo(c.name, rb), rc = ci.r, sub = subclassOf(b, c.name, rb), kor = {cls: c.name, lvl: c.level};
       if (idx === 0) {
@@ -447,12 +444,13 @@ window.Sheet = (() => {
         const n = num(o.p?.[c.level - 1]);
         if (!n) continue;
         const key = `${pre}:opt:${o.n}`, ch = {key, kind: 'opt', src: `${o.n} (${c.name})`, n, from: o.t || [], ctx: kor, value: b.ch[key]};
-        choices.push(ch); optChoices.push(ch);
+        choices.push(ch);
       }
     });
-
+  }
+  function calcValasztasok(ctx) {
+    const {rb, choices, features} = ctx;
     // választások ellenőrzése: csak az érvényes értékek számítanak; a választott optional feature-ök hatásai is itt kerülnek be
-    const listFrom = c => Array.isArray(c.from) ? c.from : ABIL;
     for (let i = 0; i < choices.length; i++) {
       const c = choices[i];
       let ok = [];
@@ -461,7 +459,7 @@ window.Sheet = (() => {
       else if (c.kind === 'feat') ok = arr(c.value, 4).filter(x => typeof x === 'string' && x);
       else if (c.kind === 'asi') ok = isObj(c.value) && ((typeof c.value.feat === 'string' && c.value.feat) || asiInc(c.value)) ? [c.value] : [];
       else if (c.kind === 'subclass' || c.kind === 'subrace') ok = c.value ? [c.value] : [];
-      else if (c.kind === 'expertise') ok = arr(c.value, 18).map(skillKey);   // a jártasság-feltételt lent nézzük
+      else if (c.kind === 'expertise') ok = arr(c.value, 18).map(skillKey);   // a jártasság-feltételt a calcExpertise nézi
       else if (c.kind === 'lang' || c.kind === 'tool') {
         const from = Array.isArray(c.from) ? c.from.map(x => String(x).toLowerCase()) : null;
         ok = arr(c.value, 10).filter(x => typeof x === 'string' && x.trim() && (!from || from.includes(x.trim().toLowerCase())));
@@ -475,7 +473,13 @@ window.Sheet = (() => {
         addFx(ctx, [...(o.fx || []), ...(FEATURE_FX['opt|' + o.n] || [])], o.n, 'opt:' + o.n, c.ctx);
       }
     }
+  }
+  const CALC_LEPESEK = [calcFaj, calcOsztalyok, calcValasztasok];
 
+  function calc(s, rb = null) {
+    const ctx = calcKezdet(s, rb);
+    for (const lepes of CALC_LEPESEK) lepes(ctx);
+    const {b, ov, full, classes, L, PB, fxs, choices, missing, features, race, subrace} = ctx;
     // hatások összegyűjtése
     const abil = {};
     for (const a of ABIL) abil[a] = {base: b.base[a], parts: [{v: b.base[a], src: 'alapérték'}], set: null};
