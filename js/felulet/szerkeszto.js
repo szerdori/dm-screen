@@ -1,7 +1,7 @@
 // Lényszerkesztő (felület): a szerkesztő ablak, a megosztási mezők és a portré.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('szerkeszto', N) és az index.html-ben a szerkeszto.js?v=N és a VART_MODULOK.
 'use strict';
-modul('szerkeszto', 1);
+modul('szerkeszto', 2);
 
 // ---------- portré ----------
 function setPortrait(v) {
@@ -26,7 +26,31 @@ function szerkesztoEsemenyek() {
     img.src = URL.createObjectURL(e.target.files[0]);
   });
   document.addEventListener('input', e => { if (e.target.id === 'portraitUrl') setPortrait(e.target.value.trim()); });
-  document.addEventListener('change', e => { if (e.target.name === 'kind' && e.target.closest('#edForm')) syncShareBox(); });
+  document.addEventListener('change', e => {
+    if (e.target.name !== 'kind' || !e.target.closest('#edForm')) return;
+    // új lénynél a „Játékos” típus: üres, szabálymotoros karakter jön létre (rövid űrlap)
+    if ($('#edForm')._uj && e.target.value === 'pc') { const nev = $('#edForm').elements.name.value; openUjJatekos(nev === blankCreature().name ? '' : nev); return; }
+    syncShareBox();
+  });
+}
+
+// új játékos: rövid űrlap a teljes szerkesztő helyett (üres lap jön létre, a többit a tulajdonos állítja be a varázslóval)
+const NC_MODSZER_HU = {array: 'Standard array', buy: 'Point buy', roll: 'Dobott (4d6)', manual: 'Kézi'};
+function openUjJatekos(nev = '') {
+  openModal(`<h2>Új játékos</h2>
+    <form id="njForm" class="form" onsubmit="return false">
+      <label class="w2">Név <span class="hint">– üresen is hagyhatod, a játékos beírja</span><input name="name" value="${esc(nev)}"></label>
+      <label class="w2">A játékos Google-fiókja (e-mail) <span class="hint">– később is megadható</span><input type="email" name="owner" placeholder="pl. jatekos@gmail.com"></label>
+      <label>Ki láthatja<select name="vis"><option value="party">az egész csapat</option><option value="dm">csak a DM</option></select></label>
+      <label>Kezdőszint<input type="number" name="target" min="1" max="20" value="1"></label>
+      <div class="w4"><b>Képesség-módszerek</b><br>${Object.entries(NC_MODSZER_HU).map(([k, l]) => `<label style="display:inline-flex;gap:4px;margin-right:12px"><input type="checkbox" name="m_${k}" checked>${esc(l)}</label>`).join('')}</div>
+      <p class="hint w4">Üres, szabálymotoros karakterlap jön létre. A gazdája a telefonján egy varázslóval állítja be: faj, osztály, képességek, háttér, választások, varázslatok. Kezdő felszerelés nincs benne, azt a Felszerelés fülön lehet felvenni. 1. szint fölött utána a szintlépés-varázsló visz tovább a kezdőszintig.</p>
+    </form>
+    <div class="toolbar" style="margin-top:12px"><button class="primary" data-act="ujJatekosMent">Létrehozás</button><button data-act="ujJatekosVissza">Másik típus</button><button data-act="edCancel">Mégse</button></div>`);
+}
+function readUjJatekos() {
+  const fm = $('#njForm'), v = n => fm.elements[n].value;
+  return {name: v('name'), owner: v('owner').trim().toLowerCase(), vis: v('vis'), target: Math.max(1, Math.min(20, Math.floor(+v('target')) || 1)), methods: Object.keys(NC_MODSZER_HU).filter(k => fm.elements['m_' + k].checked)};
 }
 
 // ---------- szerkesztő ablak ----------
@@ -92,7 +116,7 @@ function openEditor(creature, cb, title = 'Lény szerkesztése', opts = {}) {
       ${opts.share ? shareFieldsHtml(c, opts.shareNote) : ''}
     </form>
     <div class="toolbar" style="margin-top:12px"><button class="primary" data-act="edSave">Mentés</button><button data-act="edCancel">Mégse</button></div>`);
-  $('#edForm')._base = c;
+  $('#edForm')._base = c; $('#edForm')._uj = !!opts.uj;
   syncShareBox();
 }
 function readEditor() {

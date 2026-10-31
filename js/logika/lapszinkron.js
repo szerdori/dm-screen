@@ -157,7 +157,15 @@ function engedelyIr(id, levelUp) {
 // át van-e állítva a lap: nincs lap, kézi, motoros, vagy motoros, de a felépítés kevesebb szintet tud, mint a lap (ott a szintlépés nem indul)
 function lapAllapot(id) {
   const s = SHEETS[id];
-  return !s ? 'nincs' : s.deleted ? 'torolt' : !s.auto ? 'kezi' : s.build.levels.length === Sheet.level(s) ? 'motoros' : 'elter';
+  return !s ? 'nincs' : s.deleted ? 'torolt' : s.newChar ? 'keszul' : !s.auto ? 'kezi' : s.build.levels.length === Sheet.level(s) ? 'motoros' : 'elter';
+}
+// új játékos: üres, motoros lap; a gazdája a telefonján a varázslóval állítja be (a gazda később is megadható)
+function ujJatekos({name = '', owner = '', vis = 'party', target = 1, methods} = {}) {
+  const at = new Date().toISOString(), by = authInfo.email || 'DM';
+  const lib = normCreature({id: uid(), kind: 'pc', name: name.trim() || 'Új karakter', owner, share: {vis, hp: 'label', ac: false}, source: 'Karakterlap'});
+  S.library.push(lib);
+  createSheet(lib.id, Sheet.ncBlank({name: lib.name, owner: lib.owner, target, methods, by, at}));
+  return lib;
 }
 // ---------- törlés: a játékos a telefonon törli (Sheet.torlesPatch), a lény itt marad; a DM visszahozhatja, vagy a Könyvtárban véglegesen törölheti ----------
 const lapTorolt = id => !!SHEETS[id]?.deleted;
@@ -173,7 +181,7 @@ function lapVisszahoz(id) {
   return true;
 }
 // a lap állása: {szint, to}; to = null, ha nincs engedély (törölt karakternek sincs)
-const szintlepesAllas = id => { const s = SHEETS[id]; return s && !s.deleted ? {szint: Sheet.level(s), to: s.levelUp && s.levelUp.to > Sheet.level(s) ? s.levelUp.to : null} : null; };
+const szintlepesAllas = id => { const s = SHEETS[id]; return s && !s.deleted && !s.newChar ? {szint: Sheet.level(s), to: s.levelUp && s.levelUp.to > Sheet.level(s) ? s.levelUp.to : null} : null; };
 function szintlepesAd(id) {
   const a = szintlepesAllas(id);
   if (!a || regiFajl() || (a.to || a.szint) >= 20) return false;

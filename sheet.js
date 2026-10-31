@@ -93,6 +93,16 @@ window.Sheet = (() => {
     const owner = str(v.owner, 200).trim().toLowerCase();
     return {at: isoTime(v.at), by: str(v.by, 200), owner: EMAIL_RE.test(owner) ? owner : '', vis: v.vis === 'party' ? 'party' : 'dm'};
   }
+  // új karakter (a kezdő varázsló állása): amíg a lapon van, a tulajdonos a lap helyén a varázslót kapja
+  const NC_STEPS = ['alap', 'faj', 'oszt', 'kep', 'hat', 'val', 'var', 'sum'], NC_METHODS = ['array', 'buy', 'roll', 'manual'];
+  function normNewChar(v) {
+    if (!isObj(v)) return null;
+    const methods = NC_METHODS.filter(m => arr(v.methods, 4).includes(m)), rolls = arr(v.rolls, 6), pick = isObj(v.pick) ? v.pick : {};
+    const lista = methods.length ? methods : [...NC_METHODS];
+    return {step: NC_STEPS.includes(v.step) ? v.step : 'alap', target: int(v.target, 1, 1, 20), methods: lista, method: lista.includes(v.method) ? v.method : '',
+      rolls: rolls.length === 6 ? rolls.map(x => int(x, 10, 3, 18)) : null,
+      pick: Object.fromEntries(ABIL.filter(a => pick[a] != null && pick[a] !== '').map(a => [a, int(pick[a], 0, 0, 5)])), by: str(v.by, 200), at: isoTime(v.at)};
+  }
   // felülírható kulcsok: ab:str, save:dex (0/1), skill:stealth (0 / 0.5 / 1 / 2), hpMax, init, ac, speed
   function normOv(o) {
     const out = {};
@@ -172,7 +182,8 @@ window.Sheet = (() => {
       updatedAt: isoTime(d.updatedAt),
       updatedBy: str(d.updatedBy, 200),
       levelUp: normLevelUp(d.levelUp),
-      deleted: normDeleted(d.deleted)
+      deleted: normDeleted(d.deleted),
+      newChar: normNewChar(d.newChar)
     };
     if (!s.classes.length) s.classes = [{name: '', subclass: '', level: 1, hitDie: 8}];
     // szabálymotor (2. fázis): a régi, kézi lapon nincs build, és az auto is ki van kapcsolva
@@ -1083,7 +1094,7 @@ window.Sheet = (() => {
   const buildLevels = s => s.build?.levels?.length || 0;
   // a teljes lap visszajön (felszerelés, pénz, jegyzet, HP is); a gazda marad. Ha a visszaállítás szintet csökkent, a szintlépés-engedély visszajön a mostani szintig.
   function backupPatch(cur, h, rb, {by = '', at = ''} = {}) {
-    const {format, owner, updatedAt, updatedBy, levelUp: _regi, deleted, ...snap} = h.sheet;
+    const {format, owner, updatedAt, updatedBy, levelUp: _regi, deleted, newChar, ...snap} = h.sheet;
     const lv = buildLevels(snap) || level(snap), most = buildLevels(cur);
     const levelUp = cur.levelUp && cur.levelUp.to > lv ? cur.levelUp : most > lv ? {to: most, by, at, mc: false} : null;
     const p = {...snap, levelUp}, next = norm({...cur, ...p});
@@ -1092,13 +1103,53 @@ window.Sheet = (() => {
   // a játékos visszaállíthatja-e (a firestore.rules levelsOk tükre): szintet nem adhat magának, a meglévő felépítést nem veheti le
   function backupAllowed(cur, h) {
     const a = buildLevels(cur), b = buildLevels(h.sheet);
-    return a === 0 || (b > 0 && (b <= a || (!!cur.levelUp && b <= cur.levelUp.to)));
+    return a === 0 ? !cur.auto || b <= 1 : b > 0 && (b <= a || (!!cur.levelUp && b <= cur.levelUp.to));
   }
   // letöltéshez: a Könyvtár → JSON fülön visszatölthető lap, a gazda e-mailjével (a pillanatnyi engedély és a szerkesztő e-mailje nélkül)
-  const exportLap = s => ({...norm(s), owner: s.owner || s.deleted?.owner || '', levelUp: null, deleted: null, updatedBy: ''});
+  const exportLap = s => ({...norm(s), owner: s.owner || s.deleted?.owner || '', levelUp: null, deleted: null, newChar: null, updatedBy: ''});
   // törlés: a játékos a piros gombbal; a gazda üres lesz, a DM a deleted-ből tudja visszahozni (a nyilvános részből a telefon is leveszi: owner '', visibility 'dm')
   const torlesPatch = (s, {by = '', at = '', vis = 'dm'} = {}) => ({owner: '', deleted: {at, by, owner: s.owner, vis: vis === 'party' ? 'party' : 'dm'}});
   const exportNev = (name, at = '') => `${String(name).replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'karakter'}-backup${at ? '-' + at.slice(0, 10) : ''}.json`;
+
+  // ---------- új karakter: üres, motoros lap és a kezdő varázsló logikája (a felépítés a lapon van, a varázsló csak felület fölötte) ----------
+  const NC_ARRAY = [15, 14, 13, 12, 10, 8], NC_BUY_POINTS = 27, NC_BUY_COST = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9};
+  // az üres lap: nincs szintje; a kezdőszintig (ha 1 fölötti) a szintlépés-varázsló visz tovább
+  const ncBlank = ({name = '', owner = '', target = 1, methods = NC_METHODS, by = '', at = ''} = {}) => {
+    const to = int(target, 1, 1, 20);
+    return norm({name: name || 'Új karakter', owner, auto: true, build: {levels: [], spells: {}, base: Object.fromEntries(ABIL.map(a => [a, 10]))},
+      newChar: {step: 'alap', target: to, methods, by, at}, levelUp: to > 1 ? {to, by, at, mc: false} : null, updatedBy: by, updatedAt: at});
+  };
+  // 6 × 4d6, a legkisebb kocka nélkül (PHB 13. o.)
+  const ncRoll = rnd => Array.from({length: 6}, () => { const k = Array.from({length: 4}, () => rnd(6)).sort((a, b) => a - b); return k[1] + k[2] + k[3]; });
+  const ncPool = nc => nc.method === 'array' ? NC_ARRAY : nc.method === 'roll' ? nc.rolls || [] : [];
+  // a kiosztásból (array, roll) az alapértékek; ami még nincs kiosztva, az 10
+  const ncBaseFromPick = (nc, pick) => { const pool = ncPool(nc); return Object.fromEntries(ABIL.map(a => [a, pool[pick[a]] ?? 10])); };
+  const ncBuyLeft = base => NC_BUY_POINTS - ABIL.reduce((t, a) => t + (NC_BUY_COST[base[a]] ?? 99), 0);
+  // a képességek rendben vannak-e: '' vagy a hiba szövege
+  function ncAbilityProblem(nc, base) {
+    if (!nc.method) return 'Válassz módszert.';
+    if (nc.method === 'array' || nc.method === 'roll') {
+      if (nc.method === 'roll' && !nc.rolls) return 'Dobj előbb.';
+      const v = ABIL.map(a => nc.pick[a]);
+      return v.some(x => x == null || x >= ncPool(nc).length) ? 'Minden képességhez rendelj értéket.' : new Set(v).size < 6 ? 'Minden érték csak egyszer használható.' : '';
+    }
+    if (nc.method === 'buy') {
+      if (ABIL.some(a => !(base[a] in NC_BUY_COST))) return 'Point buy: minden érték 8 és 15 között lehet.';
+      const left = ncBuyLeft(base);
+      return left < 0 ? `Point buy: ${-left} ponttal túl sok.` : '';
+    }
+    return ABIL.some(a => base[a] < 3 || base[a] > 18) ? 'Kézi érték: 3 és 18 között.' : '';
+  }
+  // osztályválasztás: az 1. szint; a régi osztály választásai kiesnek
+  function ncSetClass(b, cls) {
+    const regi = b.levels[0]?.c, ch = Object.fromEntries(Object.entries(b.ch).filter(([k]) => !regi || !k.startsWith(regi + ':')));
+    return normBuild({...b, levels: [{c: cls, hp: null}], sub: {}, spells: {}, ch});
+  }
+  // a varázsló választási helyei: a felépítés minden nyitott helye (az alfaj a faj-listában van); missing: hány kötelező hiányzik
+  function ncPlan(s, rb) {
+    const cr = calc(s, rb), item = c => ({c, missing: choiceMissing(c, cr, rb)}), all = cr.choices.filter(c => c.kind !== 'subrace').map(item);
+    return {cr, choices: all.filter(x => !SPELL_KINDS.includes(x.c.kind)).sort((a, b) => (LU_ORDER[a.c.kind] ?? 9) - (LU_ORDER[b.c.kind] ?? 9)), spells: all.filter(x => SPELL_KINDS.includes(x.c.kind))};
+  }
 
   // ---------- faji és feat-képességbónusz a kézi lapon (a beírt értékekhez adva) ----------
   // fixed: azonnal hozzáadható; choose: a játékos választ (pl. Half-Elf 2× +1, Resilient)
@@ -1389,6 +1440,7 @@ window.Sheet = (() => {
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch,
+    NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine};

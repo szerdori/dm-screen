@@ -1753,7 +1753,8 @@ describe('Játékos app: láthatóság és közzététel', () => {
     ok(!W.sharingDirty());
   });
   test('szerkesztő: játékos app mezők típustól függően; mentés; hibás e-mail nem menthető', () => {
-    W.openLib('lib'); click('[data-act="newCreature"]');
+    W.upsertLibrary(W.normCreature(mk()));
+    W.openLib('lib'); click('[data-act="libEdit"]');
     const fm = $('#edForm');
     ok($('#shareBox').hidden, 'szörnynél rejtve');
     setVal(fm.elements.kind, 'pc');
@@ -2739,6 +2740,39 @@ describe('Szintlépés: robot (minden osztály 1 → 20)', () => {
     for (const c of rb.classes) if (!rb.subclasses.some(x => x.cls === c.n)) rb.subclasses.push({n: 'Próba ' + c.n, short: 'Próba', cls: c.n, s: 'HB'});
     return rb;
   };
+  // új karakter: az üres lapból a varázsló logikájával, minden helyet az első érvényes opcióval; a kész lap 1. szintű, a szintlépés indulhat
+  const ncRobot = (cls, rb, raceIdx, bgIdx) => {
+    const H = W.Sheet, hibak = [], o = H.raceOptions(rb);
+    let s = H.ncBlank({name: 'R', target: 1});
+    let b = {...s.build, race: o[raceIdx % o.length]?.race || '', subrace: o[raceIdx % o.length]?.subrace || '', background: rb.backgrounds?.length ? rb.backgrounds[bgIdx % rb.backgrounds.length].n + '|' + rb.backgrounds[bgIdx % rb.backgrounds.length].s : '', base: {str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8}};
+    b = H.ncSetClass(H.norm({auto: true, build: b}).build, cls);
+    s = H.norm({...s, build: b});
+    s = H.norm({...s, ...H.materialize(s, H.calc(s, rb))});
+    for (let g = 0; g < 40; g++) {
+      const plan = H.ncPlan(s, rb), x = [...plan.choices, ...plan.spells].find(y => y.missing > 0);
+      if (!x) break;
+      const nb = x.c.kind === 'subclass' ? H.setChoice(s.build, x.c, H.subclassesOf(cls, rb)[0].n + '|' + H.subclassesOf(cls, rb)[0].s) : kitolt(x.c, plan.cr, rb, s.build);
+      s = H.norm({...s, build: nb}); s = H.norm({...s, ...H.materialize(s, H.calc(s, rb))});
+      const u = H.ncPlan(s, rb);
+      if ([...u.choices, ...u.spells].some(y => y.c.key === x.c.key && y.missing >= x.missing)) { hibak.push(`${cls}: nem tölthető ki: ${x.c.key}`); break; }
+    }
+    const plan = H.ncPlan(s, rb), maradt = [...plan.choices, ...plan.spells].filter(y => y.missing > 0).map(y => y.c.key);
+    if (maradt.length) hibak.push(`${cls}: nyitva: ${maradt}`);
+    if (H.level(s) !== 1 || s.build.levels.length !== 1) hibak.push(`${cls}: szint ${H.level(s)} / ${s.build.levels.length}`);
+    if (s.hp.max < 1 || s.classes[0].name !== cls) hibak.push(`${cls}: lap: ${s.hp.max}, ${s.classes[0].name}`);
+    return hibak;
+  };
+  test('új karakter: mind a 13 osztály elkészíthető a varázsló logikájával, elakadás nélkül', () => {
+    const rb = rb13(), hibak = [];
+    rb.classes.forEach((c, i) => hibak.push(...ncRobot(c.n, rb, i, i)));
+    eq(hibak, []);
+  });
+  test('új karakter: valódi szabálykönyvvel minden osztály × minden faj, különböző háttérrel', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet, hibak = [];
+    eq(rb.classes.length, 13);
+    H.raceOptions(rb).forEach((_, r) => rb.classes.forEach((c, i) => hibak.push(...ncRobot(c.n, rb, r, i + r))));
+    eq(hibak, []);
+  }, {online: true});
   test('mind a 13 osztály 1 → 20: nincs elakadás, nem vész el választás, a kulcsok stabilak, a mentett lap újraszámolva nem változik', () => {
     const rb = rb13(), hibak = [];
     eq(rb.classes.map(c => c.n).sort(), ['Artificer', 'Barbarian', 'Bard', 'Cleric', 'Druid', 'Fighter', 'Monk', 'Paladin', 'Ranger', 'Rogue', 'Sorcerer', 'Warlock', 'Wizard']);
@@ -3208,6 +3242,45 @@ describe('Szintlépés-engedély a DM Screenben', () => {
     lapos('p1', 'Lapos', {deleted: {owner: 'a@x.hu', vis: 'party'}});
     eq(A('SHEETS.p1.deleted'), null, 'a createSheet (import) új, nem törölt lapot ír');
   });
+  test('új játékos: az Új lény ablakban a Játékos típus rövid űrlapot ad; üres motoros lap jön létre e-maillel; e-mail nélkül is; hibás cím nem menthető', async () => {
+    const f = makeFakeDb(); A('Tar').kapcsol(f.db);
+    W.openLib('lib'); click('[data-act="newCreature"]');
+    $('#edForm').elements.name.value = 'Valaki';
+    setVal($('#edForm').elements.kind, 'pc');
+    ok(!$('#edForm'), 'nem a teljes szerkesztő'); eq($('#njForm').elements.name.value, 'Valaki', 'a név átjön');
+    click('[data-act="ujJatekosVissza"]'); ok($('#edForm'), 'másik típus');
+    setVal($('#edForm').elements.kind, 'npc'); ok($('#edForm'), 'NPC-nél marad a szerkesztő');
+    setVal($('#edForm').elements.kind, 'pc');
+    const fm = $('#njForm');
+    let msg = ''; W.alert = m => msg = m;
+    fm.elements.owner.value = 'rossz cím';
+    click('[data-act="ujJatekosMent"]'); has(msg, 'nem érvényes'); ok($('#njForm'), 'nyitva maradt');
+    fm.elements.owner.value = 'Jatekos@X.hu'; fm.elements.target.value = '3'; fm.elements.name.value = '<img src=x onerror=alert(1)>';
+    fm.elements.m_roll.checked = false;
+    click('[data-act="ujJatekosMent"]');
+    const c = A('S.library').at(-1), s = A(`SHEETS['${c.id}']`);
+    eq([c.kind, c.owner, c.share.vis, s.owner, s.auto, s.build.levels, s.newChar.target, s.newChar.methods, s.levelUp.to], ['pc', 'jatekos@x.hu', 'party', 'jatekos@x.hu', true, [], 3, ['array', 'buy', 'manual'], 3]);
+    eq(A(`lapAllapot('${c.id}')`), 'keszul');
+    eq(A(`szintlepesAllas('${c.id}')`), null, 'készülő lapra nincs engedélyadás');
+    W.openLib('lib'); click('[data-act="addAllPcs"]');
+    eq(A('S.enc.list').length, 0, 'készülő lap nem megy harcba az „Összes játékos” gombbal');
+    await A('doSave()');
+    await until(() => f.store['sheets/' + c.id]?.newChar && f.store['access/players']?.emails.includes('jatekos@x.hu'), 2000, 'a felhőben');
+    W.openLib('lib'); eq($(`[data-lib="${c.id}"] [data-lapjel]`).dataset.lapjel, 'keszul');
+    assertNoXss();
+    // e-mail és név nélkül; a sorban a tisztító stabil
+    click('[data-act="newCreature"]'); setVal($('#edForm').elements.kind, 'pc');
+    eq($('#njForm').elements.name.value, '', 'az alapnév nem jön át');
+    click('[data-act="ujJatekosMent"]');
+    const d = A('S.library').at(-1);
+    eq([d.name, d.owner, A(`SHEETS['${d.id}'].owner`), A(`SHEETS['${d.id}'].levelUp`)], ['Új karakter', null, '', null]);
+    const H = W.Sheet, x = H.norm({newChar: {step: '<x>', target: 99, methods: ['x', 'roll'], method: 'buy', rolls: [99, 1, 10, 10, 10, 10], pick: {str: 9, bad: 1}}});
+    eq([x.newChar.step, x.newChar.target, x.newChar.methods, x.newChar.method, x.newChar.rolls, x.newChar.pick], ['alap', 20, ['roll'], '', [18, 3, 10, 10, 10, 10], {str: 5}]);
+    eq(JSON.parse(JSON.stringify(H.norm(x))), JSON.parse(JSON.stringify(x)), 'még egyszer tisztítva nem változik');
+    eq(H.norm({newChar: 'x'}).newChar, null);
+    eq(H.exportLap(s).newChar, null);
+    ok(!('newChar' in H.backupPatch(H.norm(s), {sheet: H.norm(s)}, null)), 'a backup nem indítja újra a varázslót');
+  });
   test('átállítás-jelvény a Könyvtárban és a Csapatnál: nincs lap, kézi, motoros, eltérő szintek', () => {
     A(`S.library.push(normCreature(${JSON.stringify({...pc('Lap nélkül', 5), id: 'nl'})}))`);
     lapos('k1', 'Kézi');
@@ -3612,6 +3685,109 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     ok(!kq('[data-act="lapTorol"]'), 'már törölt');
     K.location.hash = ''; K.route();
     has(ktext(), '🗑 törölve: a@x.hu');
+  });
+  ktest('új karakter: a varázsló végig (Wizard): név, faj, osztály, standard array, háttér, választások, varázslatok, Kész; backup, teli HP, kezdőszinttel tovább a szintlépésre', async () => {
+    const rb = rbVarazs(), H = K.Sheet;
+    rb.backgrounds = rb.backgrounds?.length ? rb.backgrounds : [{n: 'Sage', s: 'PHB', fx: []}];
+    K.KApp.setRulebook({version: 'v', rb});
+    openSheet(JSON.parse(JSON.stringify(H.ncBlank({name: 'Új karakter', owner: 'a@x.hu', target: 2, by: 'dm@x.hu', at: '2026-11-01T10:00:00.000Z'}))));
+    const lepes = () => kq('.lusteps span.on').textContent, tovabb = () => kclick('[data-act="ncNext"]'), lap = () => K.eval('sheets.get("p1")');
+    eq(lepes(), 'Alapok'); ok(!kq('nav.tabs'), 'a lap helyén a varázsló');
+    kset('[data-ncf="name"]', '<img src=x onerror=window.__x9=1>');
+    eq(lap().name, '<img src=x onerror=window.__x9=1>');
+    ok(klog.some(l => l[0] === 'update' && l[2].name), 'a név a felhőbe');
+    ok(!K.__x9 && !kq('main img'), 'a gonosz név nem fut');
+    kset('[data-ncf="name"]', 'Próba Varázsló');
+    // a saját írás visszhangja nem cseréli ki a gombot a koppintás közben
+    const gomb = kq('[data-act="ncNext"]'); K.KApp.setSheets([{...lap(), id: 'p1'}]);
+    ok(kq('[data-act="ncNext"]') === gomb, 'a Tovább ugyanaz az elem');
+    tovabb();
+    eq(lepes(), 'Faj'); ok(kq('[data-act="ncNext"]').disabled, 'faj kell');
+    kset('[data-act="bRace"]', '0'); ok(lap().build.race, 'faj');
+    eq(lap().race, H.raceOptions(rb)[0].label, 'a lap fejlécébe és a DM Screenbe is');
+    tovabb(); eq(lepes(), 'Osztály'); ok(kq('[data-act="ncNext"]').disabled, 'osztály kell');
+    kclick('[data-act="ncCls"][data-c="Rogue"]');
+    eq(lap().build.levels, [{c: 'Rogue', hp: null}]);
+    kclick('[data-act="ncCls"][data-c="Wizard"]');
+    eq(lap().build.levels, [{c: 'Wizard', hp: null}], 'az osztály cserélhető, marad egy szint');
+    K.eval(`sheets.get("p1").build.ch['Wizard:x'] = ['y']`);
+    kclick('[data-act="ncCls"][data-c="Wizard"]');
+    eq(lap().build.ch['Wizard:x'], ['y'], 'ugyanarra koppintva a választások maradnak');
+    K.eval(`delete sheets.get("p1").build.ch['Wizard:x']`);
+    eq(lap().classes[0].name, 'Wizard');
+    tovabb(); eq(lepes(), 'Képességek'); ok(kq('[data-act="ncNext"]').disabled, 'módszer kell');
+    kclick('[data-act="ncMethod"][data-m="array"]');
+    H.ABIL.forEach((a, i) => { if (i < 5) kset(`[data-nc-pick="${a}"]`, String(i)); });
+    ok(kq('[data-act="ncNext"]').disabled, 'egy még hiányzik');
+    ok(kq('[data-nc-pick="cha"] option[value="0"]').disabled, 'a kiosztott érték nem választható újra');
+    kset('[data-nc-pick="cha"]', '5');
+    eq(lap().build.base, {str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8});
+    tovabb(); eq(lepes(), 'Háttér');
+    kset('[data-act="bBg"]', kqa('[data-act="bBg"] option').at(-1).value); ok(lap().build.background, 'háttér');
+    tovabb();
+    while (lepes() === 'Választások' || lepes() === 'Varázslatok') {
+      const c = K.Sheet.ncPlan(lap(), rb), x = (lepes() === 'Választások' ? c.choices : c.spells).find(y => y.missing);
+      if (!x) { tovabb(); continue; }
+      ok(kq('[data-act="ncNext"]').disabled, 'kötelező választás: ' + x.c.key);
+      const o = H.choiceOptions(x.c, c.cr, rb);
+      K.eval(`patch({build: Sheet.setChoice(sheets.get("p1").build, ${JSON.stringify(x.c)}, ${JSON.stringify(o.opts.filter(y => !y.dis).slice(0, x.c.n).map(y => y.v))})})`);
+    }
+    eq(lepes(), 'Összegzés');
+    has(ktext(), 'Wizard'); has(ktext(), 'Felszerelés fülön'); has(ktext(), '2. szintig');
+    klog.length = 0;
+    kclick('[data-act="ncDone"]');
+    await until(() => klog.some(l => l[0] === 'hist'), 2000, 'mentve');
+    await until(() => !lap().newChar, 2000, 'lezárva');
+    const [, , p, , doc] = klog.find(l => l[0] === 'hist');
+    eq([p.newChar, doc.reason, doc.sheet.newChar], [null, 'manual', null]);
+    eq(lap().hp.cur, lap().hp.max, 'teli HP');
+    await until(() => kq('.lusteps span.on')?.textContent === 'HP' || kq('.lusteps span.on')?.textContent === 'Osztály', 2000, 'jöhet a szintlépés');
+    has(ktext(), '2. szint');
+  });
+  ktest('új karakter: dobás egyszer, rögzül; a DM újradobhat; point buy és kézi érték ellenőrzése; a tilos módszer nem látszik; a DM kihagyhatja; szabálykönyv nélkül üzenet', async () => {
+    const rb = rbVarazs(), H = K.Sheet;
+    const blank = (extra = {}) => JSON.parse(JSON.stringify(H.ncBlank({owner: 'a@x.hu', methods: ['roll', 'buy', 'manual'], ...extra})));
+    K.KApp.setRulebook(null);
+    openSheet({...blank()});
+    has(ktext(), 'Új karakter'); ok(!kq('[data-act="ncNext"]'), 'szabálykönyv nélkül nincs lépés');
+    K.KApp.setRulebook({version: 'v', rb});
+    const lap = () => K.eval('sheets.get("p1")');
+    openSheet({...blank(), build: {levels: lv('Fighter', 1), spells: {}, race: '', base: {}}, newChar: {step: 'kep', target: 1, methods: ['roll', 'buy', 'manual']}});
+    ok(!kq('[data-act="ncMethod"][data-m="array"]'), 'a tilos módszer nem látszik');
+    // point buy: 27 pont, 8–15
+    kclick('[data-act="ncMethod"][data-m="buy"]');
+    eq(lap().build.base.str, 8);
+    kset('[data-nc-base="str"]', 15, 'input'); has(kq('#ncOut').textContent, 'Maradt: 18');
+    ok(!kq('[data-act="ncNext"]').disabled);
+    kset('[data-nc-base="dex"]', 16, 'input'); ok(kq('[data-act="ncNext"]').disabled, '16 nem lehet');
+    kset('[data-nc-base="dex"]', 15); kset('[data-nc-base="con"]', 15); kset('[data-nc-base="int"]', 15, 'input');
+    ok(kq('[data-act="ncNext"]').disabled, 'több mint 27 pont'); has(kq('#ncBaj').textContent, 'túl sok');
+    eq([lap().build.base.str, lap().build.base.dex], [15, 15], 'a mező elhagyásakor mentődik');
+    // kézi: 3–18
+    kclick('[data-act="ncMethod"][data-m="manual"]');
+    kset('[data-nc-base="str"]', 19, 'input'); ok(kq('[data-act="ncNext"]').disabled);
+    kset('[data-nc-base="str"]', 18, 'input'); ok(!kq('[data-act="ncNext"]').disabled);
+    // dobás: egyszer, utána nem váltható másik módszerre
+    let n = 0; K.rnd = () => { n++; return 4; };
+    kclick('[data-act="ncMethod"][data-m="roll"]');
+    eq(lap().newChar.rolls, null);
+    kclick('[data-act="ncRollDo"]');
+    eq(lap().newChar.rolls, [12, 12, 12, 12, 12, 12]); eq(n, 24);
+    ok(!kq('[data-act="ncRollDo"]'), 'egyszer dobható');
+    ok(!kq('[data-act="ncReroll"]'), 'a játékos nem dobhat újra');
+    ok(kq('[data-act="ncMethod"][data-m="buy"]').disabled, 'dobás után nem vált');
+    K.eval('render(true)'); eq(lap().newChar.rolls.length, 6);
+    // DM: újradobás, kihagyás
+    openSheet({...blank(), build: {levels: lv('Fighter', 1), spells: {}}, newChar: {step: 'kep', target: 1, methods: ['roll'], method: 'roll', rolls: [10, 10, 10, 10, 10, 10]}}, 'dm@x.hu', true);
+    kclick('[data-act="ncReroll"]');
+    eq(lap().newChar.rolls, null);
+    kclick('[data-act="ncSkip"]');
+    eq(lap().newChar, null); ok(kq('nav.tabs'), 'a szokásos lap');
+    // a Felépítés-fülön nem marad nyoma; 320 px-en is elfér
+    K.frameElement.width = 320;
+    openSheet({...blank(), newChar: {step: 'kep', target: 1, methods: ['roll', 'buy', 'manual'], method: 'buy'}});
+    await wait(30);
+    ok(K.document.documentElement.scrollWidth <= K.document.documentElement.clientWidth + 1, 'nincs vízszintes görgetés 320 px-en');
   });
   ktest('átállítás előtt mentés készül; ha a mentés nem megy, a lap nem változik', async () => {
     K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
@@ -4387,11 +4563,33 @@ describe('Szerződés (szerzodes.js)', () => {
   // a firestore.rules játékos-feltételeinek tükre (a szabályszöveget magát a konzol ellenőrzi; a teszt a szöveg kulcssorait is rögzíti)
   const szabalyTukor = (old, now) => {
     const lv = d => d.build == null ? 0 : (d.build.levels || []).length, lu = old.levelUp ?? null, nlu = now.levelUp ?? null;
-    const levelsOk = (lv(old) === 0 || lv(now) > 0) && (lv(old) === 0 || lv(now) <= lv(old) || (lu != null && lv(now) <= lu.to));
+    const levelsOk = (lv(old) === 0 || lv(now) > 0) && (lv(old) === 0 || lv(now) <= lv(old) || (lu != null && lv(now) <= lu.to)) && (old.auto !== true || lv(old) > 0 || lv(now) <= 1);
     const levelUpOk = fmt(nlu) === fmt(lu) || nlu == null || (lv(now) < lv(old) && nlu.to <= lv(old));
     const d = now.deleted ?? null, ownerOk = (now.owner === old.owner && fmt(d) === fmt(old.deleted ?? null)) || (now.owner === '' && d != null && d.owner === old.owner);
-    return levelsOk && levelUpOk && ownerOk;
+    const na = old.newChar ?? null, nb = now.newChar ?? null;
+    const newCharOk = nb == null || (na != null && nb.target === na.target && fmt(nb.methods) === fmt(na.methods) && (na.rolls == null || fmt(nb.rolls ?? null) === fmt(na.rolls)));
+    return levelsOk && levelUpOk && ownerOk && newCharOk;
   };
+  test('szabályok: új karakter: az üres motoros lapon legfeljebb 1 szint; a varázslót a játékos nem indíthatja, a kezdőszintet, a módszereket, a dobást nem írhatja át', async () => {
+    const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text();
+    for (const sor of ["(old.get('auto', false) != true || buildLv(old) > 0 || buildLv(now) <= 1)", 'newCharOk(resource.data, request.resource.data)',
+      "b == null || (a != null && b.target == a.target && b.methods == a.methods && (a.get('rolls', null) == null || b.get('rolls', null) == a.rolls))"]) has(rules, sor, 'a tükör a szabály szövegét követi');
+    const nc = (extra = {}) => ({target: 2, methods: ['array', 'roll'], rolls: null, ...extra});
+    const L = (n, newChar) => ({auto: true, build: {levels: Array(n).fill({c: 'Rogue'})}, newChar});
+    ok(szabalyTukor(L(0, nc()), L(1, nc())), 'az első osztály');
+    ok(szabalyTukor(L(1, nc()), L(1, nc({step: 'kep'}))), 'osztályváltás, lépés');
+    ok(!szabalyTukor(L(0, nc()), L(2, nc())), 'üres lapon nem kettő');
+    ok(!szabalyTukor(L(1, nc()), L(2, nc())), 'engedély nélkül nincs második szint');
+    ok(szabalyTukor({...L(1, null), levelUp: {to: 2}}, {...L(2, null), levelUp: null}), 'lezárás után a szintlépés a kezdőszintig megy');
+    ok(!szabalyTukor(L(1, nc()), L(1, nc({target: 5}))), 'a kezdőszint nem írható át');
+    ok(!szabalyTukor(L(1, nc()), L(1, nc({methods: ['manual']}))), 'a módszerek sem');
+    ok(szabalyTukor(L(1, nc()), L(1, nc({rolls: [10, 10, 10, 10, 10, 10]}))), 'az első dobás');
+    ok(!szabalyTukor(L(1, nc({rolls: [10, 10, 10, 10, 10, 10]})), L(1, nc({rolls: [18, 18, 18, 18, 18, 18]}))), 'a dobás nem ismételhető');
+    ok(!szabalyTukor(L(1, nc({rolls: [10, 10, 10, 10, 10, 10]})), L(1, nc())), 'nem is törölhető');
+    ok(szabalyTukor(L(1, nc()), L(1, null)), 'lezárás');
+    ok(!szabalyTukor(L(1, null), L(1, nc())), 'nem indítható újra');
+    ok(szabalyTukor({levelUp: null}, L(5, null)), 'a kézi lap átállítása változatlan');
+  });
   test('szabályok: a játékos a gazdát csak törléskor veheti le, és csak úgy, hogy a régi megmarad; a nyilvános részből is', async () => {
     const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text();
     for (const sor of ["(now.owner == old.owner && d == old.get('deleted', null)) || (now.owner == '' && d != null && d.owner == old.owner)", 'ownerOk(resource.data, request.resource.data)',

@@ -50,7 +50,14 @@ service cloud.firestore {
     function levelsOk(old, now) {
       let lu = old.get('levelUp', null);
       return (buildLv(old) == 0 || buildLv(now) > 0)
-        && (buildLv(old) == 0 || buildLv(now) <= buildLv(old) || (lu != null && buildLv(now) <= lu.to));
+        && (buildLv(old) == 0 || buildLv(now) <= buildLv(old) || (lu != null && buildLv(now) <= lu.to))
+        && (old.get('auto', false) != true || buildLv(old) > 0 || buildLv(now) <= 1);
+    }
+    // új karakter: a varázslót csak a DM indíthatja; a játékos legfeljebb lezárhatja, a kezdőszintet, a módszereket és a már megdobott értékeket nem írhatja át
+    function newCharOk(old, now) {
+      let a = old.get('newChar', null);
+      let b = now.get('newChar', null);
+      return b == null || (a != null && b.target == a.target && b.methods == a.methods && (a.get('rolls', null) == null || b.get('rolls', null) == a.rolls));
     }
     // az engedélyt a játékos csak törölheti; visszavonásnál visszajöhet, de a korábbi szintnél magasabbra nem szólhat
     function levelUpOk(old, now) {
@@ -63,7 +70,8 @@ service cloud.firestore {
       allow create, delete: if isDM();
       allow update: if isDM()
         || (isPlayer() && resource.data.owner == email() && ownerOk(resource.data, request.resource.data)
-            && levelsOk(resource.data, request.resource.data) && levelUpOk(resource.data, request.resource.data));
+            && levelsOk(resource.data, request.resource.data) && levelUpOk(resource.data, request.resource.data)
+            && newCharOk(resource.data, request.resource.data));
       // előzmény: a gazda és a DM olvassa és létrehozza; módosítani nem lehet, törölni csak a DM
       match /hist/{h} {
         function ownSheet() { return isPlayer() && get(/databases/$(database)/documents/sheets/$(id)).data.owner == email(); }

@@ -71,6 +71,7 @@ const LAP_JELVENY = {
   kezi: ['✋ kézi lap', 'Nincs átállítva: a lap Alapadatok fülén az „Átállítás szabálymotorra” gombbal állítható át.'],
   elter: ['⚠ szintek eltérnek', 'Át van állítva, de a felépítés kevesebb szintet tud, mint a lap (pl. a szabálykönyvben nem szereplő osztály): a szintlépés nem indul, amíg a lap Alapadatok fülén nem javítod.'],
   motoros: ['⚙ átállítva', 'A lap a szabálymotorral számol.'],
+  keszul: ['✨ készül', 'Üres lap: a gazdája a telefonján a varázslóval állítja be (a 📱 gombbal te is megnyithatod).'],
   torolt: ['🗑 törölve', 'A játékos törölte, ezért már nem látja: a ↩ gombbal visszahozhatod, a 🗑 gombbal véglegesen törölheted.'],
 };
 function lapJelveny(id) {

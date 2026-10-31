@@ -109,7 +109,16 @@ const AKCIOK = {
   lootLog: el => { log('🎁 ' + esc(lootText(lootResult)).replace(/\n/g, '<br>')); el.textContent = '✓ Naplóban'; },
 
   // lényszerkesztő
-  newCreature: () => openEditor(blankCreature(), c => { upsertLibrary(c, false); log(`📚 ${esc(c.name)} létrehozva`); }, 'Új lény', {share: true}),
+  newCreature: () => openEditor(blankCreature(), c => { upsertLibrary(c, false); log(`📚 ${esc(c.name)} létrehozva`); }, 'Új lény', {share: true, uj: true}),
+  ujJatekosVissza: () => AKCIOK.newCreature(),
+  ujJatekosMent: () => {
+    const d = readUjJatekos();
+    if (d.owner && !EMAIL_RE.test(d.owner)) { alert('A játékos Google-fiókja nem érvényes e-mail-cím.'); return; }
+    if (!d.methods.length) { alert('Legalább egy képesség-módszert hagyj bejelölve.'); return; }
+    const lib = ujJatekos(d);
+    closeModal(); save(); render(); log(`✨ ${esc(lib.name)}: üres karakter létrehozva${lib.owner ? ', ' + esc(lib.owner) + ' a telefonján állíthatja be' : ''}`);
+    setTimeout(() => openLib('lib'));
+  },
   edSave: () => {
     const ow = $('#edForm').elements.owner?.value.trim();
     if (ow && $('#edForm').elements.kind.value === 'pc' && !EMAIL_RE.test(ow.toLowerCase())) { alert('A játékos Google-fiókja nem érvényes e-mail-cím.'); return; }
@@ -157,7 +166,7 @@ const AKCIOK = {
   downloadSheetTemplate: () => download('karakterlap-sablon.json', Sheet.TEMPLATE),
   showSheetTemplate: () => { $('#jsonIn').value = JSON.stringify(Sheet.TEMPLATE, null, 2); },
   addAllPcs: () => {
-    const pcs = S.library.filter(c => c.kind === 'pc' && !lapTorolt(c.id) && !S.enc.list.some(x => x.c.libId === c.id));
+    const pcs = S.library.filter(c => c.kind === 'pc' && !lapTorolt(c.id) && lapAllapot(c.id) !== 'keszul' && !S.enc.list.some(x => x.c.libId === c.id));
     pcs.forEach(c => addToEncounter(c, 1)); render();
     log(`＋ ${pcs.length} játékos hozzáadva`); closeModal();
   },

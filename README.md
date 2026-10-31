@@ -8,6 +8,7 @@ Harckezelő D&D 5e (2014) mesélőknek: initiative-sorrend csempéken, HP, AC, t
 - Az adatok a Firebase-ben (Firestore) vannak, Google-belépéssel érhetők el; a tárolóban csak a program kódja van.
 - Az Initiative tracker (`player.html`) a DM ablakból nyílik, és ugyanabban a böngészőben élőben követi a harcot.
 - A játékosok a telefonjukon kezelik a karakterüket (`karakter.html`); a DM engedélyére szintlépés-varázslóval lépnek szintet, és az utolsó szintlépés visszavonható.
+- Új játékost a DM üres lappal hoz létre (Új lény → Játékos), a tulajdonos a telefonján varázslóval állítja be. A karakterről mentés (backup) készíthető, visszaállítható és JSON-ba letölthető; a játékos törölheti a karakterét, véglegesen csak a DM.
 
 Frissítés feltöltése: `.\feltoltes.ps1 "Mit változtattunk"` – előtte automatikusan lefutnak a tesztek, és hiba esetén nem tölt fel.
 
