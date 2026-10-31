@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 3);
+modul('akciok', 4);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -120,7 +120,7 @@ const AKCIOK = {
   // könyvtár
   libAdd: el => { const lib = konyvtari(el), n = darab(el); addToEncounter(lib, n); render(); log(`＋ ${n}× ${esc(lib.name)}`); },
   libEdit: el => { const lib = konyvtari(el); openEditor(lib, c => { c.id = lib.id; upsertLibrary(c, false); setTimeout(() => openLib('lib')); }, undefined, {share: true}); },
-  libExport: el => { const lib = konyvtari(el); download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', SHEETS[lib.id] || lib); },
+  libExport: el => { const lib = konyvtari(el); download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', SHEETS[lib.id] ? Sheet.exportLap(SHEETS[lib.id]) : lib); },
   libDel: el => {
     const lib = konyvtari(el);
     if (confirm(`Törlöd a könyvtárból: ${lib.name}?${SHEETS[lib.id] ? '\nA telefonos karakterlapja is törlődik (a felhős biztonsági mentésekből visszahozható).' : ''}`)) {

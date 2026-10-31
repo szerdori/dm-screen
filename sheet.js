@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 7;
+  const VERSION = 8;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -1071,6 +1071,26 @@ window.Sheet = (() => {
     const next = norm({...cur, ...p});
     return {...p, ...(next.auto && rb?.classes?.length ? materialize(next, calc(next, rb)) : {})};
   }
+  // ---------- backup: az előzmény teljes visszaállítása és a letöltés ----------
+  const HIST_MAX = 3;  // laponként ennyi előzmény marad (kézi és automatikus együtt)
+  const buildLevels = s => s.build?.levels?.length || 0;
+  // a teljes lap visszajön (felszerelés, pénz, jegyzet, HP is); a gazda marad. Ha a visszaállítás szintet csökkent, a szintlépés-engedély visszajön a mostani szintig.
+  function backupPatch(cur, h, rb, {by = '', at = ''} = {}) {
+    const {format, owner, updatedAt, updatedBy, levelUp: _regi, ...snap} = h.sheet;
+    const lv = buildLevels(snap) || level(snap), most = buildLevels(cur);
+    const levelUp = cur.levelUp && cur.levelUp.to > lv ? cur.levelUp : most > lv ? {to: most, by, at, mc: false} : null;
+    const p = {...snap, levelUp}, next = norm({...cur, ...p});
+    return {...p, ...(next.auto && rb?.classes?.length ? materialize(next, calc(next, rb)) : {})};
+  }
+  // a játékos visszaállíthatja-e (a firestore.rules levelsOk tükre): szintet nem adhat magának, a meglévő felépítést nem veheti le
+  function backupAllowed(cur, h) {
+    const a = buildLevels(cur), b = buildLevels(h.sheet);
+    return a === 0 || (b > 0 && (b <= a || (!!cur.levelUp && b <= cur.levelUp.to)));
+  }
+  // letöltéshez: a Könyvtár → JSON fülön visszatölthető lap, a gazda e-mailjével (a pillanatnyi engedély és a szerkesztő e-mailje nélkül)
+  const exportLap = s => ({...norm(s), levelUp: null, updatedBy: ''});
+  const exportNev = (name, at = '') => `${String(name).replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'karakter'}-backup${at ? '-' + at.slice(0, 10) : ''}.json`;
+
   // ---------- faji és feat-képességbónusz a kézi lapon (a beírt értékekhez adva) ----------
   // fixed: azonnal hozzáadható; choose: a játékos választ (pl. Half-Elf 2× +1, Resilient)
   function abBonusOf(fx) {
@@ -1359,7 +1379,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch,
+    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, backupPatch, backupAllowed, exportLap, exportNev,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine};

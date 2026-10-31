@@ -175,7 +175,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=7"></script>
+<script src="sheet.js?v=8"></script>
 <script src="szerzodes.js?v=2"></script>
 <script>
 'use strict';
@@ -184,7 +184,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 7, szerzodes: 2};
+const VART_MODULOK = {kozos: 3, sheet: 8, szerzodes: 2};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -299,7 +299,7 @@ const det = (key, summary, body) => `<details data-key="${esc(key)}" ${openKeys.
 function renderSheet(s) {
   const ed = canEdit(s), L = H.level(s);
   if (!TABS.some(([k]) => k === view.tab)) view.tab = 'harc';
-  const body = {harc: tabHarc, kep: tabKep, var: tabVar, fel: tabFel, jegyz: tabJegyz, adat: tabAdat}[view.tab](s, ed);
+  const body = {harc: tabHarc, kep: tabKep, var: tabVar, fel: tabFel, jegyz: tabJegyz, adat: (x, e) => tabAdat(x, e) + (e ? adatAlj(x) : '')}[view.tab](s, ed);
   // fent csak egy vékony HP-sáv (a HP-t főleg a DM állítja); a kezelés a Harc fül alján van
   $('#main').innerHTML = `
     <div class="top"><a href="#">‹ Vissza</a>${s.updatedAt ? `<span class="hint" title="utoljára mentve">${esc(new Date(s.updatedAt).toLocaleTimeString('hu-HU', {hour: '2-digit', minute: '2-digit'}))}</span>` : ''}<span class="grow"></span>
@@ -523,6 +523,8 @@ function formPicked(field) {
   else Object.assign(d, H.derive(H.norm(d), RB()));
   render(true);
 }
+// az Alapadatok fül alja (kézi és motoros lapon is): backup és előzmények
+const adatAlj = s => `<h3>Backup</h3>${histBox(s)}`;
 // alapadatok: piszkozaton dolgozik (draft), csak a Mentés írja a lapra
 const EDIT_KEYS = ['name', 'race', 'background', 'alignment', 'classes', 'abilities', 'saveProf', 'skillProf', 'jack', 'ac', 'acNote', 'speed', 'initBonus', 'spellcasting', 'attacks', 'resources', 'profs', 'senses', 'resist'];
 function tabAdat(s, ed) {
@@ -829,7 +831,7 @@ function luAct(act, el, s) {
   luStore(); render(true);
 }
 
-// ---------- előzmények: a játékos az utolsó szintlépését vonhatja vissza, a DM bármelyiket visszaállíthatja ----------
+// ---------- backup és előzmények: kézi mentés, teljes visszaállítás, letöltés; a legfrissebb szintlépés külön visszavonható ----------
 const histCache = new Map();  // lap-id → lista (legfrissebb elöl) | 'hiba'
 const HOW_HU = {avg: 'átlag', roll: 'dobás', manual: 'kézi'}, HIST_HU = {levelup: 'Szintlépés', restore: 'Visszaállítás', manual: 'Mentés'};
 function histLoad(id) {
@@ -840,20 +842,67 @@ function histLoad(id) {
 }
 function histBox(s) {
   if (openKeys.has('hist') && !histCache.has(view.id)) histLoad(view.id);
-  const list = histCache.get(view.id), L = H.level(s);
-  const canUndo = h => isDM || (h === list[0] && h.reason === 'levelup' && h.to === L);
-  const row = h => `<div class="li"><span class="nm"><b>${esc(HIST_HU[h.reason])}: ${esc(h.from)} → ${esc(h.to)}</b><small>${esc(h.at ? new Date(h.at).toLocaleString('hu-HU') : '')}${h.hp ? ' · HP: ' + esc(HOW_HU[h.hp]) : ''}${isDM ? ' · ' + esc(h.by) : ''}</small></span>
-    ${canUndo(h) ? `<button class="small" data-act="histRestore" data-h="${esc(h.id)}">${isDM ? 'Visszaállítás' : '↩ Visszavonás'}</button>` : ''}</div>`;
+  const all = histCache.get(view.id), list = Array.isArray(all) ? all.slice(0, H.HIST_MAX) : all, L = H.level(s);
+  // a szintlépés visszavonható, amíg nem jött újabb szintlépés vagy visszaállítás (a kézi mentés nem számít)
+  const canUndo = h => h === list.find(x => x.reason !== 'manual') && h.reason === 'levelup' && h.to === L;
+  const cim = h => h.reason === 'manual' ? `${HIST_HU.manual}: ${h.to}. szint` : `${HIST_HU[h.reason]}: ${h.from} → ${h.to}`;
+  const row = h => `<div class="li"><span class="nm"><b>${esc(cim(h))}</b><small>${esc(h.at ? new Date(h.at).toLocaleString('hu-HU') : '')}${h.hp ? ' · HP: ' + esc(HOW_HU[h.hp]) : ''}${isDM ? ' · ' + esc(h.by) : ''}</small></span>
+    ${canUndo(h) ? `<button class="small" data-act="histRestore" data-h="${esc(h.id)}" title="Csak a felépítés jön vissza, a felszerelés, a pénz és a jegyzet marad">↩ Szintlépés visszavonása</button>` : ''}
+    ${isDM || H.backupAllowed(s, h) ? `<button class="small" data-act="histFull" data-h="${esc(h.id)}" title="A teljes lap visszajön">Visszaállítás</button>` : ''}
+    <button class="small" data-act="histDl" data-h="${esc(h.id)}" title="Letöltés JSON-ként">⬇</button></div>`;
   const body = list === 'hiba' ? '<p class="hint">Nem sikerült betölteni (lehet, hogy a DM-nek frissítenie kell a szabályokat).</p>'
-    : list ? (list.length ? `<div class="list" style="margin-top:8px">${list.map(row).join('')}</div>` : '<p class="hint">Még nincs előzmény.</p>') : '<p class="hint">Betöltés…</p>';
-  return `<div data-hist="1">${det('hist', '<b>🕘 Előzmények</b>', `${body}<p class="hint" style="margin:6px 0 0">Visszaállításkor a felépítés és a számolt értékek jönnek vissza; a felszerelés, a pénz, a jegyzet és az állapotok maradnak.</p>`)}</div>`;
+    : list ? (list.length ? `<div class="list" style="margin-top:8px">${list.map(row).join('')}</div>` : '<p class="hint">Még nincs mentés.</p>') : '<p class="hint">Betöltés…</p>';
+  return `<div data-hist="1">${det('hist', '<b>💾 Backup és előzmények</b>', `<div class="row" style="margin-top:8px"><button class="small" data-act="histSave">💾 Mentés most</button><button class="small" data-act="lapDl">⬇ A mostani lap letöltése</button></div>
+    ${body}<p class="hint" style="margin:6px 0 0">Szintlépés előtt magától is készül mentés. A legfrissebb ${esc(H.HIST_MAX)} marad meg. A visszaállítás a teljes lapot hozza vissza (felszerelés, pénz, jegyzet, HP), előtte a mostani állapotról is mentés készül. A letöltött fájlban a játékos e-mailje is benne van; a DM a Könyvtár → JSON fülön töltheti vissza.</p>`)}</div>`;
+}
+// fájl mentése a telefonra / gépre
+function download(name, obj) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], {type: 'application/json'}));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+// átállítás a szabálymotorra: előtte mentés készül, így a DM vissza tudja hozni a kézi lapot. Hibánál semmi nem íródik, és az űrlap piszkozata is megmarad
+async function toAutoMent(s) {
+  const id = view.id;
+  try {
+    const p = H.toAuto(s, RB()), at = new Date().toISOString(), L = H.level(s);
+    if (!await saveWithHist(id, {updatedAt: at, updatedBy: me}, {at, by: me, reason: 'manual', from: L, to: L, sheet: s})) return;
+    histCache.delete(id); draft = null;
+    if (view.id === id) patch(p); else write(id, p);
+  } catch (err) { console.error(err); alert('Az átállítás nem sikerült, a lapon nem változott semmi.\nFrissítsd az oldalt (Ctrl + F5), és próbáld újra.\n\nHiba: ' + err.message); render(true); }
+}
+// kézi backup: csak pillanatkép, a lap nem változik
+async function histMent(s) {
+  const at = new Date().toISOString(), L = H.level(s), id = view.id, utolso = histCache.get(id)?.[0];
+  // egyforma mentés ne szorítsa ki a régebbieket a 3-as keretből
+  const alak = x => H.stableJson({...x, updatedAt: '', updatedBy: ''});
+  if (utolso?.sheet && alak(utolso.sheet) === alak(s)) { toast('Az utolsó mentés óta nem változott a lap.', true); return; }
+  if (!await saveWithHist(id, {updatedAt: at, updatedBy: me}, {at, by: me, reason: 'manual', from: L, to: L, sheet: s})) return;
+  histCache.delete(id); openKeys.add('hist'); render();
+  toast('✓ Mentés elkészült');
+}
+// teljes visszaállítás egy előzményből; előtte a mostani állapotról is pillanatkép készül
+async function histFull(s, h) {
+  const lv = h.sheet.build?.levels?.length || H.level(h.sheet), id = view.id;
+  if (!confirm(`Visszaállítod a teljes lapot erre az állapotra (${lv}. szint, ${h.at ? new Date(h.at).toLocaleString('hu-HU') : ''})?\nA felszerelés, a pénz, a jegyzet és a HP is visszajön. Előtte a mostani állapotról mentés készül.`)) return;
+  const at = new Date().toISOString();
+  let p;
+  try { p = {...H.backupPatch(s, h, RB(), {by: me, at}), updatedAt: at, updatedBy: me}; }
+  catch (err) { console.error(err); alert('A visszaállítás nem sikerült, a lapon nem változott semmi.\n\nHiba: ' + err.message); return; }
+  if (!await saveWithHist(id, p, {at, by: me, reason: 'restore', from: H.level(s), to: lv, sheet: s})) return;
+  afterSave(id, s, p, at);
+  draft = null; histCache.delete(id); luDrop(id);
+  render(true); toast('✓ Visszaállítva');
 }
 async function histRestore(s, h) {
   if (!RB()?.classes?.length) { alert('A visszaállításhoz a szabálykönyv kell: várd meg, amíg betöltődik.'); return; }
   const lv = h.sheet.build?.levels?.length || H.level(h.sheet);
-  if (!confirm(`Visszaállítod a lapot a ${lv}. szintre (${h.at ? new Date(h.at).toLocaleString('hu-HU') : ''})?\nA felszerelés, a pénz, a jegyzet és az állapotok maradnak.`)) return;
+  if (!confirm(`Visszavonod a szintlépést, és visszaállsz a ${lv}. szintre (${h.at ? new Date(h.at).toLocaleString('hu-HU') : ''})?\nA felszerelés, a pénz, a jegyzet és az állapotok maradnak.`)) return;
   const at = new Date().toISOString();
-  const p = {...H.restorePatch(s, h, RB(), {by: me, at}), updatedAt: at, updatedBy: me};
+  let p;
+  try { p = {...H.restorePatch(s, h, RB(), {by: me, at}), updatedAt: at, updatedBy: me}; }
+  catch (err) { console.error(err); alert('A visszavonás nem sikerült, a lapon nem változott semmi.\n\nHiba: ' + err.message); return; }
   if (!await saveWithHist(view.id, p, {at, by: me, reason: 'restore', from: H.level(s), to: lv, sheet: s})) return;
   afterSave(view.id, s, p, at);
   histCache.delete(view.id); luDrop(view.id);
@@ -914,7 +963,6 @@ function tabBuild(s) {
     <h3 class="sub2">Képességértékek</h3><div class="list">${ab}</div>
     <h3 class="sub2">Mentők</h3><div class="list">${sv}</div>
     <h3 class="sub2">Skillek</h3><div class="list">${sk}</div>
-    <h3>Előzmények</h3>${histBox(s)}
     ${autoForm(s)}`;
 }
 // szabálymotoros lapon a kézzel szerkeszthető rész: név, alignment, saját támadások és erőforrások (a számoltak mellé)
@@ -1137,7 +1185,14 @@ document.addEventListener('click', e => {
   switch (act) {
     case 'luStart': if (canEdit(s) && luEnabled(s) && luReady(s) && !sheetStale) { luLoad(view.id, s); window.scrollTo(0, 0); render(true); } break;
     case 'luClose': case 'luCls': case 'luHow': case 'luNext': case 'luBack': case 'luSave': if (lu) luAct(act, el, s); break;
-    case 'histRestore': { const h = histCache.get(view.id)?.find?.(x => x.id === el.dataset.h); if (h) histRestore(s, h); break; }
+    case 'histRestore': case 'histFull': case 'histDl': {
+      const h = histCache.get(view.id)?.find?.(x => x.id === el.dataset.h); if (!h || !canEdit(s)) break;
+      if (act === 'histDl') download(H.exportNev(h.sheet.name, h.at), H.exportLap(h.sheet));
+      else if (act === 'histFull') histFull(s, h); else histRestore(s, h);
+      break;
+    }
+    case 'histSave': if (canEdit(s)) histMent(s); break;
+    case 'lapDl': download(H.exportNev(s.name, new Date().toISOString()), H.exportLap(s)); break;
     case 'signIn': window.KAuth?.signIn(); break;
     case 'signOut': window.KAuth?.signOut(); break;
     case 'reload': location.reload(); break;
@@ -1234,9 +1289,7 @@ document.addEventListener('click', e => {
     case 'slotsAuto': { const d = readForm(); if (!d) { render(true); break; } const sl = H.slotsFor(H.norm(d).classes); d.spellcasting = {...d.spellcasting, slots: sl.slots, pact: {...d.spellcasting.pact, ...sl.pact}}; render(true); break; }
     case 'toAuto':
       if (!confirm('Átállítod a lapot a szabálymotorra? A jelenlegi értékek megmaradnak (ahol eltérnek a számolttól, felülírásként), a hiányzó választások a Teendők közé kerülnek.')) break;
-      // hibánál semmi nem íródik, és az űrlap piszkozata is megmarad
-      try { const p = H.toAuto(s, RB()); draft = null; patch(p); }
-      catch (err) { console.error(err); alert('Az átállítás nem sikerült, a lapon nem változott semmi.\nFrissítsd az oldalt (Ctrl + F5), és próbáld újra.\n\nHiba: ' + err.message); render(true); }
+      toAutoMent(s);
       break;
     case 'todoGo': if (view.tab === 'adat') readForm(); view.tab = 'adat'; openKeys.add('todos'); render(true); $('details[data-key="todos"]')?.scrollIntoView({block: 'start'}); break;
     case 'chGo': document.getElementById(chId(el.dataset.key))?.scrollIntoView({block: 'center'}); break;

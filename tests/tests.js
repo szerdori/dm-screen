@@ -3144,13 +3144,37 @@ describe('Szintlépés-engedély a DM Screenben', () => {
     A('VART_MODULOK.sheet += 100');
     try { eq([A(`szintlepesAd('p2')`), A(`szintlepesVissza('p1')`), A('SHEETS.p2.levelUp')], [false, false, null], 'régi közös fájl mellett nem ír'); } finally { A('VART_MODULOK.sheet -= 100'); }
   });
-  test('előzmények: csak a legfrissebb 20 marad az engedély adásakor; lap törlésekor mind törlődik; hiba nem akasztja meg', async () => {
+  test('átállítás-jelvény a Könyvtárban és a Csapatnál: nincs lap, kézi, motoros, eltérő szintek', () => {
+    A(`S.library.push(normCreature(${JSON.stringify({...pc('Lap nélkül', 5), id: 'nl'})}))`);
+    lapos('k1', 'Kézi');
+    lapos('m1', 'Motoros', {auto: true, build: {levels: [{c: 'Rogue'}, {c: 'Rogue'}, {c: 'Rogue'}, {c: 'Rogue'}, {c: 'Rogue'}]}});
+    lapos('e1', 'Eltérő', {auto: true, build: {levels: [{c: 'Rogue'}]}});
+    eq(['nl', 'k1', 'm1', 'e1'].map(id => A(`lapAllapot('${id}')`)), ['nincs', 'kezi', 'motoros', 'elter']);
+    W.openLib('lib');
+    const jel = id => $(`[data-lib="${id}"] [data-lapjel]`);
+    eq(['nl', 'k1', 'm1', 'e1'].map(id => jel(id).dataset.lapjel), ['nincs', 'kezi', 'motoros', 'elter']);
+    has(jel('k1').textContent, 'kézi');
+    A(`S.library.push(normCreature(${JSON.stringify(mk('Goblin', {id: 'g1'}))}))`);
+    W.filterLib(); ok(!$('[data-lib="g1"] [data-lapjel]'), 'szörnynél nincs jelvény');
+    W.openParty();
+    eq($('[data-pcard="k1"] [data-lapjel]').dataset.lapjel, 'kezi');
+    eq($('[data-pcard="m1"] [data-lapjel]').dataset.lapjel, 'motoros');
+  });
+  test('előzmények: csak a legfrissebb 3 marad az engedély adásakor és induláskor; lap törlésekor mind törlődik; hiba nem akasztja meg', async () => {
     const f = makeFakeDb(); A('Tar').kapcsol(f.db);
     lapos('p1', 'Lapos');
     for (let i = 10; i < 35; i++) f.store[`sheets/p1/hist/2026-11-${i}`] = {reason: 'levelup'};
     A(`szintlepesAd('p1')`);
-    await until(() => Object.keys(f.store).filter(k => k.includes('/hist/')).length === 20, 2000, 'takarítás');
-    ok(f.store['sheets/p1/hist/2026-11-34'] && !f.store['sheets/p1/hist/2026-11-14'], 'a régiek mentek');
+    await until(() => Object.keys(f.store).filter(k => k.includes('/hist/')).length === 3, 2000, 'takarítás');
+    ok(f.store['sheets/p1/hist/2026-11-34'] && !f.store['sheets/p1/hist/2026-11-31'], 'a régiek mentek');
+    for (let i = 10; i < 15; i++) f.store[`sheets/p1/hist/2026-11-${i}`] = {reason: 'manual'};
+    // régi közös fájl mellett semmit nem töröl (a Sheet.HIST_MAX hiánya nem törölheti az összeset)
+    A('VART_MODULOK.sheet += 100');
+    try { A('elozmenyekTakarit()'); await wait(50); } finally { A('VART_MODULOK.sheet -= 100'); }
+    await A(`elozmenyTakarit('p1', NaN)`);
+    eq(Object.keys(f.store).filter(k => k.includes('/hist/')).length, 8, 'nem törölt');
+    A('elozmenyekTakarit()');
+    await until(() => Object.keys(f.store).filter(k => k.includes('/hist/')).length === 3, 2000, 'induláskor is');
     A(`sheetOps.del.add('p1'); doSave()`);
     await until(() => !Object.keys(f.store).some(k => k.startsWith('sheets/p1')), 2000, 'lappal együtt');
     const hibas = {...f.db, list: async () => { throw new Error('tilos'); }};
@@ -3178,18 +3202,18 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet;
     K.KApp.setRulebook({version: 'online', rb});
     const races = H.raceOptions(rb).map(o => o.label), bgs = rb.backgrounds.map(b => b.n), errs = [];
-    rb.classes.forEach((c, i) => {
+    for (const [i, c] of rb.classes.entries()) {
       const sub = H.subclassesOf(c.n, rb)[0]?.n || '';
       openSheet({race: races[i % races.length], background: bgs[i % bgs.length], classes: [{name: c.n, subclass: sub, level: 5}], features: [], resources: [], attacks: []}, 'dm@x.hu', true);
       kclick('[data-tab="adat"]');
-      try { kclick('[data-act="toAuto"]'); K.eval('tabBuild(sheets.get("p1"))'); }
-      catch (e) { errs.push(`${c.n} (${races[i % races.length]}, ${bgs[i % bgs.length]}): ${e.message}`); return; }
+      try { kclick('[data-act="toAuto"]'); await until(() => K.eval('sheets.get("p1")').auto, 2000, c.n + ' átállt'); K.eval('tabBuild(sheets.get("p1"))'); }
+      catch (e) { errs.push(`${c.n} (${races[i % races.length]}, ${bgs[i % bgs.length]}): ${e.message}`); continue; }
       const s = K.eval('sheets.get("p1")');
       const lost = [s.name !== 'Minta Tolvaj' && 'név: ' + s.name, s.build?.levels?.length !== 5 && 'szintek: ' + s.build?.levels?.length, !s.build?.race && 'faj üres', H.level(s) !== 5 && 'szint: ' + H.level(s)].filter(Boolean);
       if (lost.length) errs.push(`${c.n} (${races[i % races.length]}): ${lost.join(', ')}`);
       if (!s.auto) errs.push(c.n + ': nem állt át');
       else if (kq('[data-act="toAuto"]') || !ktext().includes('Felépítés')) errs.push(c.n + ': a felület nem váltott át');
-    });
+    }
     eq(errs, []);
   }, {online: true});
   const openSheet = (extra = {}, email = 'a@x.hu', dm = false) => {
@@ -3410,7 +3434,7 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     const gombok = () => kqa('[data-act="histRestore"]').map(b => b.dataset.h);
     eq(gombok(), [h1.id], 'játékos: csak a legfrissebb szintlépés');
     has(kq('[data-hist]').textContent, 'HP: dobás');
-    has(kq('[data-hist]').textContent, '↩ Visszavonás');
+    has(kq('[data-hist]').textContent, '↩ Szintlépés visszavonása');
     let kerdes = '';
     K.confirm = m => { kerdes = m; return false; };
     kclick(kq('[data-act="histRestore"]')); await wait(10);
@@ -3430,7 +3454,8 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     openSheet(most, 'dm@x.hu', true);
     kclick('[data-tab="adat"]');
     await until(() => kq('[data-hist]').textContent.includes('3 → 4'), 2000, 'DM: nyitva marad és betölt');
-    eq(gombok(), [h1.id, h0.id]);
+    eq(gombok(), [h1.id], 'a visszavonás a DM-nek is csak a legfrissebb szintlépésre szól');
+    eq(kqa('[data-act="histFull"]').map(b => b.dataset.h), [h1.id, h0.id], 'teljes visszaállítás mindegyikre');
     ok(!kq('[data-hist] img') && !K.__x3, 'nincs befecskendezés');
     // a betöltés hibája csak üzenet
     K.eval('histCache.clear()');
@@ -3444,6 +3469,69 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="adat"]');
     await until(() => kq('[data-hist]').textContent.includes('2 → 3'), 2000);
     eq(gombok(), [], 'a h0 már nem a mostani szinté');
+    eq(kqa('[data-act="histFull"]').map(b => b.dataset.h), [h0.id], 'de a teljes visszaállítás a játékosnak is megy');
+  });
+  ktest('backup: kézi mentés kézi és motoros lapon; csak a legfrissebb 3 látszik; teljes visszaállítás; szintcsökkentésnél visszajön az engedély; letöltés', async () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    const most = {auto: true, build: {...rogue3().build, levels: lv('Rogue', 4)}, classes: [{name: 'Rogue', subclass: 'Thief', level: 4, hitDie: 8}], levelUp: null, notes: 'új jegyzet', inventory: [{name: 'Új tárgy', qty: 1}], currency: {gp: 99}, hp: {max: 31, cur: 10}};
+    const regi = rogue3({levelUp: null, notes: 'régi jegyzet', inventory: [{name: 'Régi tárgy', qty: 1}], currency: {gp: 5}, owner: 'mas@x.hu'});
+    const h = (i, extra = {}) => ({id: `2026-11-0${i}T18-00-00-000Z`, at: `2026-11-0${i}T18:00:00.000Z`, by: 'a@x.hu', reason: 'manual', from: 3, to: 3, sheet: regi, ...extra});
+    K.KDB.histList = async () => [h(1), h(2), h(3), h(4)];
+    openSheet(most);
+    kclick('[data-tab="adat"]');
+    const d = kq('details[data-key="hist"]'); d.open = true; d.dispatchEvent(new K.Event('toggle'));
+    await until(() => kqa('[data-act="histFull"]').length, 2000, 'betöltve');
+    eq(kqa('[data-act="histFull"]').map(b => b.dataset.h), [h(4).id, h(3).id, h(2).id], 'a legfrissebb 3');
+    has(kq('[data-hist]').textContent, 'Mentés: 3. szint');
+    // kézi mentés: pillanatkép, a lap nem változik
+    klog.length = 0;
+    kclick('[data-act="histSave"]');
+    await until(() => klog.some(l => l[0] === 'hist'), 2000, 'kézi mentés');
+    let [, , p, , doc] = klog.find(l => l[0] === 'hist');
+    eq(Object.keys(p).sort(), ['updatedAt', 'updatedBy']);
+    eq([doc.reason, doc.from, doc.to, doc.sheet.notes], ['manual', 4, 4, 'új jegyzet']);
+    // egyforma mentés nem készül másodszor; a közbeni kézi mentés nem zárja ki a szintlépés visszavonását
+    K.KDB.histList = async () => [h(1, {reason: 'levelup', from: 3, to: 4}), {...h(2), sheet: K.eval('sheets.get("p1")')}];
+    K.eval('histCache.clear()'); K.render(true);
+    await until(() => kqa('[data-act="histRestore"]').length, 2000, 'visszavonás a kézi mentés után is');
+    klog.length = 0;
+    kclick('[data-act="histSave"]'); await wait(20);
+    eq(klog.filter(l => l[0] === 'hist'), [], 'nem változott a lap');
+    K.KDB.histList = async () => [h(1), h(2), h(3), h(4)];
+    K.eval('histCache.clear()'); K.render(true);
+    // teljes visszaállítás: minden visszajön, a gazda nem; a szintlépés-engedély a mostani szintig
+    await until(() => kqa('[data-act="histFull"]').length, 2000, 'újratöltve');
+    klog.length = 0;
+    kclick('[data-act="histFull"]');
+    await until(() => klog.some(l => l[0] === 'hist'), 2000, 'visszaállítás');
+    [, , p, , doc] = klog.find(l => l[0] === 'hist');
+    eq(doc.reason, 'restore'); eq(doc.sheet.notes, 'új jegyzet', 'előtte pillanatkép');
+    ok(!('owner' in p), 'a gazdát nem írja'); eq(p.levelUp.to, 4);
+    await until(() => K.eval('sheets.get("p1")').notes === 'régi jegyzet', 2000);
+    const s = K.eval('sheets.get("p1")');
+    eq([s.inventory[0].name, s.currency.gp, s.owner, s.build.levels.length, s.levelUp.to], ['Régi tárgy', 5, 'a@x.hu', 3, 4]);
+    // letöltés: a fájl visszatölthető lap
+    const H = K.Sheet, lap = H.exportLap({...s, updatedBy: 'x@x.hu'});
+    eq([lap.format, lap.levelUp, lap.updatedBy, lap.owner], [H.FORMAT, null, '', 'a@x.hu']);
+    eq(H.exportNev('Min<ta>/Tolvaj', '2026-11-05T10:00:00Z'), 'MintaTolvaj-backup-2026-11-05.json');
+    // magasabb szintű mentést és felépítés nélküli mentést a játékos nem állíthat vissza (a szabály sem engedné), engedéllyel igen
+    const a3 = {build: {levels: lv('Rogue', 3)}, levelUp: null}, sh = l => ({sheet: {build: l ? {levels: lv('Rogue', l)} : null}});
+    eq([H.backupAllowed(a3, sh(3)), H.backupAllowed(a3, sh(2)), H.backupAllowed(a3, sh(4)), H.backupAllowed({...a3, levelUp: {to: 4}}, sh(4)), H.backupAllowed(a3, sh(0)), H.backupAllowed({build: null}, sh(0))], [true, true, false, true, false, true]);
+  });
+  ktest('átállítás előtt mentés készül; ha a mentés nem megy, a lap nem változik', async () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    openSheet({});
+    kclick('[data-tab="adat"]');
+    K.KDB.saveWithHist = async () => { const e = new Error('tilos'); e.code = 'permission-denied'; throw e; };
+    K.alert = () => {};
+    kclick('[data-act="toAuto"]'); await wait(20);
+    ok(!K.eval('sheets.get("p1")').auto, 'nem állt át');
+    K.KDB.saveWithHist = async (id, p, h, doc) => { klog.push(['hist', id, p, h, doc]); };
+    kclick('[data-act="toAuto"]');
+    await until(() => K.eval('sheets.get("p1")').auto, 2000, 'átállt');
+    const doc = klog.find(l => l[0] === 'hist')[4];
+    eq([doc.reason, doc.sheet.auto], ['manual', false]);
+    ok(kq('[data-hist]'), 'a backup a motoros lapon is ott van');
   });
   ktest('varázslat-választó a Felépítésen: besorolás betöltéskor, választás, keresés, a tanult varázslat a Varázslat fülön, nem távolítható el; a teli hely tilt, a spellbook nem', () => {
     K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
@@ -3789,11 +3877,12 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     ok([...sels()[1].options].find(o => o.value === 'Elvish').disabled, 'a másik helyen már nem választható');
     kq('#edForm').elements.name.value = 'Új név'; kclick('[data-act="edSave"]'); has(kq('#toast').textContent, 'Elmentve');
   });
-  ktest('Átállítás gomb kézi lapon; ✋ teendő kipipálása; befecskendezett választás-érték nem fut le', () => {
+  ktest('Átállítás gomb kézi lapon; ✋ teendő kipipálása; befecskendezett választás-érték nem fut le', async () => {
     K.KApp.setRulebook({version: 'v1', rb: rb3()});
     openSheet({race: 'Hill Dwarf', classes: [{name: 'Fighter', subclass: 'Champion', level: 3}], abilities: {str: 16, dex: 12, con: 16, int: 10, wis: 12, cha: 8},
       saveProf: ['str', 'con'], skillProf: {athletics: 1}, hp: {max: 40, cur: 30, temp: 0}, ac: 18, speed: '25 ft.', attacks: [], resources: [], features: []});
     kclick('[data-tab="adat"]'); kclick('[data-act="toAuto"]');
+    await until(() => K.eval('sheets.get("p1")').auto, 2000, 'átállt');
     const s = K.eval('sheets.get("p1")');
     eq([s.auto, s.ac, s.hp.max, s.hp.cur, s.ov.ac, s.ov.hpMax, s.build.sub], [true, 18, 40, 30, 18, 40, {Fighter: 'Champion|PHB'}]);
     has(ktext(), 'Felépítés'); ok(kqa('.warn').some(e => e.textContent === '✎'), 'a felülírt értékek jelölve');

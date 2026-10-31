@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 4);
+modul('lapszinkron', 5);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -134,19 +134,27 @@ function createSheet(id, s) {
   applySheet(id); save();
 }
 // ---------- szintlépés-engedély: a DM ad (egy nyomás = +1 szint), a játékos telefonján a varázsló indul; a DM addig vonhatja vissza, amíg a játékos nem mentett ----------
-const ELOZMENY_MAX = 20;
+const ELOZMENY_MAX = Sheet.HIST_MAX;
 // az előzményekből a legfrissebb `marad` darab marad (a játékos nem törölhet; az azonosító időbélyeg, ezért a sorrend ábécérend). A Firestore az alkollekciót nem törli a lappal együtt.
 async function elozmenyTakarit(id, marad = ELOZMENY_MAX) {
+  if (!Number.isInteger(marad)) return;  // régi sheet.js mellett nincs korlát: inkább ne töröljünk (a slice különben mindent törölne)
   try {
     const lista = (await Tar.lapok.elozmenyek(id)).map(h => h.id).sort().reverse();
     await Promise.all(lista.slice(marad).map(h => Tar.lapok.elozmenyTorol(id, h)));
   } catch (e) { console.warn('az előzmények takarítása nem sikerült:', e.code || e.message); }
 }
+// induláskor minden lapnál: a telefon nem törölhet, csak a legfrissebbeket mutatja, a régieket innen takarítjuk
+function elozmenyekTakarit() { if (!regiFajl()) Object.keys(SHEETS).forEach(id => elozmenyTakarit(id)); }
 function engedelyIr(id, levelUp) {
   const now = new Date().toISOString(), by = authInfo.email || 'DM';
   SHEETS[id] = Sheet.norm({...SHEETS[id], levelUp});
   if (!Tar.kapcsolva()) return;
   Tar.lapok.mezok(id, {levelUp, updatedAt: now, updatedBy: by}).catch(e => Ertesito.naplo(`⚠ A szintlépés-engedély mentése nem sikerült (${esc(e.code || e.message)}).`, 'warn'));
+}
+// át van-e állítva a lap: nincs lap, kézi, motoros, vagy motoros, de a felépítés kevesebb szintet tud, mint a lap (ott a szintlépés nem indul)
+function lapAllapot(id) {
+  const s = SHEETS[id];
+  return !s ? 'nincs' : !s.auto ? 'kezi' : s.build.levels.length === Sheet.level(s) ? 'motoros' : 'elter';
 }
 // a lap állása: {szint, to}; to = null, ha nincs engedély
 const szintlepesAllas = id => { const s = SHEETS[id]; return s ? {szint: Sheet.level(s), to: s.levelUp && s.levelUp.to > Sheet.level(s) ? s.levelUp.to : null} : null; };

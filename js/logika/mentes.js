@@ -1,7 +1,7 @@
 // Mentés és betöltés (logika, DOM nélkül): változott dokumentumok írása a Tar-on át, helyi másolat, mentésfájl, napi felhős mentések, mentett encounterek.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('mentes', N) és az index.html-ben a mentes.js?v=N és a VART_MODULOK.
 'use strict';
-modul('mentes', 2);
+modul('mentes', 3);
 
 // ---------- mentés: Firebase (Firestore), plusz másolat a böngészőben ----------
 // A felhőbe a Tar (js/adat/tar.js) ír: állapot (encounter + beállítások), könyvtár, mentett encounterek, és a játékos appnak
@@ -91,6 +91,7 @@ async function loadFromDb() {
     S.saved.forEach(e => lastSaved.saved[e.id] = JSON.stringify(e));
     // a telefonon azóta történt változások (HP, felszerelés…) a könyvtárba és a harcba
     for (const d of sheets) if (/^[A-Za-z0-9_-]{1,64}$/.test(d.id)) { SHEETS[d.id] = Sheet.norm(d); applySheet(d.id); }
+    elozmenyekTakarit();
     if (sharingDirty() || S.library.some(c => lastSaved.lib[c.id] !== JSON.stringify(c))) save();  // pl. az első indításkor még nincs közzétéve semmi
   } else {
     // üres a felhő: ha ebben a böngészőben van korábbi adat, azt töltjük fel

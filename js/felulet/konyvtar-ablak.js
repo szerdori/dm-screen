@@ -1,7 +1,7 @@
 // Könyvtár ablak (felület): a fülek (könyvtár, 5e.tools, D&D Beyond, tárgyak, JSON, mentett encounterek) és a fájlbetöltés.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('konyvtar-ablak', N) és az index.html-ben a konyvtar-ablak.js?v=N és a VART_MODULOK.
 'use strict';
-modul('konyvtar-ablak', 4);
+modul('konyvtar-ablak', 5);
 
 let libTab = 'lib';
 // ---------- könyvtár ----------
@@ -40,7 +40,7 @@ function filterLib() {
     .sort((a, b) => (a.kind === 'pc' ? 0 : 1) - (b.kind === 'pc' ? 0 : 1) || a.name.localeCompare(b.name, 'hu'));
   const party = new Set(partyMembers().map(c => c.id));
   $('#libRows').innerHTML = items.length ? items.map(c => `<div class="lrow" data-lib="${esc(c.id)}">
-      <span class="nm"><b>${esc(c.name)}</b><small>${KIND_HU[c.kind]} · ${esc(crLabel(c))} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)} · ${esc(c.source || '')}${c.share ? ` · <span title="Játékos app">📱 ${c.share.vis === 'party' ? 'csapat látja' : 'csak DM'}${c.owner ? ' · ' + esc(c.owner) : ''}</span>` : ''}</small></span>
+      <span class="nm"><b>${esc(c.name)}</b><small>${KIND_HU[c.kind]} · ${esc(crLabel(c))} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)} · ${esc(c.source || '')}${c.share ? ` · <span title="Játékos app">📱 ${c.share.vis === 'party' ? 'csapat látja' : 'csak DM'}${c.owner ? ' · ' + esc(c.owner) : ''}</span>` : ''}${c.kind === 'pc' ? ' · ' + lapJelveny(c.id) : ''}</small></span>
       <input type="number" min="1" value="1" class="cnt" title="Darabszám">
       <button class="primary" data-act="libAdd">＋ Encounterbe</button>
       ${c.kind === 'pc' ? `<button class="small ${SHEETS[c.id] ? 'on' : ''}" data-act="libSheet" title="${SHEETS[c.id] ? 'Van telefonos karakterlapja – kattints a megnyitáshoz' : 'Telefonos karakterlap létrehozása a könyvtári adatokból'}">📱</button>` : ''}

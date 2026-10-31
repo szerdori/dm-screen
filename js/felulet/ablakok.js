@@ -1,7 +1,7 @@
 // Zsákmány és Csapat nézet ablaka (felület): rajzolás, rendezés, keresés, csapatdobás.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('ablakok', N) és az index.html-ben az ablakok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('ablakok', 2);
+modul('ablakok', 3);
 
 // ---------- zsákmány (megjelenítés) ----------
 function openLoot() {
@@ -65,6 +65,17 @@ function rerenderParty() {
   if (q && $('#partySearch')) { $('#partySearch').value = q; filterPartyItems(q); }
   $('#modalBox').scrollTop = top;
 }
+// jelvény: át van-e állítva a játékos lapja a szabálymotorra (Könyvtár, Csapat)
+const LAP_JELVENY = {
+  nincs: ['📵 nincs lapja', 'Még nincs telefonos karakterlapja: a Könyvtárban a 📱 gombbal hozhatod létre.'],
+  kezi: ['✋ kézi lap', 'Nincs átállítva: a lap Alapadatok fülén az „Átállítás szabálymotorra” gombbal állítható át.'],
+  elter: ['⚠ szintek eltérnek', 'Át van állítva, de a felépítés kevesebb szintet tud, mint a lap (pl. a szabálykönyvben nem szereplő osztály): a szintlépés nem indul, amíg a lap Alapadatok fülén nem javítod.'],
+  motoros: ['⚙ átállítva', 'A lap a szabálymotorral számol.'],
+};
+function lapJelveny(id) {
+  const k = lapAllapot(id), [cim, tip] = LAP_JELVENY[k];
+  return `<span class="lapjel" data-lapjel="${k}" title="${esc(tip)}">${esc(cim)}</span>`;
+}
 // szintlépés-engedély egy lappal rendelkező játékosnak: ⬆ = +1 szint, ✕ = visszavonás; a felirat mutatja, hányadik szintre vár
 function szintlepesGomb(id, hol) {
   const a = szintlepesAllas(id);
@@ -116,7 +127,7 @@ function partyHtml() {
     const groups = [...new Set(c.inventory.filter(i => i.container).map(i => i.container))];
     return `<div class="pcard" data-pcard="${esc(c.id)}">
       <h3>${c.portrait ? `<img class="av" src="${esc(c.portrait)}" alt="" onerror="this.style.display='none'">` : ''}${esc(c.name)}</h3>
-      <div class="muted" style="font-size:12px">${esc(c.type)} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)} · ${esc(c.speed)}</div>
+      <div class="muted" style="font-size:12px">${esc(c.type)} · AC ${esc(c.ac)} · HP ${esc(c.hp.max)} · ${esc(c.speed)}${c.kind === 'pc' ? ' · ' + lapJelveny(c.id) : ''}</div>
       <h4>Pénz</h4><div>${esc(coinStr(c.currency) || '–')}${coinsGp(c.currency) ? ` <span class="muted">(≈ ${esc(coinsGp(c.currency))} gp)</span>` : ''}</div>
       <h4>Felszerelés</h4>${c.inventory.length ? `<ul class="inv">${main.map(item).join('')}</ul>
         ${groups.map(g => `<h4>🎒 ${esc(g)}</h4><ul class="inv">${c.inventory.filter(i => i.container === g).map(item).join('')}</ul>`).join('')}` : '<div class="muted">–</div>'}
