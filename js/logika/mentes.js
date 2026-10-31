@@ -30,7 +30,8 @@ function syncCol(gyujt, arr, key, ops, ser = JSON.stringify) {
 // a karakter nyilvános része (characters/{id}) a könyvtárból: js/adat/tar.js (Tar.karakterek.nyilvanosResz)
 const hpStatus = Sheet.hpStatus;  // ma csak a tesztek használják (W.hpStatus)
 function publicChars() { return Tar.karakterek.nyilvanosResz(S.library); }
-const playerEmails = () => [...new Set(S.library.filter(c => c.owner).map(c => c.owner))].sort();
+// a törölt karakter gazdája is játékos marad: a csapatot és a szabálykönyvet továbbra is látja
+const playerEmails = () => [...new Set([...S.library.filter(c => c.owner).map(c => c.owner), ...Object.values(SHEETS).map(s => s.deleted?.owner).filter(Boolean)])].sort();
 function syncSharing(ops) {
   syncCol(Tar.karakterek, publicChars(), 'pub', ops, stableJson);
   const pl = JSON.stringify(playerEmails());

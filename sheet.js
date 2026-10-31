@@ -87,6 +87,12 @@ window.Sheet = (() => {
     const to = int(v.to, 0, 0, 20);
     return to >= 2 ? {to, by: str(v.by, 200), at: isoTime(v.at), mc: !!v.mc} : null;
   }
+  // törölt karakter: a gazda üres lett (így a játékos nem látja), a régi gazda és a láthatóság itt marad, ebből hozza vissza a DM
+  function normDeleted(v) {
+    if (!isObj(v)) return null;
+    const owner = str(v.owner, 200).trim().toLowerCase();
+    return {at: isoTime(v.at), by: str(v.by, 200), owner: EMAIL_RE.test(owner) ? owner : '', vis: v.vis === 'party' ? 'party' : 'dm'};
+  }
   // felülírható kulcsok: ab:str, save:dex (0/1), skill:stealth (0 / 0.5 / 1 / 2), hpMax, init, ac, speed
   function normOv(o) {
     const out = {};
@@ -165,7 +171,8 @@ window.Sheet = (() => {
       senses: str(d.senses, 300), resist: str(d.resist, 300), notes: str(d.notes, 20000),
       updatedAt: isoTime(d.updatedAt),
       updatedBy: str(d.updatedBy, 200),
-      levelUp: normLevelUp(d.levelUp)
+      levelUp: normLevelUp(d.levelUp),
+      deleted: normDeleted(d.deleted)
     };
     if (!s.classes.length) s.classes = [{name: '', subclass: '', level: 1, hitDie: 8}];
     // szabálymotor (2. fázis): a régi, kézi lapon nincs build, és az auto is ki van kapcsolva
@@ -1076,7 +1083,7 @@ window.Sheet = (() => {
   const buildLevels = s => s.build?.levels?.length || 0;
   // a teljes lap visszajön (felszerelés, pénz, jegyzet, HP is); a gazda marad. Ha a visszaállítás szintet csökkent, a szintlépés-engedély visszajön a mostani szintig.
   function backupPatch(cur, h, rb, {by = '', at = ''} = {}) {
-    const {format, owner, updatedAt, updatedBy, levelUp: _regi, ...snap} = h.sheet;
+    const {format, owner, updatedAt, updatedBy, levelUp: _regi, deleted, ...snap} = h.sheet;
     const lv = buildLevels(snap) || level(snap), most = buildLevels(cur);
     const levelUp = cur.levelUp && cur.levelUp.to > lv ? cur.levelUp : most > lv ? {to: most, by, at, mc: false} : null;
     const p = {...snap, levelUp}, next = norm({...cur, ...p});
@@ -1088,7 +1095,9 @@ window.Sheet = (() => {
     return a === 0 || (b > 0 && (b <= a || (!!cur.levelUp && b <= cur.levelUp.to)));
   }
   // letöltéshez: a Könyvtár → JSON fülön visszatölthető lap, a gazda e-mailjével (a pillanatnyi engedély és a szerkesztő e-mailje nélkül)
-  const exportLap = s => ({...norm(s), levelUp: null, updatedBy: ''});
+  const exportLap = s => ({...norm(s), owner: s.owner || s.deleted?.owner || '', levelUp: null, deleted: null, updatedBy: ''});
+  // törlés: a játékos a piros gombbal; a gazda üres lesz, a DM a deleted-ből tudja visszahozni (a nyilvános részből a telefon is leveszi: owner '', visibility 'dm')
+  const torlesPatch = (s, {by = '', at = '', vis = 'dm'} = {}) => ({owner: '', deleted: {at, by, owner: s.owner, vis: vis === 'party' ? 'party' : 'dm'}});
   const exportNev = (name, at = '') => `${String(name).replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'karakter'}-backup${at ? '-' + at.slice(0, 10) : ''}.json`;
 
   // ---------- faji és feat-képességbónusz a kézi lapon (a beírt értékekhez adva) ----------
@@ -1379,7 +1388,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, backupPatch, backupAllowed, exportLap, exportNev,
+    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine};

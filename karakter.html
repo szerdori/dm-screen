@@ -17,6 +17,8 @@ header small{color:var(--muted);font-size:12px;text-align:right;overflow-wrap:an
 button,select,input,textarea{font:inherit;color:var(--text)}
 button{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
 button.primary{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:700}
+button.danger{background:var(--red);color:#fff;border-color:var(--red);font-weight:700}
+.lapdel{margin:18px 0 6px}
 button.small{padding:4px 9px;font-size:14px}
 button:disabled{opacity:.5}
 input,select,textarea{background:#0b0d10;border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
@@ -229,7 +231,7 @@ function renderList() {
   $('#main').innerHTML = `
     <h2>Az én karakterem</h2>${own.length ? own.map(c => card(c, true)).join('') : isDM ? '<p class="muted">DM-ként nincs saját karaktered – lent az összes karakterlap.</p>' : '<p class="muted">Még nincs hozzád rendelt karakter. Szólj a DM-nek, hogy állítsa be a Google-fiókodat a karakterednél.</p>'}
     <h2>A csapat</h2>${party.length ? party.map(c => card(c, false)).join('') : '<p class="muted">Most nem látsz senkit a csapatból.</p>'}
-    ${isDM ? `<h2>Minden karakterlap (DM)</h2>${all.length ? all.map(([id, s]) => card(fromSheet(id, s, `Szint ${H.level(s)} · ${s.owner || 'nincs gazdája'}`), false)).join('')
+    ${isDM ? `<h2>Minden karakterlap (DM)</h2>${all.length ? all.map(([id, s]) => card(fromSheet(id, s, `Szint ${H.level(s)} · ${s.deleted ? '🗑 törölve' + (s.deleted.owner ? ': ' + s.deleted.owner : '') : s.owner || 'nincs gazdája'}`), false)).join('')
       : '<p class="muted">Még nincs telefonos karakterlap. A DM Screen könyvtárában a 📱 gombbal hozhatsz létre.</p>'}` : ''}
     ${sheetErr ? `<p class="warn">⚠ A karakterlapok most nem érhetők el (${esc(sheetErr)}).</p>` : ''}`;
 }
@@ -311,6 +313,7 @@ function renderSheet(s) {
     <div class="hero">${avatar(s.portrait, s.name)}<div class="main"><div class="name">${esc(s.name)}</div>
       <div class="sub">${esc([s.race, H.classLabel(s) || 'Szint ' + L].filter(Boolean).join(' · '))}</div></div></div>
     <div class="hpline">${hpBar(s.hp, 'slim')}${s.hp.temp ? `<span class="tmp">+${esc(s.hp.temp)} temp</span>` : ''}${s.hp.cur === 0 ? '<span class="tmp" style="color:var(--red)">halálmentők a Harc fül alján</span>' : ''}</div>
+    ${s.deleted ? `<div class="lubar"><span class="grow">🗑 <b>Törölt karakter</b>${s.deleted.owner ? ` (${esc(s.deleted.owner)})` : ''}: a játékos nem látja. A DM Screen Könyvtárában hozhatod vissza, vagy törölheted véglegesen.</span></div>` : ''}
     ${ed ? luBar(s) : ''}
     ${ed && calcOf(s)?.todos.length ? `<button class="todobar" data-act="todoGo">📋 Teendők (${calcOf(s).todos.length})</button>` : ''}
     ${s.concentration ? `<div class="concbar">🌀 Koncentráció: <b>${esc(s.concentration)}</b><span class="grow"></span>${ed ? '<button class="small" data-act="concEnd">Megszakítás</button>' : ''}</div>` : ''}
@@ -524,7 +527,7 @@ function formPicked(field) {
   render(true);
 }
 // az Alapadatok fül alja (kézi és motoros lapon is): backup és előzmények
-const adatAlj = s => `<h3>Backup</h3>${histBox(s)}`;
+const adatAlj = s => `<h3>Backup</h3>${histBox(s)}${s.deleted ? '' : '<div class="row lapdel"><span class="grow"></span><button class="danger" data-act="lapTorol">🗑 Karakter törlése</button></div>'}`;
 // alapadatok: piszkozaton dolgozik (draft), csak a Mentés írja a lapra
 const EDIT_KEYS = ['name', 'race', 'background', 'alignment', 'classes', 'abilities', 'saveProf', 'skillProf', 'jack', 'ac', 'acNote', 'speed', 'initBonus', 'spellcasting', 'attacks', 'resources', 'profs', 'senses', 'resist'];
 function tabAdat(s, ed) {
@@ -779,11 +782,12 @@ function renderWizard(s) {
 const histId = at => at.replace(/[:.]/g, '-');
 let saveTimeout = 20000;
 // a pillanatkép és a lap egy írásban; a sikertelen írás nem hagy nyomot, és nem marad el csendben. Internet nélkül nem indul (a Firestore különben sorba állítaná)
-async function saveWithHist(id, p, h) {
+const saveWithHist = (id, p, h) => biztosIr(() => window.KDB.saveWithHist(id, JSON.parse(JSON.stringify(p)), histId(h.at), JSON.parse(JSON.stringify(h))));
+async function biztosIr(ir0) {
   if (sheetStale) { alert('Az oldal egy része régi változatból töltődött be, ezért nem mentettem.\nFrissítsd az oldalt (Ctrl + F5).'); return false; }
   if (navigator.onLine === false) { alert('Nincs internet. A mentéshez kapcsolat kell, a piszkozat megmarad.'); return false; }
   try {
-    const ir = window.KDB.saveWithHist(id, JSON.parse(JSON.stringify(p)), histId(h.at), JSON.parse(JSON.stringify(h)));
+    const ir = ir0();
     await Promise.race([ir, new Promise((_, rej) => setTimeout(() => rej(new Error('időtúllépés')), saveTimeout))]);
     return true;
   } catch (e) {
@@ -861,6 +865,18 @@ function download(name, obj) {
   a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], {type: 'application/json'}));
   a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+// karakter törlése (a piros gomb): a gazda lekerül a lapról és a nyilvános részről, a játékos nem látja többé; a DM a Könyvtárban visszahozhatja vagy véglegesen törölheti
+async function lapTorol(s) {
+  const id = view.id, pub = chars.find(c => c.id === id);
+  if (!confirm(`Biztosan törlöd: ${s.name}?\nEzután ${isDM ? 'a játékos' : 'te'} nem ${isDM ? 'látja' : 'látod'} a karaktert, és a csapat sem. A DM még látja, és vissza tudja hozni.`)) return;
+  const at = new Date().toISOString(), p = {...H.torlesPatch(s, {by: me, at, vis: pub?.visibility}), updatedAt: at, updatedBy: me};
+  if (!await biztosIr(() => window.KDB.softDelete(id, JSON.parse(JSON.stringify(p)), pub ? {owner: '', visibility: 'dm'} : null))) return;
+  draft = null; luDrop(id);
+  if (isDM) { sheets.set(id, H.norm({...s, ...p})); chars = chars.filter(c => c.id !== id); render(true); toast('✓ Törölve: a játékos már nem látja'); return; }
+  sheets.delete(id); chars = chars.filter(c => c.id !== id);
+  location.hash = ''; route();
+  toast('✓ A karakter törölve');
 }
 // átállítás a szabálymotorra: előtte mentés készül, így a DM vissza tudja hozni a kézi lapot. Hibánál semmi nem íródik, és az űrlap piszkozata is megmarad
 async function toAutoMent(s) {
@@ -1192,6 +1208,7 @@ document.addEventListener('click', e => {
       break;
     }
     case 'histSave': if (canEdit(s)) histMent(s); break;
+    case 'lapTorol': if (canEdit(s) && !s.deleted) lapTorol(s); break;
     case 'lapDl': download(H.exportNev(s.name, new Date().toISOString()), H.exportLap(s)); break;
     case 'signIn': window.KAuth?.signIn(); break;
     case 'signOut': window.KAuth?.signOut(); break;
@@ -1432,6 +1449,13 @@ if (!cfg || !cfg.apiKey || location.protocol === 'file:' || new URLSearchParams(
         const b = F.writeBatch(fs);
         b.set(F.doc(fs, UT.elozmeny(id, h)), doc);
         b.update(F.doc(fs, UT.lap(id)), p);
+        await b.commit();
+      },
+      // karakter törlése: a lap és a nyilvános rész egy írásban
+      softDelete: async (id, p, pub) => {
+        const b = F.writeBatch(fs);
+        b.update(F.doc(fs, UT.lap(id)), p);
+        if (pub) b.update(F.doc(fs, UT.karakter(id)), pub);
         await b.commit();
       },
       histList: async id => (await F.getDocs(F.collection(fs, UT.elozmenyek(id)))).docs.map(d => ({...d.data(), id: d.id})),

@@ -1,7 +1,7 @@
 // Csapat nézet számolásai (logika, DOM nélkül): tagok, passzív értékek, skillek, pénz, felszerelés szövegként.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('csapat', N) és az index.html-ben a csapat.js?v=N és a VART_MODULOK.
 'use strict';
-modul('csapat', 1);
+modul('csapat', 2);
 
 // ---------- Csapat nézet (harcon kívül): passzív értékek, skillek, felszerelés ----------
 const PASSIVES = [['perception', 'Perception'], ['investigation', 'Investigation'], ['insight', 'Insight']];
@@ -9,11 +9,13 @@ const PASSIVES = [['perception', 'Perception'], ['investigation', 'Investigation
 const byName = (a, b) => a.name.localeCompare(b.name, 'hu');
 function partyMembers() {
   const ids = S.settings.partyIds;
-  if (!Array.isArray(ids)) return S.library.filter(c => c.kind === 'pc').sort(byName);
-  return ids.map(id => S.library.find(c => c.id === id)).filter(Boolean).sort(byName);
+  // a törölt karakter nincs a csapatban, csak a Könyvtárban látszik (a DM ott hozhatja vissza)
+  if (!Array.isArray(ids)) return S.library.filter(c => c.kind === 'pc' && !lapTorolt(c.id)).sort(byName);
+  return ids.map(id => S.library.find(c => c.id === id)).filter(c => c && !lapTorolt(c.id)).sort(byName);
 }
 function setPartyMember(id, on) {
-  const ids = new Set(partyMembers().map(c => c.id));
+  // a törölt tag is a listában marad: visszahozás után újra a csapatban van
+  const regi = S.settings.partyIds, ids = new Set((Array.isArray(regi) ? regi.filter(x => S.library.some(c => c.id === x)) : S.library.filter(c => c.kind === 'pc').map(c => c.id)));
   on ? ids.add(id) : ids.delete(id);
   S.settings.partyIds = [...ids];
   save();

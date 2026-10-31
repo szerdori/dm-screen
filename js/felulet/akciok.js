@@ -123,11 +123,17 @@ const AKCIOK = {
   libExport: el => { const lib = konyvtari(el); download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', SHEETS[lib.id] ? Sheet.exportLap(SHEETS[lib.id]) : lib); },
   libDel: el => {
     const lib = konyvtari(el);
-    if (confirm(`Törlöd a könyvtárból: ${lib.name}?${SHEETS[lib.id] ? '\nA telefonos karakterlapja is törlődik (a felhős biztonsági mentésekből visszahozható).' : ''}`)) {
-      if (SHEETS[lib.id]) sheetOps.del.add(lib.id);
-      S.library = S.library.filter(c => c !== lib); save(); filterLib();
-    }
+    // játékos karaktert csak a „Delete” beírásával lehet véglegesen törölni
+    if (lib.kind === 'pc') {
+      const v = prompt(`Véglegesen törlöd: ${lib.name}?\nA karakterlapja, a mentései és a nyilvános része is törlődik. Ez nem vonható vissza, csak a napi felhős biztonsági mentésekből hozható vissza (legfeljebb 14 napig, a karakter mentései nélkül).\n\nA megerősítéshez írd be: Delete`);
+      if (v === null) return;
+      if (v.trim() !== 'Delete') { alert('Nem „Delete” lett beírva, ezért nem töröltem.'); return; }
+    } else if (!confirm(`Törlöd a könyvtárból: ${lib.name}?`)) return;
+    if (SHEETS[lib.id]) sheetOps.del.add(lib.id);
+    S.library = S.library.filter(c => c !== lib); save(); filterLib();
+    log(`🗑 ${esc(lib.name)} törölve`);
   },
+  libVisszahoz: el => { const lib = konyvtari(el); if (lapVisszahoz(lib.id)) log(`↩ ${esc(lib.name)} visszahozva`); filterLib(); },
   libSzintAd: el => { szintlepesAd(el.dataset.pc); filterLib(); },
   libSzintVissza: el => { szintlepesVissza(el.dataset.pc); filterLib(); },
   libSheet: el => {
@@ -151,7 +157,7 @@ const AKCIOK = {
   downloadSheetTemplate: () => download('karakterlap-sablon.json', Sheet.TEMPLATE),
   showSheetTemplate: () => { $('#jsonIn').value = JSON.stringify(Sheet.TEMPLATE, null, 2); },
   addAllPcs: () => {
-    const pcs = S.library.filter(c => c.kind === 'pc' && !S.enc.list.some(x => x.c.libId === c.id));
+    const pcs = S.library.filter(c => c.kind === 'pc' && !lapTorolt(c.id) && !S.enc.list.some(x => x.c.libId === c.id));
     pcs.forEach(c => addToEncounter(c, 1)); render();
     log(`＋ ${pcs.length} játékos hozzáadva`); closeModal();
   },

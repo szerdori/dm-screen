@@ -71,10 +71,11 @@ const LAP_JELVENY = {
   kezi: ['✋ kézi lap', 'Nincs átállítva: a lap Alapadatok fülén az „Átállítás szabálymotorra” gombbal állítható át.'],
   elter: ['⚠ szintek eltérnek', 'Át van állítva, de a felépítés kevesebb szintet tud, mint a lap (pl. a szabálykönyvben nem szereplő osztály): a szintlépés nem indul, amíg a lap Alapadatok fülén nem javítod.'],
   motoros: ['⚙ átállítva', 'A lap a szabálymotorral számol.'],
+  torolt: ['🗑 törölve', 'A játékos törölte, ezért már nem látja: a ↩ gombbal visszahozhatod, a 🗑 gombbal véglegesen törölheted.'],
 };
 function lapJelveny(id) {
-  const k = lapAllapot(id), [cim, tip] = LAP_JELVENY[k];
-  return `<span class="lapjel" data-lapjel="${k}" title="${esc(tip)}">${esc(cim)}</span>`;
+  const k = lapAllapot(id), [cim, tip] = LAP_JELVENY[k], gazda = SHEETS[id]?.deleted?.owner;
+  return `<span class="lapjel" data-lapjel="${k}" title="${esc(tip)}">${esc(cim)}${gazda ? ` (${esc(gazda)})` : ''}</span>`;
 }
 // szintlépés-engedély egy lappal rendelkező játékosnak: ⬆ = +1 szint, ✕ = visszavonás; a felirat mutatja, hányadik szintre vár
 function szintlepesGomb(id, hol) {
@@ -86,7 +87,7 @@ function szintlepesGomb(id, hol) {
 }
 function partyMembersBar(pcs) {
   const inParty = new Set(pcs.map(c => c.id));
-  const cand = S.library.filter(c => !inParty.has(c.id)).sort((a, b) => (KINDS.indexOf(b.kind) - KINDS.indexOf(a.kind)) || byName(a, b));
+  const cand = S.library.filter(c => !inParty.has(c.id) && !lapTorolt(c.id)).sort((a, b) => (KINDS.indexOf(b.kind) - KINDS.indexOf(a.kind)) || byName(a, b));
   return `<div class="toolbar"><b>Tagok:</b>
     ${pcs.map(c => `<span class="chip" data-act="partyRemove" data-pc="${esc(c.id)}" title="Kivétel a csapatból">${esc(c.name)} ✕</span>`).join('') || '<span class="muted">senki</span>'}
     ${cand.length ? `<select id="partyAddSel"><option value="">＋ Hozzáadás a könyvtárból…</option>${cand.map(c => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(KIND_HU[c.kind])})</option>`).join('')}</select>` : ''}

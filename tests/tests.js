@@ -3087,6 +3087,7 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     W.openMenu(); click('[data-act="exportAll"]');
     eq([file.sheets.length, file.sheets[0].id, file.sheets[0].name], [1, 'p1', 'Minta Tolvaj']);
     f.log.splice(0);
+    W.prompt = () => 'Delete';
     W.openLib('lib'); click('[data-act="libDel"]'); await wait(500);
     ok(f.log.includes('del sheets/p1'), f.log.join('; ')); eq(A('Object.keys(SHEETS)'), []);
     W.importBackup(JSON.parse(JSON.stringify(file))); await wait(500);
@@ -3143,6 +3144,69 @@ describe('Szintlépés-engedély a DM Screenben', () => {
     assertNoXss();
     A('VART_MODULOK.sheet += 100');
     try { eq([A(`szintlepesAd('p2')`), A(`szintlepesVissza('p1')`), A('SHEETS.p2.levelUp')], [false, false, null], 'régi közös fájl mellett nem ír'); } finally { A('VART_MODULOK.sheet -= 100'); }
+  });
+  test('törölt karakter: a játékos telefonjáról jön; a DM látja, a nyilvános rész lekerül, a csapatból kikerül; visszahozható; végleges törlés csak „Delete” beírásával', async () => {
+    const f = makeFakeDb(); A('Tar').kapcsol(f.db);
+    lapos('p1', 'Lapos');
+    A(`S.library[0].share.vis = 'party'`);
+    await A('doSave()');
+    await until(() => f.store['characters/p1']?.owner === 'a@x.hu', 2000, 'közzétéve');
+    const torles = {at: '2026-11-01T10:00:00.000Z', by: 'a@x.hu', owner: 'a@x.hu', vis: 'party'};
+    A(`onSheets([{...SHEETS.p1, id: 'p1', owner: '', deleted: ${JSON.stringify(torles)}}])`);
+    eq([A(`lapTorolt('p1')`), A('S.library[0].owner'), A('S.library[0].share.vis'), A(`lapAllapot('p1')`)], [true, '', 'dm', 'torolt']);
+    await A('doSave()');
+    await until(() => !f.store['characters/p1'], 2000, 'a nyilvános rész lekerül');
+    eq(f.store['access/players'].emails, ['a@x.hu'], 'a gazda játékos marad');
+    eq(A('partyMembers()').length, 0, 'a csapatban nincs');
+    eq(A(`szintlepesAd('p1')`), false, 'szintlépés nem adható');
+    W.openLib('lib');
+    has($('[data-lib="p1"]').textContent, 'a@x.hu');
+    ok(!$('[data-lib="p1"] [data-act="libSzintAd"]'), 'nincs szintlépés-gomb');
+    // a DM hiába ad közben gazdát a szerkesztőben: visszahozás nélkül nem kerül vissza
+    A(`S.library[0].owner = 'mas@x.hu'`); await A('doSave()');
+    eq(A('S.library[0].owner'), '');
+    ok(!f.log.some(l => l.startsWith('update sheets/p1') && l.includes('owner')), 'a lapra sem megy');
+    // visszahozás: gazda, láthatóság, nyilvános rész
+    click('[data-lib="p1"] [data-act="libVisszahoz"]');
+    eq([A('SHEETS.p1.owner'), A('SHEETS.p1.deleted'), A('S.library[0].owner'), A('S.library[0].share.vis')], ['a@x.hu', null, 'a@x.hu', 'party']);
+    await A('doSave()');
+    await until(() => f.store['characters/p1']?.owner === 'a@x.hu' && f.store['sheets/p1'].owner === 'a@x.hu' && f.store['sheets/p1'].deleted === null, 2000, 'a felhőben is vissza');
+    // ha a visszahozás után a könyvtár mentése elmaradt, a lap változásakor a gazda visszakerül
+    A(`S.library[0].owner = ''; applySheet('p1')`); eq(A('S.library[0].owner'), 'a@x.hu');
+    // a csapat módosítása nem dobja ki a törölt tagot; importálás törölt karakterre: visszahozza a gazdát és a láthatóságot
+    A(`SHEETS.p1 = Sheet.norm({...SHEETS.p1, owner: '', deleted: ${JSON.stringify(torles)}}); applySheet('p1'); setPartyMember('p1', true); setPartyMember('uj', false)`);
+    ok(A('S.settings.partyIds').includes('p1'), 'a törölt tag megmarad a listában');
+    A(`importSheet(Sheet.norm({name: 'Lapos', owner: ''}), S.library[0])`);
+    eq([A('SHEETS.p1.owner'), A('SHEETS.p1.deleted'), A('S.library[0].owner'), A('S.library[0].share.vis')], ['a@x.hu', null, 'a@x.hu', 'party']);
+    A(`S.settings.partyIds = null`);
+    await A('doSave()');
+    // végleges törlés: mégse, rossz szó, „Delete”
+    W.openLib('lib');
+    const hist = 'sheets/p1/hist/2026-11-01';
+    f.store[hist] = {reason: 'manual'};
+    click('[data-lib="p1"] [data-act="libDel"]');
+    eq(A('S.library.length'), 1, 'prompt mégse');
+    let figy = ''; W.alert = m => { figy = m; };
+    W.prompt = () => 'delete';
+    click('[data-lib="p1"] [data-act="libDel"]');
+    eq(A('S.library.length'), 1, 'kisbetűvel nem'); has(figy, 'nem töröltem');
+    W.prompt = () => 'Delete';
+    click('[data-lib="p1"] [data-act="libDel"]');
+    eq(A('S.library.length'), 0);
+    await A('doSave()');
+    await until(() => !f.store['sheets/p1'] && !f.store['characters/p1'] && !f.store[hist] && !f.store['dmscreen_library/p1'], 2000, 'minden törlődik');
+  });
+  test('Sheet: a törlés mezői tisztítva; a backup visszaállítása és a letöltés nem hozza vissza a törlést; visszaimport után nincs törölve', () => {
+    const H = W.Sheet;
+    const s = H.norm({name: 'A', owner: 'A@x.hu', deleted: {at: 'x', by: '<b>', owner: '<img src=x>@x', vis: 'nem'}});
+    eq(s.deleted, {at: '', by: '<b>', owner: '', vis: 'dm'});
+    eq(H.norm({deleted: 'x'}).deleted, null);
+    eq(H.torlesPatch({owner: 'a@x.hu'}, {by: 'a@x.hu', at: 'T', vis: 'party'}), {owner: '', deleted: {at: 'T', by: 'a@x.hu', owner: 'a@x.hu', vis: 'party'}});
+    const torolt = H.norm({name: 'A', deleted: {owner: 'a@x.hu', vis: 'party'}});
+    eq([H.exportLap(torolt).owner, H.exportLap(torolt).deleted], ['a@x.hu', null]);
+    ok(!('deleted' in H.backupPatch(torolt, {sheet: H.norm({name: 'B'})}, null)), 'a backup nem hozza vissza a törölt karaktert');
+    lapos('p1', 'Lapos', {deleted: {owner: 'a@x.hu', vis: 'party'}});
+    eq(A('SHEETS.p1.deleted'), null, 'a createSheet (import) új, nem törölt lapot ír');
   });
   test('átállítás-jelvény a Könyvtárban és a Csapatnál: nincs lap, kézi, motoros, eltérő szintek', () => {
     A(`S.library.push(normCreature(${JSON.stringify({...pc('Lap nélkül', 5), id: 'nl'})}))`);
@@ -3517,6 +3581,37 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     // magasabb szintű mentést és felépítés nélküli mentést a játékos nem állíthat vissza (a szabály sem engedné), engedéllyel igen
     const a3 = {build: {levels: lv('Rogue', 3)}, levelUp: null}, sh = l => ({sheet: {build: l ? {levels: lv('Rogue', l)} : null}});
     eq([H.backupAllowed(a3, sh(3)), H.backupAllowed(a3, sh(2)), H.backupAllowed(a3, sh(4)), H.backupAllowed({...a3, levelUp: {to: 4}}, sh(4)), H.backupAllowed(a3, sh(0)), H.backupAllowed({build: null}, sh(0))], [true, true, false, true, false, true]);
+  });
+  ktest('karakter törlése: piros gomb az Alapadatok alján, megerősítés; a játékos elveszíti, a DM látja; mégse és hiba esetén nem változik', async () => {
+    openSheet({});
+    let ir = null;
+    K.KDB.softDelete = async (id, p, pub) => { ir = {id, p, pub}; };
+    ok(!kq('[data-act="lapTorol"]'), 'a Harc fülön nincs');
+    kclick('[data-tab="adat"]');
+    const gomb = kq('[data-act="lapTorol"]');
+    ok(gomb && gomb.classList.contains('danger'), 'piros gomb');
+    ok(gomb.compareDocumentPosition(kq('[data-hist]')) & K.Node.DOCUMENT_POSITION_PRECEDING, 'a fül alján');
+    let kerdes = ''; K.confirm = m => { kerdes = m; return false; };
+    kclick(gomb); await wait(10);
+    has(kerdes, 'Minta Tolvaj'); eq(ir, null, 'mégse');
+    K.confirm = () => true;
+    K.KDB.softDelete = async () => { const e = new Error('x'); e.code = 'permission-denied'; throw e; };
+    K.alert = () => {};
+    kclick('[data-act="lapTorol"]'); await wait(10);
+    ok(K.eval('sheets.get("p1")').owner === 'a@x.hu', 'hibánál megmarad');
+    K.KDB.softDelete = async (id, p, pub) => { ir = {id, p, pub}; };
+    kclick('[data-act="lapTorol"]');
+    await until(() => ir, 2000, 'törölve');
+    eq([ir.id, ir.p.owner, ir.p.deleted.owner, ir.p.deleted.vis, ir.pub], ['p1', '', 'a@x.hu', 'party', {owner: '', visibility: 'dm'}]);
+    await until(() => !K.eval('sheets.has("p1")'), 2000, 'a játékosnak eltűnik');
+    eq(K.location.hash, ''); hasNot(ktext(), 'Minta Tolvaj');
+    // a DM: a lap megmarad, felirattal, gomb nélkül
+    openSheet({owner: '', deleted: {owner: 'a@x.hu', vis: 'party'}}, 'dm@x.hu', true);
+    has(ktext(), 'Törölt karakter');
+    kclick('[data-tab="adat"]');
+    ok(!kq('[data-act="lapTorol"]'), 'már törölt');
+    K.location.hash = ''; K.route();
+    has(ktext(), '🗑 törölve: a@x.hu');
   });
   ktest('átállítás előtt mentés készül; ha a mentés nem megy, a lap nem változik', async () => {
     K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
@@ -4294,8 +4389,21 @@ describe('Szerződés (szerzodes.js)', () => {
     const lv = d => d.build == null ? 0 : (d.build.levels || []).length, lu = old.levelUp ?? null, nlu = now.levelUp ?? null;
     const levelsOk = (lv(old) === 0 || lv(now) > 0) && (lv(old) === 0 || lv(now) <= lv(old) || (lu != null && lv(now) <= lu.to));
     const levelUpOk = fmt(nlu) === fmt(lu) || nlu == null || (lv(now) < lv(old) && nlu.to <= lv(old));
-    return levelsOk && levelUpOk;
+    const d = now.deleted ?? null, ownerOk = (now.owner === old.owner && fmt(d) === fmt(old.deleted ?? null)) || (now.owner === '' && d != null && d.owner === old.owner);
+    return levelsOk && levelUpOk && ownerOk;
   };
+  test('szabályok: a játékos a gazdát csak törléskor veheti le, és csak úgy, hogy a régi megmarad; a nyilvános részből is', async () => {
+    const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text();
+    for (const sor of ["(now.owner == old.owner && d == old.get('deleted', null)) || (now.owner == '' && d != null && d.owner == old.owner)", 'ownerOk(resource.data, request.resource.data)',
+      "(request.resource.data.owner == '' && request.resource.data.visibility == 'dm')"]) has(rules, sor, 'a tükör a szabály szövegét követi');
+    const A1 = {owner: 'a@x.hu'};
+    ok(szabalyTukor(A1, {owner: 'a@x.hu'}), 'marad');
+    ok(!szabalyTukor(A1, {owner: 'b@x.hu'}), 'másra nem');
+    ok(!szabalyTukor(A1, {owner: ''}), 'törlés-jelölés nélkül nem');
+    ok(!szabalyTukor(A1, {owner: 'a@x.hu', deleted: {owner: 'idegen@x.hu'}}), 'a gazda megtartásával nem írhat be idegen címet');
+    ok(!szabalyTukor(A1, {owner: '', deleted: {owner: 'x@x.hu'}}), 'más régi gazdával nem');
+    ok(szabalyTukor(A1, {owner: '', deleted: {owner: 'a@x.hu'}}), 'törlés');
+  });
   test('szabályok: a játékos nem adhat magának szintet és engedélyt, a régi lapot nem zárja ki; a visszavonás visszakapja az engedélyt', async () => {
     const L = (n, levelUp) => ({build: {levels: Array(n).fill({c: 'Rogue'})}, levelUp});
     const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text();

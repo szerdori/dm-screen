@@ -29,12 +29,17 @@ service cloud.firestore {
       allow read: if isDM()
         || (isPlayer() && (resource.data.owner == email() || resource.data.visibility == 'party'));
       allow create, delete: if isDM();
-      // a játékos a saját karakterét írhatja, de a gazdáját, láthatóságát és típusát nem változtathatja meg
+      // a játékos a saját karakterét írhatja, de a gazdáját, láthatóságát és típusát nem változtathatja meg; törléskor a lapjával együtt leveszi magát róla
       allow update: if isDM()
         || (isPlayer() && resource.data.owner == email()
-            && request.resource.data.owner == resource.data.owner
-            && request.resource.data.visibility == resource.data.visibility
-            && request.resource.data.kind == resource.data.kind);
+            && request.resource.data.kind == resource.data.kind
+            && ((request.resource.data.owner == resource.data.owner && request.resource.data.visibility == resource.data.visibility)
+                || (request.resource.data.owner == '' && request.resource.data.visibility == 'dm')));
+    }
+    // a gazda és a törlés-jelölés nem változhat, kivéve a törlést: a gazda üres lesz, és a deleted megőrzi a régit (így a játékos elveszíti a hozzáférést, a DM visszahozhatja)
+    function ownerOk(old, now) {
+      let d = now.get('deleted', null);
+      return (now.owner == old.owner && d == old.get('deleted', null)) || (now.owner == '' && d != null && d.owner == old.owner);
     }
     // a szintek száma a felépítésben (0 = a régi, kézi lapon még nincs felépítés)
     function buildLv(d) {
@@ -57,7 +62,7 @@ service cloud.firestore {
       allow read: if isDM() || (isPlayer() && resource.data.owner == email());
       allow create, delete: if isDM();
       allow update: if isDM()
-        || (isPlayer() && resource.data.owner == email() && request.resource.data.owner == resource.data.owner
+        || (isPlayer() && resource.data.owner == email() && ownerOk(resource.data, request.resource.data)
             && levelsOk(resource.data, request.resource.data) && levelUpOk(resource.data, request.resource.data));
       // előzmény: a gazda és a DM olvassa és létrehozza; módosítani nem lehet, törölni csak a DM
       match /hist/{h} {

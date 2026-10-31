@@ -45,10 +45,11 @@ function filterLib() {
       <button class="primary" data-act="libAdd">＋ Encounterbe</button>
       ${c.kind === 'pc' ? `<button class="small ${SHEETS[c.id] ? 'on' : ''}" data-act="libSheet" title="${SHEETS[c.id] ? 'Van telefonos karakterlapja – kattints a megnyitáshoz' : 'Telefonos karakterlap létrehozása a könyvtári adatokból'}">📱</button>` : ''}
       ${szintlepesGomb(c.id, 'lib')}
+      ${lapTorolt(c.id) ? '<button class="small" data-act="libVisszahoz" title="A játékos újra látja a karaktert">↩ Visszahozás</button>' : ''}
       <button class="small ${party.has(c.id) ? 'on' : ''}" data-act="libParty" title="${party.has(c.id) ? 'A csapatban van – kattints a kivételhez' : 'Betétel a csapatba (👥 Csapat nézet)'}">👥</button>
       <button class="small" data-act="libEdit" title="Szerkesztés">✎</button>
       <button class="small" data-act="libExport" title="Letöltés JSON-ként">⬇</button>
-      <button class="small" data-act="libDel" title="Törlés">🗑</button>
+      <button class="small" data-act="libDel" title="${c.kind === 'pc' ? 'Végleges törlés („Delete” beírásával)' : 'Törlés'}">🗑</button>
     </div>`).join('') : `<p class="muted">A könyvtár üres${q ? ' erre a keresésre' : ''}. Importálj az 5e.tools / D&D Beyond / JSON füleken, vagy hozz létre új lényt.</p>`;
 }
 

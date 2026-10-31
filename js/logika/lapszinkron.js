@@ -56,6 +56,8 @@ function applySheet(id) {
   const s = SHEETS[id], i = S.library.findIndex(c => c.id === id);
   if (!s || i < 0) return;
   const lib = sheetToCreature(s, S.library[i]);
+  if (s.deleted) { lib.owner = ''; lib.share = {...lib.share, vis: 'dm'}; }  // a játékos törölte: a nyilvános rész is lekerül
+  else if (!lib.owner && s.owner) lib.owner = s.owner;  // a visszahozás után a könyvtár mentése elmaradt (bezárt lap, hiba, másik DM Screen)
   S.library[i] = lib; shadow[id] = stableJson(linkFields(lib));
   for (const x of S.enc.list) if (x.c.libId === id) {
     const c = sheetToCreature(s, x.c); delete c.hp.cur; x.c = c;
@@ -72,6 +74,7 @@ function syncSheets(ops) {
   sheetOps.del.clear();
   for (const c of S.library) {
     const s = SHEETS[c.id]; if (!s || c.kind !== 'pc') continue;
+    if (s.deleted) { c.owner = ''; c.share = {...c.share, vis: 'dm'}; }  // törölt karakter gazdát csak a visszahozással kap
     const patch = {};
     for (const x of S.enc.list) if (x.c.libId === c.id) {
       // most került harcba: a lap értékeihez mérjük (a hozzáadáskor onnan kapta a HP-t)
@@ -129,7 +132,7 @@ function onSheets(docs) {
 }
 function createSheet(id, s) {
   const lib = S.library.find(c => c.id === id);
-  SHEETS[id] = Sheet.norm({...s, owner: lib?.owner || s.owner});
+  SHEETS[id] = Sheet.norm({...s, owner: lib?.owner || s.owner, deleted: null});
   sheetOps.set.add(id); sheetOps.del.delete(id);
   applySheet(id); save();
 }
@@ -154,10 +157,23 @@ function engedelyIr(id, levelUp) {
 // át van-e állítva a lap: nincs lap, kézi, motoros, vagy motoros, de a felépítés kevesebb szintet tud, mint a lap (ott a szintlépés nem indul)
 function lapAllapot(id) {
   const s = SHEETS[id];
-  return !s ? 'nincs' : !s.auto ? 'kezi' : s.build.levels.length === Sheet.level(s) ? 'motoros' : 'elter';
+  return !s ? 'nincs' : s.deleted ? 'torolt' : !s.auto ? 'kezi' : s.build.levels.length === Sheet.level(s) ? 'motoros' : 'elter';
 }
-// a lap állása: {szint, to}; to = null, ha nincs engedély
-const szintlepesAllas = id => { const s = SHEETS[id]; return s ? {szint: Sheet.level(s), to: s.levelUp && s.levelUp.to > Sheet.level(s) ? s.levelUp.to : null} : null; };
+// ---------- törlés: a játékos a telefonon törli (Sheet.torlesPatch), a lény itt marad; a DM visszahozhatja, vagy a Könyvtárban véglegesen törölheti ----------
+const lapTorolt = id => !!SHEETS[id]?.deleted;
+function lapVisszahoz(id) {
+  const s = SHEETS[id], lib = S.library.find(c => c.id === id);
+  if (!s?.deleted || !lib || regiFajl()) return false;
+  const {owner, vis} = s.deleted, updatedAt = new Date().toISOString(), updatedBy = authInfo.email || 'DM';
+  SHEETS[id] = Sheet.norm({...s, owner, deleted: null, updatedAt, updatedBy});
+  lib.owner = owner; lib.share = {...lib.share, vis};
+  shadow[id] = stableJson(linkFields(lib));
+  if (Tar.kapcsolva()) Tar.lapok.mezok(id, {owner, deleted: null, updatedAt, updatedBy}).catch(e => Ertesito.naplo(`⚠ A visszahozás mentése nem sikerült (${esc(e.code || e.message)}).`, 'warn'));
+  save();
+  return true;
+}
+// a lap állása: {szint, to}; to = null, ha nincs engedély (törölt karakternek sincs)
+const szintlepesAllas = id => { const s = SHEETS[id]; return s && !s.deleted ? {szint: Sheet.level(s), to: s.levelUp && s.levelUp.to > Sheet.level(s) ? s.levelUp.to : null} : null; };
 function szintlepesAd(id) {
   const a = szintlepesAllas(id);
   if (!a || regiFajl() || (a.to || a.szint) >= 20) return false;
@@ -225,6 +241,7 @@ const lapNevtars = s => S.library.find(c => c.kind === 'pc' && c.name.trim().toL
 // s: Sheet.norm-on átment lap; lib: a játékos, akinek a lapját cseréli (ha nincs, új játékos jön létre)
 function importSheet(s, lib) {
   if (!lib) { lib = normCreature({id: uid(), kind: 'pc', name: s.name, owner: s.owner}); S.library.push(lib); }
+  else if (lapTorolt(lib.id)) lapVisszahoz(lib.id);  // törölt karakterre importálás: a DM tudatosan hozza vissza, a régi gazda és láthatóság is visszajön
   else if (!lib.owner && s.owner) Object.assign(lib, normCreature({...lib, owner: s.owner}));
   createSheet(lib.id, s);
   return S.library.find(c => c.id === lib.id);
