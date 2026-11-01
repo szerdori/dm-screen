@@ -4045,6 +4045,64 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     const p = Sh.levelUpPlan(uj, rb, Sh.levelUpBuild(uj, 'Monk')), x = p.choices.find(y => y.c.key === 'Monk:3:pick');
     eq([x.uj, x.missing], [true, 1], '6. szinten eggyel több, kötelező');
   });
+  ktest('i gomb: minden teendőnél felugró leírás (mit, ki tudja megcsinálni); a háttérre koppintva és a gombbal bezárul; gonosz szöveg nem fut', () => {
+    const rb = rbVarazs();
+    rb.races.push({n: 'Rossz', s: 'PHB', fx: [{todo: '<img src=x onerror=window.__x8=1>'}], traits: []});
+    rb.backgrounds = [{n: 'Próba', s: 'PHB', fx: [{todo: 'Ellenállás választása'}]}];
+    K.KApp.setRulebook({version: 'v', rb});
+    openSheet({auto: true, build: {base: {dex: 14}, levels: lv('Rogue', 3), race: 'Rossz|PHB', subrace: 'Nincs|X', background: 'Próba|PHB', spells: {}}, classes: [{name: 'Rogue', level: 3, hitDie: 8}]});
+    kclick('[data-tab="adat"]');
+    const d = kq('details[data-key="todos"]'); d.open = true;
+    const sorok = kqa('details[data-key="todos"] .list > *');
+    ok(sorok.length > 2, 'vannak teendők');
+    ok(sorok.every(x => x.querySelector('[data-act="info"]')), 'mindegyiknél van i gomb');
+    const pop = kq('#infoPop');
+    ok(pop.hidden, 'alapból zárva');
+    const nyit = re => { const b = sorok.find(x => re.test(x.textContent)).querySelector('[data-act="info"]'); kclick(b); ok(!pop.hidden, 'nyitva: ' + re); return pop.textContent; };
+    has(nyit(/skill/i), 'Megcsinálható az appban');
+    kclick(pop); ok(pop.hidden, 'a háttérre koppintva bezárul');
+    has(nyit(/Nincs/), 'csak a DM');
+    kclick('[data-act="infoClose"]'); ok(pop.hidden, 'a gombbal is');
+    const t = nyit(/Ellenállás/);
+    has(t, 'homebrew'); has(t, 'Saját jártasságok');
+    kclick('[data-act="infoClose"]');
+    nyit(/onerror/);
+    ok(!pop.querySelector('img') && !K.__x8, 'a szöveg nem fut');
+    kclick('[data-act="infoClose"]');
+    ok(kq('[data-act="todoDone"]'), 'a pipa megmaradt');
+  });
+  ktest('i gomb a szabad szöveges mezőknél: példa és formátum; Saját jártasságok mezők a számolt mellé kerülnek', () => {
+    const rb = rbVarazs();
+    K.KApp.setRulebook({version: 'v', rb});
+    openSheet({auto: true, build: {base: {dex: 14}, levels: lv('Fighter', 1), spells: {}}, classes: [{name: 'Fighter', level: 1, hitDie: 10}]});
+    kclick('[data-tab="adat"]');
+    const pop = kq('#infoPop'), gombok = () => kqa('[data-act="info"]');
+    for (const cim of ['Saját támadás', 'Saját erőforrás', 'Saját jártasságok']) {
+      const b = gombok().find(x => x.dataset.info === cim); ok(b, 'van gomb: ' + cim);
+      kclick(b); has(pop.textContent, 'Formátum'); has(pop.textContent, 'Példa'); ok(!pop.querySelector('.hol'), 'mezőnél nincs jelvény'); kclick('[data-act="infoClose"]');
+    }
+    kset('[data-ov="plus:languages"]', 'Aquan, Druidic');
+    has(K.eval('sheets.get("p1")').profs.languages, 'Druidic');
+    eq(kq('[data-ov="plus:languages"]').value, 'Aquan, Druidic');
+    kset('[data-ov="plus:languages"]', '');
+    hasNot(K.eval('sheets.get("p1")').profs.languages, 'Druidic');
+    ok(kq('select[name="alignment"]'), 'az alignment itt is legördülő');
+    const H = K.Sheet;
+    eq(H.freeInfo({kind: 'pick', label: 'X', help: {mit: 'a', sablon: 'b', pelda: 'c'}}), {cim: 'X: mit írj ide?', mit: ['a'], sablon: 'b', pelda: 'c'});
+    has(H.freeInfo({kind: 'tool'}).pelda, 'Tools');
+    for (const [k, v] of Object.entries(H.MEZO_INFO)) ok(v.cim && v.mit[0] && v.sablon && v.pelda, 'hiányos: ' + k);
+    // minden ✋ teendő-szövegre van leírás, a jellemző nevére illesztve
+    for (const [szoveg, hol] of [['Mystic Arcanum: válassz', 'app'], ['X: Favored Enemy: válassz', 'homebrew'], ['X: known varázslat választása', 'app'], ['X: valami más', 'homebrew']]) eq(H.todoInfo({kind: 'manual', text: szoveg, key: 'k'}, null).hol, hol);
+    eq(H.todoInfo({kind: 'missing', text: 'Faj: X', key: 'k'}, null).hol, 'vegyes');
+    // a Saját jártasságok fegyvere a támadásnál is jártasságnak számít
+    const fegyver = extra => { const rbf = rb3(); return H.calc(H.norm({auto: true, build: {base: {str: 16}, levels: lv('Wizard', 1), spells: {}}, ov: extra, inventory: [{name: 'Longsword', qty: 1, equipped: true}]}), rbf).attacks[0]; };
+    const a0 = fegyver({}), a1 = fegyver({'plus:weapons': 'longsword'});
+    ok(a0 && a1, 'van támadás'); ok(parseInt(a1.hit) > parseInt(a0.hit), 'jártasság: ' + a0.hit + ' → ' + a1.hit);
+    // a valódi választás-fajták szövege: mennyi van hátra, milyen listából
+    const c = {key: 'k', kind: 'skills', n: 2, ok: ['stealth'], from: ['stealth', 'animal-handling']};
+    const i = H.todoInfo({kind: 'skills', text: 'T', key: 'k'}, {choices: [c]});
+    eq(i.hol, 'app'); has(i.mit[0], 'még 1'); has(i.mit[0], 'Animal Handling');
+  });
   ktest('varázslat-választó: szól, ha a helyek beteltek, és ha az alosztály még nincs kiválasztva', () => {
     const rb = rbVarazs();
     rb.subclasses.filter(x => x.cls === 'Warlock').forEach(x => { x.fx = [{spells: [{t: 'expanded', lvl: 1, sp: ['sleep']}]}]; });

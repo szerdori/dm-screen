@@ -17,6 +17,16 @@ header small{color:var(--muted);font-size:12px;text-align:right;overflow-wrap:an
 button,select,input,textarea{font:inherit;color:var(--text)}
 button{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
 button.primary{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:700}
+.ibtn{width:26px;height:26px;min-width:26px;padding:0;border-radius:50%;font:italic 700 13px Georgia,serif;line-height:1;margin-left:4px;flex:none;vertical-align:middle}
+#infoPop{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
+#infoPop[hidden]{display:none}
+#infoPop .ibox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;max-width:440px;width:100%;max-height:85vh;overflow:auto}
+#infoPop h3{margin:0 0 8px}
+#infoPop ol{margin:6px 0;padding-left:20px}
+#infoPop .hol{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:3px 8px;margin-bottom:6px;font-size:13px}
+#infoPop .hol.dm,#infoPop .hol.vegyes{border-color:var(--orange);color:var(--orange)}
+#infoPop .hol.homebrew{border-color:var(--blue);color:var(--blue)}
+#infoPop .hol.app{border-color:var(--green);color:var(--green)}
 button.danger{background:var(--red);color:#fff;border-color:var(--red);font-weight:700}
 .lapdel{margin:18px 0 6px}
 .ncbody>label{display:block;margin-bottom:10px} .ncbody>label input,.ncbody>label select{width:100%;box-sizing:border-box;margin-top:3px}
@@ -176,9 +186,10 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
   <div id="lastRoll"><span>Koppints egy értékre a dobáshoz.</span></div>
 </div></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
+<div id="infoPop" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=10"></script>
+<script src="sheet.js?v=11"></script>
 <script src="szerzodes.js?v=2"></script>
 <script>
 'use strict';
@@ -187,7 +198,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 10, szerzodes: 2};
+const VART_MODULOK = {kozos: 3, sheet: 11, szerzodes: 2};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -366,7 +377,7 @@ function tabHarc(s, ed) {
   }).join('');
   const effNames = Object.keys(H.EFFECTS).filter(n => !H.CONDITIONS.includes(n) && !s.conditions.includes(n));
   return `
-    <h3>Támadások</h3><div class="list">${atk || `<p class="hint">Nincs felvett támadás${ed ? ' (Alapadatok fül)' : ''}.</p>`}
+    <h3>Támadások ${iGomb(H.MEZO_INFO.attack)}</h3><div class="list">${atk || `<p class="hint">Nincs felvett támadás${ed ? ' (Alapadatok fül)' : ''}.</p>`}
       ${sDc ? `<div class="li"><span class="nm"><b>Varázslat</b><small>spell save DC ${esc(sDc)}</small></span>${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</div>` : ''}</div>
     ${res ? `<h3>Erőforrások</h3><div class="list">${res}</div>` : ''}
     <h3>Állapotok</h3><div class="list">${conds || '<p class="hint">Nincs.</p>'}</div>
@@ -433,7 +444,7 @@ function tabVar(s, ed) {
     ${Object.keys(by).sort((a, b) => a - b).map(l => `<h3 class="sub2">${l == 0 ? 'Cantripek' : H.ORD[l] + ' level'}</h3><div class="list">${by[l].join('')}</div>`).join('') || '<p class="hint">Még nincs varázslat a lapon.</p>'}
     ${ed ? `<h3>＋ Varázslat hozzáadása</h3>${rbNote()}
       ${RB() ? `<div class="row"><input id="spellQ" class="grow" placeholder="Keresés név szerint (angolul)…" autocomplete="off"><label class="hint"><input type="checkbox" id="spellMine" ${searchQ.all ? '' : 'checked'}> csak az osztályaim listája</label></div><div class="list" id="spellRes" style="margin-top:6px"></div>` : ''}
-      <div class="row" style="margin-top:8px"><input id="spellNew" class="grow" placeholder="Saját / homebrew varázslat neve"><select id="spellNewL">${H.ORD.map((o, l) => `<option value="${l}">${l ? o + ' level' : 'Cantrip'}</option>`).join('')}</select><button data-act="spellCustom">＋</button></div>` : ''}`;
+      <div class="row" style="margin-top:8px"><input id="spellNew" class="grow" placeholder="Saját / homebrew varázslat neve">${iGomb(H.MEZO_INFO.spell)}<select id="spellNewL">${H.ORD.map((o, l) => `<option value="${l}">${l ? o + ' level' : 'Cantrip'}</option>`).join('')}</select><button data-act="spellCustom">＋</button></div>` : ''}`;
 }
 function spellResults(s) {
   const q = $('#spellQ')?.value || '', mine = $('#spellMine')?.checked;
@@ -465,7 +476,7 @@ function tabFel(s, ed) {
     ${keys.map(k => `${k ? `<h3 class="sub2">${esc(k)}</h3>` : ''}<div class="list">${groups[k].map(row).join('')}</div>`).join('') || '<p class="hint">Üres.</p>'}
     ${ed ? `<h3>＋ Tárgy hozzáadása</h3>${rbNote()}
       ${RB() ? '<input id="itemQ" style="width:100%" placeholder="Keresés: pl. rope, potion of healing, +1 longsword…" autocomplete="off"><div class="list" id="itemRes" style="margin-top:6px"></div>' : ''}
-      <div class="row" style="margin-top:8px"><input id="itemNew" class="grow" placeholder="Saját tárgy neve"><input id="itemNewQ" type="number" min="1" value="1" style="width:70px"><button data-act="itemCustom">＋</button></div>` : ''}`;
+      <div class="row" style="margin-top:8px"><input id="itemNew" class="grow" placeholder="Saját tárgy neve">${iGomb(H.MEZO_INFO.item)}<input id="itemNewQ" type="number" min="1" value="1" style="width:70px"><button data-act="itemCustom">＋</button></div>` : ''}`;
 }
 function itemResults() {
   const q = $('#itemQ')?.value || '';
@@ -485,7 +496,7 @@ function tabJell(s, ed) {
   return `<h3>Jellemzők (class / race / feat)</h3>${pick}<div class="list">${feats || '<p class="hint">Nincs felvéve.</p>'}</div>
     ${ed ? `<h3>＋ Hozzáadás</h3>
       ${RB() ? '<input id="featQ" style="width:100%" placeholder="Feat keresése (PHB / XGE / TCE)…" autocomplete="off"><div class="list" id="featRes" style="margin-top:6px"></div>' : ''}
-      <div class="form" style="margin-top:8px"><label class="w2">Saját jellemző neve<input id="featNew"></label><label class="w2">Leírás<textarea id="featNewT" rows="3"></textarea></label>
+      <div class="form" style="margin-top:8px"><div class="w2 hint">Saját jellemző ${iGomb(H.MEZO_INFO.feat)}</div><label class="w2">Saját jellemző neve<input id="featNew"></label><label class="w2">Leírás<textarea id="featNewT" rows="3"></textarea></label>
       <label>Honnan (pl. Rogue 3)<input id="featNewS"></label><label>&nbsp;<button data-act="featCustom">＋ Hozzáadás</button></label></div>` : ''}`;
 }
 function featResults(s) {
@@ -541,14 +552,14 @@ function tabAdat(s, ed) {
     <button data-act="toAuto">⚙ Átállítás szabálymotorra</button></div>` : ''}
   <p class="hint">A karakter alapadatai. A módosítás csak a <b>Mentés</b> gombbal kerül a lapra. A módosítókat, mentőket, skilleket, spell DC-t a program számolja.</p>
   <form id="edForm" class="form" onsubmit="return false">
-    ${f('name', 'Név', d.name, 'w2')}${raceField(d.race)}${f('background', 'Háttér', d.background)}${f('alignment', 'Alignment', d.alignment, 'w2')}
+    ${f('name', 'Név', d.name, 'w2')}${raceField(d.race)}${f('background', 'Háttér', d.background)}<label class="w2">Alignment${alignSelect('name="alignment"', d.alignment)}</label>
     <h3>Osztályok</h3>
     <p class="hint w2">${s.auto ? 'Az osztályból, alosztályból és fajból a program számol mindent (mentés után).' : 'Osztály vagy faj választásakor a hit die, a mentő-jártasság, a jártasságok és a spell slotok magától kitöltődnek (utána átírhatod).'}</p>
     ${d.classes.map((c, i) => {
       const subs = H.subclassesOf(H.findClass(c.name) || c.name, RB());
       return `<div class="rowedit"><select name="cl_name_${i}" title="Osztály">${listOpts(H.classNames(RB()), c.name, '(válassz osztályt)')}</select>
       ${subs.length ? `<select name="cl_sub_${i}" title="Alosztály">${listOpts(subs.map(x => x.n), subs.find(x => [x.n, x.short].some(n => String(n).toLowerCase() === String(c.subclass).trim().toLowerCase()))?.n || c.subclass, '(nincs alosztály)')}</select>`
-        : `<input name="cl_sub_${i}" value="${esc(c.subclass)}" placeholder="Alosztály">`}
+        : `<input name="cl_sub_${i}" value="${esc(c.subclass)}" placeholder="Alosztály">${iGomb(H.MEZO_INFO.subclass)}`}
       <input name="cl_lvl_${i}" type="number" min="1" max="20" value="${esc(c.level)}" style="max-width:64px" title="Szint"><select name="cl_hd_${i}" style="max-width:76px" title="Hit die (az osztály alapján)">${[6, 8, 10, 12].map(n => opt(n, 'd' + n, c.hitDie)).join('')}</select>
       ${d.classes.length > 1 ? `<button class="small" data-act="rowRm" data-list="classes" data-i="${i}">✕</button>` : ''}</div>`;
     }).join('')}
@@ -569,15 +580,15 @@ function tabAdat(s, ed) {
     <div class="g9">${d.spellcasting.slots.map((n, l) => `<label>${l + 1}. szint<input name="slot_${l}" type="number" min="0" max="9" value="${esc(n)}"></label>`).join('')}</div>
     <label>Pact Magic slotok<input name="pactMax" type="number" min="0" max="9" value="${esc(d.spellcasting.pact.max)}"></label>
     <label>Pact slot szintje<input name="pactLvl" type="number" min="0" max="5" value="${esc(d.spellcasting.pact.level)}"></label>
-    <h3>Támadások</h3>
+    <h3>Támadások ${iGomb(H.MEZO_INFO.attack)}</h3>
     ${d.attacks.map((a, i) => `<div class="rowedit"><input name="at_name_${i}" value="${esc(a.name)}" placeholder="Név"><input name="at_hit_${i}" value="${esc(a.hit)}" placeholder="+5" style="max-width:60px">
       <input name="at_dmg_${i}" value="${esc(a.dmg)}" placeholder="1d8+3 slashing"><input name="at_note_${i}" value="${esc(a.note)}" placeholder="megjegyzés"><button class="small" data-act="rowRm" data-list="attacks" data-i="${i}">✕</button></div>`).join('')}
     <div class="w2"><button class="small" data-act="rowAdd" data-list="attacks">＋ Támadás</button></div>
-    <h3>Erőforrások (pl. Bardic Inspiration, Ki, Rage)</h3>
+    <h3>Erőforrások (pl. Bardic Inspiration, Ki, Rage) ${iGomb(H.MEZO_INFO.resource)}</h3>
     ${d.resources.map((r, i) => `<div class="rowedit"><input name="rs_name_${i}" value="${esc(r.name)}" placeholder="Név"><input name="rs_max_${i}" type="number" min="0" max="99" value="${esc(r.max)}" style="max-width:64px" title="Max">
       <select name="rs_reset_${i}">${H.RESETS.map(k => opt(k, RESET_HU[k], r.reset)).join('')}</select><button class="small" data-act="rowRm" data-list="resources" data-i="${i}">✕</button></div>`).join('')}
     <div class="w2"><button class="small" data-act="rowAdd" data-list="resources">＋ Erőforrás</button></div>
-    <h3>Jártasságok és egyebek</h3>
+    <h3>Jártasságok és egyebek ${iGomb(H.MEZO_INFO.jartassag)}</h3>
     ${f('pf_armor', 'Páncél', d.profs.armor, 'w2')}${f('pf_weapons', 'Fegyver', d.profs.weapons, 'w2')}${f('pf_tools', 'Eszköz, hangszer', d.profs.tools, 'w2')}${f('pf_languages', 'Nyelvek', d.profs.languages, 'w2')}
     ${f('senses', 'Érzékek (pl. darkvision 60 ft.)', d.senses, 'w2')}${f('resist', 'Ellenállások', d.resist, 'w2')}
   </form>
@@ -638,7 +649,7 @@ function choiceBox(c, cr, lock = null) {
       + (!o.opts.length ? '<p class="hint">Nincs választható (pl. expertise-hez előbb jártasság kell).</p>' : '');
   } else {
     const vals = Array.isArray(c.value) ? c.value.map(String) : c.value ? [String(c.value)] : [];
-    body = Array.from({length: c.n}, (_, j) => o.free ? `<input data-ch="${K}" value="${esc(vals[j] || '')}" placeholder="${esc(c.label || H.FX_LABEL[c.kind] || '')}">`
+    body = Array.from({length: c.n}, (_, j) => o.free ? `<input data-ch="${K}" value="${esc(vals[j] || '')}" placeholder="${esc(c.label || H.FX_LABEL[c.kind] || '')}">${j === 0 ? iGomb(H.freeInfo(c)) : ''}`
       // ugyanazon választás másik legördülőjében már kiválasztott érték itt nem választható
       : `<select data-ch="${K}" ${zar(vals[j]) ? 'disabled' : ''}>${optList(o.opts.map(x => vals.includes(x.v) && vals[j] !== x.v ? {...x, dis: true} : x), vals[j] || '')}</select>`).join('');
   }
@@ -753,7 +764,7 @@ function luStepFt(plan) {
   const ft = plan.features.map(f => det('luf:' + f.name + f.src, `<span class="nm"><b>${esc(f.name)}</b><small>${esc(f.src)}</small></span>`, f.text ? `<div class="tx">${esc(f.text)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>')).join('');
   return `${ft ? `<div class="list">${ft}</div>` : '<p class="hint">Ezen a szinten nincs új jellemző.</p>'}
     ${plan.resources.length ? `<h3>Erőforrások</h3><div class="list">${plan.resources.map(r => `<div class="li"><span class="nm">${esc(r.name)}</span><b>${esc(r.from)} → ${esc(r.to)}</b></div>`).join('')}</div>` : ''}
-    ${plan.manual.length ? `<h3>✋ Kézi teendők</h3><div class="list">${plan.manual.map(t => `<div class="li"><span class="nm">${esc(t.text)}</span></div>`).join('')}</div><p class="hint">Ezeket a program nem tudja helyetted kiválasztani, a Teendők közt megtalálod őket.</p>` : ''}`;
+    ${plan.manual.length ? `<h3>✋ Kézi teendők</h3><div class="list">${plan.manual.map(t => `<div class="li"><span class="nm">${esc(t.text)}</span>${iGomb(H.todoInfo(t, plan.nw))}</div>`).join('')}</div><p class="hint">Ezeket a program nem tudja helyetted kiválasztani, a Teendők közt megtalálod őket.</p>` : ''}`;
 }
 function luStepSum(s, plan) {
   const n = H.norm({...s, ...H.levelUpApply(s, RB(), lu.build)}), row = (l, a, b) => a === b ? '' : `<tr><td>${esc(l)}</td><td>${esc(a)} → <b>${esc(b)}</b></td></tr>`;
@@ -843,6 +854,8 @@ function luAct(act, el, s) {
 // ---------- új karakter: a kezdő varázsló a lap helyén fut; a választások egyből a lapra íródnak (másik eszközön folytatható, a DM is látja) ----------
 const NC_LEPESEK = [['alap', 'Alapok'], ['faj', 'Faj'], ['oszt', 'Osztály'], ['kep', 'Képességek'], ['hat', 'Háttér'], ['val', 'Választások'], ['var', 'Varázslatok'], ['sum', 'Összegzés']];
 const NC_ALIGN = ['lawful good', 'neutral good', 'chaotic good', 'lawful neutral', 'neutral', 'chaotic neutral', 'lawful evil', 'neutral evil', 'chaotic evil'];
+// legördülő: a szabványostól eltérő régi érték is megmarad
+const alignSelect = (attr, cur) => `<select ${attr}><option value="">(válassz)</option>${[...(cur && !NC_ALIGN.includes(cur) ? [cur] : []), ...NC_ALIGN].map(a => `<option value="${esc(a)}" ${a === cur ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>`;
 // a tallózott kép 256 px-re kicsinyítve kerül a lapra, hogy ne hízzon meg a lap és a mentés
 function ncPortre(file) {
   return new Promise(kesz => {
@@ -895,9 +908,9 @@ function ncStepBody(s, plan, step) {
   const ft = list => list.length ? `<div class="list" style="margin-top:8px">${list.map(f => det('ncf:' + f.name + f.src, `<span class="nm"><b>${esc(f.name)}</b><small>${esc(f.src)}</small></span>`, f.text ? `<div class="tx">${esc(f.text)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>')).join('')}</div>` : '';
   if (step === 'alap') return `<p class="hint">A karakter neve és külseje. Ezeket később is átírhatod.</p>
     <label>Név<input data-ncf="name" value="${esc(s.name)}" autocomplete="off"></label>
-    <label>Alignment<select data-ncf="alignment"><option value="">(válassz)</option>${[...(s.alignment && !NC_ALIGN.includes(s.alignment) ? [s.alignment] : []), ...NC_ALIGN].map(a => `<option value="${esc(a)}" ${a === s.alignment ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select></label>
+    <label>Alignment${alignSelect('data-ncf="alignment"', s.alignment)}</label>
     <div class="row" style="margin:10px 0 6px">${avatar(s.portrait, s.name)}<button data-act="ncPortre">📷 Kép tallózása…</button>${s.portrait ? '<button class="small" data-act="ncPortreTorol">Törlés</button>' : ''}<input type="file" id="ncPortreFile" accept="image/*" hidden></div>
-    <label>Vagy a kép linkje (nem kötelező)<input data-ncf="portrait" value="${s.portrait.startsWith('data:') ? '' : esc(s.portrait)}" placeholder="${s.portrait.startsWith('data:') ? '(feltöltött kép)' : 'https://…'}"></label>`;
+    <div class="hint">Vagy a kép linkje ${iGomb(H.MEZO_INFO.portrait)}</div><label>Link (nem kötelező)<input data-ncf="portrait" value="${s.portrait.startsWith('data:') ? '' : esc(s.portrait)}" placeholder="${s.portrait.startsWith('data:') ? '(feltöltött kép)' : 'https://…'}"></label>`;
   if (step === 'faj') {
     const races = H.raceOptions(rb), ri = races.findIndex(o => o.race === b.race && (o.subrace || '') === (b.subrace || ''));
     const nevek = [b.race, b.subrace].filter(Boolean).map(H.refName);
@@ -912,7 +925,7 @@ function ncStepBody(s, plan, step) {
     ${ft(cr.features.filter(f => f.src.startsWith('Háttér')))}`;
   if (step === 'val') {
     const man = cr.todos.filter(t => t.kind === 'manual');
-    return `${plan.choices.map(x => choiceBox(x.c, cr)).join('')}${man.length ? `<h3>✋ Kézi teendők</h3><div class="list">${man.map(t => `<div class="li"><span class="nm">${esc(t.text)}</span></div>`).join('')}</div><p class="hint">Ezeket a program nem tudja helyetted kiválasztani, a Teendők közt megtalálod őket.</p>` : ''}`;
+    return `${plan.choices.map(x => choiceBox(x.c, cr)).join('')}${man.length ? `<h3>✋ Kézi teendők</h3><div class="list">${man.map(t => `<div class="li"><span class="nm">${esc(t.text)}</span>${iGomb(H.todoInfo(t, cr))}</div>`).join('')}</div><p class="hint">Ezeket a program nem tudja helyetted kiválasztani, a Teendők közt megtalálod őket.</p>` : ''}`;
   }
   if (step === 'var') {
     const c = cr.casting[0];
@@ -1087,12 +1100,31 @@ function ovRow(s, key, label, x, kind = 'num') {
     : `<input data-ov="${esc(key)}" ${kind === 'num' ? 'type="number" inputmode="numeric"' : ''} value="${esc(cur)}" placeholder="számolt: ${esc(x.calc ?? x.v)}">`;
   return det('ov:' + key, `<span class="nm"><b>${esc(label)}</b>${isOv ? ` <span class="warn" title="kézzel felülírva">✎</span>${x.calc != null && x.calc !== x.v ? `<small>számolt: ${esc(x.calc)}</small>` : ''}` : ''}</span><b>${esc(shown)}</b>`,
     `${parts ? `<div class="hint" style="margin-top:6px">ℹ Bontás</div><ul class="parts">${parts}</ul>` : ''}
-    <div class="row" style="margin-top:8px"><label class="hint grow">✎ Felülírás${edit}</label>${isOv ? `<button class="small" data-act="ovReset" data-key="${esc(key)}">↺ számolt</button>` : ''}</div>`);
+    <div class="row" style="margin-top:8px"><label class="hint grow">✎ Felülírás${edit}</label>${kind === 'text' ? iGomb(H.MEZO_INFO.speed) : ''}${isOv ? `<button class="small" data-act="ovReset" data-key="${esc(key)}">↺ számolt</button>` : ''}</div>`);
+}
+// ---------- felugró leírás (i gomb): a teendők és a szabad szöveges mezők magyarázata; a szövegek a sheet.js-ben (Sheet.todoInfo, freeInfo, MEZO_INFO) ----------
+const infoReg = new Map();
+const HOL_HU = {app: '✅ Megcsinálható az appban', homebrew: '✍ Kézzel, saját (homebrew) tételként viszed fel', dm: '🛡 Csak a DM tudja megcsinálni', vegyes: '✅🛡 Te is megoldhatod, a szabálykönyvet csak a DM tölti újra'};
+function iGomb(info) {
+  infoReg.set(info.cim, info);
+  return `<button type="button" class="ibtn" data-act="info" data-info="${esc(info.cim)}" title="Mit kell tenni?" aria-label="Leírás: ${esc(info.cim)}">i</button>`;
+}
+function infoMutat(info) {
+  const p = $('#infoPop');
+  p.innerHTML = `<div class="ibox" role="dialog" aria-modal="true"><h3>${esc(info.cim)}</h3>
+    ${info.hol ? `<div class="hol ${esc(info.hol)}">${esc(HOL_HU[info.hol])}</div>` : ''}
+    ${info.mit.length > 1 ? `<ol>${info.mit.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : `<p>${esc(info.mit[0])}</p>`}
+    ${info.sablon ? `<p><b>Formátum:</b> ${esc(info.sablon)}</p>` : ''}${info.pelda ? `<p><b>Példa:</b> <code>${esc(info.pelda)}</code></p>` : ''}
+    <div class="row" style="justify-content:flex-end"><button class="primary" data-act="infoClose">Rendben</button></div></div>`;
+  p.hidden = false;
 }
 function todoList(s, cr) {
-  const items = cr.todos.map(t => t.kind === 'manual' ? `<label class="li"><input type="checkbox" data-act="todoDone" data-key="${esc(t.key)}"><span class="nm">✋ ${esc(t.text)}</span></label>`
-    : t.kind === 'missing' ? `<div class="li"><span class="nm warn">${esc(t.text)}</span></div>`
-    : `<div class="li"><span class="nm">${esc(t.text)}</span><button class="small" data-act="chGo" data-key="${esc(t.key)}">→</button></div>`).join('');
+  const items = cr.todos.map(t => {
+    const i = iGomb(H.todoInfo(t, cr));
+    return t.kind === 'manual' ? `<div class="li"><label class="nm"><input type="checkbox" data-act="todoDone" data-key="${esc(t.key)}"> ✋ ${esc(t.text)}</label>${i}</div>`
+      : t.kind === 'missing' ? `<div class="li"><span class="nm warn">${esc(t.text)}</span>${i}</div>`
+      : `<div class="li"><span class="nm">${esc(t.text)}</span>${i}<button class="small" data-act="chGo" data-key="${esc(t.key)}">→</button></div>`;
+  }).join('');
   return det('todos', `<b>📋 Teendők (${cr.todos.length})</b>`, `<div class="list" style="margin-top:8px">${items || '<p class="hint">Nincs nyitott teendő.</p>'}</div>
     ${s.todoDone.length ? `<button class="small" data-act="todoReset" style="margin-top:8px">Kipipáltak visszaállítása (${s.todoDone.length})</button>` : ''}`);
 }
@@ -1130,6 +1162,8 @@ function tabBuild(s) {
     <h3 class="sub2">Képességértékek</h3><div class="list">${ab}</div>
     <h3 class="sub2">Mentők</h3><div class="list">${sv}</div>
     <h3 class="sub2">Skillek</h3><div class="list">${sk}</div>
+    <h3 class="sub2">Saját jártasságok ${iGomb(H.MEZO_INFO.plus)}</h3>
+    <div class="form">${[['languages', 'Nyelvek'], ['tools', 'Eszközök'], ['armor', 'Páncél'], ['weapons', 'Fegyverek'], ['senses', 'Érzékek'], ['resist', 'Ellenállások']].map(([k, l]) => `<label class="w2">${l}<input data-ov="plus:${k}" value="${esc(s.ov['plus:' + k] || '')}"></label>`).join('')}</div>
     ${autoForm(s)}`;
 }
 // szabálymotoros lapon a kézzel szerkeszthető rész: név, alignment, saját támadások és erőforrások (a számoltak mellé)
@@ -1142,10 +1176,10 @@ function autoForm(s) {
       <select name="rs_reset_${i}">${H.RESETS.map(k => `<option value="${k}" ${r.reset === k ? 'selected' : ''}>${esc(RESET_HU[k])}</option>`).join('')}</select><button class="small" data-act="rowRm" data-list="resources" data-i="${i}">✕</button></div>`).join('');
   return `<h3>Név és saját tételek</h3>
   <form id="edForm" class="form" data-mode="auto" onsubmit="return false">
-    <label class="w2">Név<input name="name" value="${esc(d.name)}"></label><label class="w2">Alignment<input name="alignment" value="${esc(d.alignment)}"></label>
-    <h3>Saját támadások <span class="hint">(a felszerelt fegyverekből a program számol)</span></h3>${atk}
+    <label class="w2">Név<input name="name" value="${esc(d.name)}"></label><label class="w2">Alignment${alignSelect('name="alignment"', d.alignment)}</label>
+    <h3>Saját támadások <span class="hint">(a felszerelt fegyverekből a program számol)</span> ${iGomb(H.MEZO_INFO.attack)}</h3>${atk}
     <div class="w2"><button class="small" data-act="rowAdd" data-list="attacks">＋ Támadás</button></div>
-    <h3>Saját erőforrások</h3>${res}
+    <h3>Saját erőforrások ${iGomb(H.MEZO_INFO.resource)}</h3>${res}
     <div class="w2"><button class="small" data-act="rowAdd" data-list="resources">＋ Erőforrás</button></div>
   </form>
   <div class="row" style="margin:14px 0"><button class="primary" data-act="edSave">Mentés</button><button data-act="edCancel">Elvetés</button></div>`;
@@ -1307,6 +1341,7 @@ function render(force = false) {
 }
 document.addEventListener('focusout', () => setTimeout(() => { if (pendingRender) render(); }, 0));
 function route() {
+  $('#infoPop').hidden = true;
   const m = location.hash.match(/^#lap\/([A-Za-z0-9_-]{1,64})$/);
   const id = m ? m[1] : null;
   if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; lu = null; hdOpen = false; castOpen = null; featPick = null; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
@@ -1346,6 +1381,7 @@ window.KApp = {
 
 document.addEventListener('click', e => {
   const t = e.target;
+  if (t.id === 'infoPop') { t.hidden = true; return; }  // a háttérre koppintva bezárul
   const m = t.closest('#rollbar [data-mode]');
   if (m) { setMode(rollMode === m.dataset.mode ? '' : m.dataset.mode); return; }
   const tab = t.closest('[data-tab]');
@@ -1354,9 +1390,11 @@ document.addEventListener('click', e => {
   if (!el || el.tagName === 'INPUT' || el.tagName === 'SELECT') return;
   const act = el.dataset.act, s = cur(), i = +el.dataset.i;
   if (el.tagName === 'A' || el.closest('summary')) e.preventDefault();
-  if (!s && !['signIn', 'signOut', 'reload'].includes(act)) return;
+  if (!s && !['signIn', 'signOut', 'reload', 'infoClose'].includes(act)) return;
   switch (act) {
     case 'luStart': if (canEdit(s) && luEnabled(s) && luReady(s) && !sheetStale) { luLoad(view.id, s); window.scrollTo(0, 0); render(true); } break;
+    case 'info': { const info = infoReg.get(el.dataset.info); if (info) infoMutat(info); break; }
+    case 'infoClose': $('#infoPop').hidden = true; break;
     case 'ncPortre': $('#ncPortreFile')?.click(); break;
     case 'ncPortreTorol': if (s.newChar && canEdit(s)) patch({portrait: ''}); break;
     case 'ncCls': case 'ncMethod': case 'ncRollDo': case 'ncReroll': case 'ncNext': case 'ncBack': case 'ncDone': case 'ncSkip': if (s.newChar && canEdit(s)) ncAct(act, el, s); break;

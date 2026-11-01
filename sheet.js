@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 10;
+  const VERSION = 11;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -418,9 +418,9 @@ window.Sheet = (() => {
     'Fighter|Samurai|Elegant Courtier': [{save: ['wis']}],
     'Fighter|Rune Knight|Bonus Proficiencies': [{tool: ["smith's tools"]}, {lang: ['Giant']}],
     'Monk|Drunken Master|Bonus Proficiencies': [{skill: {performance: 1}}, {tool: ["brewer's supplies"]}],
-    'Monk|Kensei|Path of the Kensei': [{pickChoose: {label: 'Kensei fegyverek', n: {lv: {3: 2, 6: 3, 11: 4, 17: 5}}, weapon: true}}, {toolChoose: {from: ["calligrapher's supplies", "painter's supplies"], n: 1}}],
+    'Monk|Kensei|Path of the Kensei': [{pickChoose: {label: 'Kensei fegyverek', n: {lv: {3: 2, 6: 3, 11: 4, 17: 5}}, weapon: true, help: {mit: 'Mezőnként egy fegyvertípus. Az első kettőből legyen egy közelharci és egy távolsági, később bármelyik. Simple vagy martial lehet, de nem lehet heavy vagy special tulajdonságú (a longbow megengedett).', sablon: 'A fegyver angol neve, ahogy a szabálykönyvben áll, egyes számban, mezőnként egy.', pelda: 'Longbow'}}}, {toolChoose: {from: ["calligrapher's supplies", "painter's supplies"], n: 1}}],
     'Monk|Mercy|Implements of Mercy': [{skill: {insight: 1, medicine: 1}}, {tool: ['herbalism kit']}],
-    "Ranger|Beast Master|Ranger's Companion": [{pickChoose: {label: 'Állattárs'}}],
+    "Ranger|Beast Master|Ranger's Companion": [{pickChoose: {label: 'Állattárs', help: {mit: 'Az állattársad. Legfeljebb Medium méretű beast, CR 1/4 vagy kisebb (PHB 93. o.).', sablon: 'Bármilyen szöveg: az állat fajtája, utána zárójelben a neve, ha van.', pelda: 'Wolf (Szürke)'}}}],
     "Ranger|Hunter|Hunter's Prey": [{pickChoose: {label: "Hunter's Prey", from: ['Colossus Slayer', 'Giant Killer', 'Horde Breaker']}}],
     'Ranger|Hunter|Defensive Tactics': [{pickChoose: {label: 'Defensive Tactics', from: ['Escape the Horde', 'Multiattack Defense', 'Steel Will']}}],
     'Ranger|Hunter|Multiattack': [{pickChoose: {label: 'Multiattack', from: ['Volley', 'Whirlwind Attack']}}],
@@ -433,7 +433,7 @@ window.Sheet = (() => {
     'Sorcerer|Storm|Wind Speaker': [{lang: ['Primordial']}],
     'Warlock|Hexblade|Hex Warrior': [{armor: ['medium', 'shields']}, {weapon: ['martial']}],
     'Warlock|Genie|The Genie': [{spells: [{t: 'expanded', lvl: 1, sp: ['detect evil and good', 'phantasmal force', 'create food and water', 'phantasmal killer', 'creation', 'wish']}]}, {pickChoose: {label: 'Genie Kind', from: ['Dao', 'Djinni', 'Efreeti', 'Marid'], then: Object.fromEntries(Object.entries({Dao: ['sanctuary', 'spike growth', 'meld into stone', 'stone shape', 'wall of stone'], Djinni: ['thunderwave', 'gust of wind', 'wind wall', 'greater invisibility', 'seeming'], Efreeti: ['burning hands', 'scorching ray', 'fireball', 'fire shield', 'flame strike'], Marid: ['fog cloud', 'blur', 'sleet storm', 'control water', 'cone of cold']}).map(([k, sp]) => [k, [{spells: [{t: 'expanded', lvl: 1, sp}]}]]))}}],
-    'Wizard|Bladesinging|Training in War and Song (Bladesinging)': [{armor: ['light']}, {skill: {performance: 1}}, {pickChoose: {label: 'Egykezes fegyver', weapon: true}}],
+    'Wizard|Bladesinging|Training in War and Song (Bladesinging)': [{armor: ['light']}, {skill: {performance: 1}}, {pickChoose: {label: 'Egykezes fegyver', weapon: true, help: {mit: 'Egy fegyvertípus, amiben jártas leszel. Egykezes, közelharci fegyver legyen.', sablon: 'A fegyver angol neve, ahogy a szabálykönyvben áll, egyes számban.', pelda: 'Rapier'}}}],
     'opt|Pact of the Tome': [{spellChoose: {from: {l: 0}, n: 3}}],
     'opt|Book of Ancient Secrets': [{spellChoose: {from: {l: 1, ri: true}, n: 2}}],
     'opt|Blessed Warrior': [{spellChoose: {from: {list: 'Cleric', l: 0}, n: 2}}],
@@ -486,7 +486,7 @@ window.Sheet = (() => {
       for (const [t, kind] of Object.entries(CHOICE_KIND)) {
         if (!fx[t]) continue;
         const o = isObj(fx[t]) ? fx[t] : {}, key = keyOf(ctx, `${prefix}:${kind}`);
-        const c = {key, kind, src, n: Math.max(1, isObj(o.n) ? evalMax(o.n, {lvl: kor.lvl || 1}) : num(o.n, 1)), amt: num(o.amt, 1), from: o.from, value: b.ch[key], ...(o.label ? {label: o.label} : {})};
+        const c = {key, kind, src, n: Math.max(1, isObj(o.n) ? evalMax(o.n, {lvl: kor.lvl || 1}) : num(o.n, 1)), amt: num(o.amt, 1), from: o.from, value: b.ch[key], ...(o.label ? {label: o.label} : {}), ...(o.help ? {help: o.help} : {})};
         choices.push(c); rec.ch[kind] = c;
         if (t === 'feat' && depth < 2) for (const ref of arr(b.ch[key], c.n)) featFx(ctx, ref, depth);
         // a választott lehetőség saját hatásai (pl. Circle of the Land: a terep varázslatai)
@@ -783,7 +783,7 @@ window.Sheet = (() => {
   function calcTamadasok(ctx) {
     const {rb, PB, A, mods, worn} = ctx;
     // támadások a felszerelt fegyverekből
-    const wprof = uniqCI(A.weapon).map(x => x.toLowerCase());
+    const wprof = uniqCI([...A.weapon, ...String(ctx.ov['plus:weapons'] || '').split(',')]).map(x => x.toLowerCase());
     const profW = (r, name) => wprof.some(p => (r.wc && (p === r.wc || p === r.wc + ' weapons')) || (p.length > 3 && name.toLowerCase().includes(p.replace(/s$/, ''))));
     const attacks = [];
     for (const {i, r} of worn) {
@@ -1277,6 +1277,68 @@ window.Sheet = (() => {
     return {cr, choices: all.filter(x => !SPELL_KINDS.includes(x.c.kind)).sort((a, b) => (LU_ORDER[a.c.kind] ?? 9) - (LU_ORDER[b.c.kind] ?? 9)), spells: all.filter(x => SPELL_KINDS.includes(x.c.kind))};
   }
 
+  // ---------- leírások a felugró „i” ablakhoz: mit kell tenni, és ki tudja megcsinálni (hol: app | homebrew | dm); a szabad szöveges mezők sablonja és példája ----------
+  const BUILD_HELY = 'Helye: Alapadatok fül → Felépítés → Választások (új karakternél és szintlépésnél a varázsló ugyanezt kéri).';
+  const SAJAT_JARTASSAG = 'Alapadatok fül → Saját jártasságok';
+  const SAJAT_JELLEMZO = 'Képességek fül alja → Saját jellemző (a név ne egyezzen a jellemző nevével, mert akkor az újraszámoláskor eltűnik), vagy a Jegyzet fül';
+  // a ✋ teendők: amit a program nem tud helyetted eldönteni; a szöveg alapján (az első találat számít)
+  const KEZI_INFO = [
+    [/Mystic Arcanum/, 'app', ['Válassz egy warlock varázslatot a megadott szintről (PHB 108. o.).', 'Varázslat fül → kereső: keresd meg a nevét, így a leírása is a lapra kerül. A szintje a lapon látszik.', 'Utána pipáld ki ezt a teendőt.']],
+    [/Favored Enemy/, 'homebrew', ['Válassz ellenféltípust és egy nyelvét (PHB 91. o.).', `A típust írd ide: ${SAJAT_JELLEMZO}. Példa a névre: Kedvelt ellenfél. A nyelvet ide: ${SAJAT_JARTASSAG} → Nyelvek.`, 'Utána pipáld ki ezt a teendőt.']],
+    [/Natural Explorer/, 'homebrew', ['Válassz kedvelt terepet (PHB 91. o.).', `Írd ide: ${SAJAT_JELLEMZO}.`, 'Utána pipáld ki ezt a teendőt.']],
+    [/Draconic Ancestry/, 'homebrew', ['Válassz sárkánytípust: ez adja a Breath Weapon alakját és sebzéstípusát (PHB 34. o.).', `Az ellenállást írd ide: ${SAJAT_JARTASSAG} → Ellenállások. A Breath Weapont vedd fel saját támadásként (Alapadatok fül alja): a találat üresen marad, mert mentődobásos, a mentő DC-je a megjegyzésbe kerül.`, 'Utána pipáld ki ezt a teendőt.']],
+    [/Fegyver-jártasság/, 'homebrew', ['Válassz fegyvert a jellemző leírása szerint.', `Írd ide: ${SAJAT_JARTASSAG} → Fegyverek.`, 'Utána pipáld ki ezt a teendőt.']],
+    [/Skill \/ eszköz \/ nyelv/, 'homebrew', ['Válassz a jellemző leírása szerint.', `Skillnél: Alapadatok fül → Számolt értékek → a skill sora → ✎ Felülírás → jártas. Eszköznél és nyelvnél: ${SAJAT_JARTASSAG}.`, 'Utána pipáld ki ezt a teendőt.']],
+    [/Ellenállás/, 'homebrew', ['Válassz sebzéstípust a jellemző leírása szerint.', `Írd ide: ${SAJAT_JARTASSAG} → Ellenállások.`, 'Utána pipáld ki ezt a teendőt.']],
+    [/varázslat választása/, 'app', ['Válassz varázslatot a jellemző leírása szerint.', 'Varázslat fül → kereső: ha nem látod, vedd le a pipát a „csak az osztályaim listája” elől. Ha nincs a szabálykönyvben, írd a „Saját / homebrew varázslat neve” mezőbe.', 'Utána pipáld ki ezt a teendőt.']]
+  ];
+  function todoInfo(t, cr) {
+    const cim = String(t.text), c = cr?.choices?.find(x => x.key === t.key);
+    if (t.kind === 'missing') return {cim, hol: 'vegyes', mit: ['A lap olyasmire hivatkozik, ami nincs a szabálykönyvben, ezért a hatása nem számít.', 'Te is választhatsz helyette mást: Alapadatok fül → Felépítés. A saját (homebrew) tétel hatását Saját jellemzőként és ✎ felülírással viheted fel.', 'Ha a könyvben kellene lennie, csak a DM tudja újratölteni a szabálykönyvet: DM Screen → Menü → 📖 Szabálykönyv.']};
+    if (t.kind === 'manual') {
+      const x = KEZI_INFO.find(([re]) => re.test(cim));
+      return x ? {cim, hol: x[1], mit: x[2]} : {cim, hol: 'homebrew', mit: ['A program ezt nem tudja helyetted eldönteni. Olvasd el a jellemző leírását (Képességek fül alja).', `A választásod írd ide: ${SAJAT_JELLEMZO}. Ha számolt értéket érint, az Alapadatok fül → Számolt értékek → ✎ Felülírás.`, 'Utána pipáld ki ezt a teendőt.']};
+    }
+    const marad = c ? c.n - c.ok.length : 0, lista = l => l.join(', ');
+    const fele = {
+      subclass: () => 'Válaszd ki az alosztályt a listából. Lehet, hogy utána újabb választások jelennek meg, és a varázslatlista is bővülhet.',
+      subrace: () => 'Válaszd ki az alfajt: Alapadatok fül → Felépítés → Faj lista.',
+      asi: () => 'Válassz: +2 egy képességre, +1 két képességre, vagy egy feat.',
+      feat: () => 'Válassz egy featet a listából. Az előfeltételeket a program nem ellenőrzi: nézd meg a könyvben, vagy kérdezd meg a DM-et.',
+      ability: () => `Válassz képességet, amit növel: még ${marad} darabot.`,
+      saves: () => `Válassz mentő-jártasságot: még ${marad} darabot.`,
+      skills: () => `Válassz skillt: még ${marad} darabot${Array.isArray(c?.from) ? ', ezek közül: ' + lista(c.from.map(k => skillLabel(skillKey(k)))) : ''}. Ami máshonnan már jár, az nem választható.`,
+      expertise: () => `Válassz expertise-t: még ${marad} darabot. Csak olyan skill lehet, amiben már jártas vagy.`,
+      lang: () => `Válassz nyelvet: még ${marad} darabot. Amit már tudsz, az nem választható.`,
+      tool: () => `Válassz eszközt: még ${marad} darabot${Array.isArray(c?.from) ? ', ezek közül: ' + lista(c.from) : ' (a mezőnél lévő i gomb mutat példát)'}.`,
+      opt: () => `Válassz a listából: még ${marad} darabot.`,
+      pick: () => `Válassz: még ${marad} darabot${Array.isArray(c?.from) ? ', ezek közül: ' + lista(c.from) : ' (a mezőnél lévő i gomb mutat példát)'}.`,
+      spell: () => `Válassz varázslatot: még ${marad} darabot.`,
+      cantrips: () => `Válassz cantripet: még ${marad} darabot.`,
+      known: () => `Válassz ismert varázslatot: még ${marad} darabot. Ha az osztályod alosztálya bővíti a listát, előbb azt válaszd ki.`,
+      book: () => `Válassz varázslatot a spellbookba: még ${marad} darabot.`
+    }[t.kind];
+    return {cim, hol: 'app', mit: t.kind === 'subrace' ? [fele()] : [fele ? fele() : 'Válassz a listából.', BUILD_HELY]};
+  }
+  // szabad szöveges választó (eszköz, állattárs, fegyver…)
+  function freeInfo(c) {
+    const h = c.help || (c.kind === 'tool' ? {mit: 'Egy eszköz, amiben jártas leszel (artisan\'s tools, hangszer, gaming set, kit).', sablon: 'Az eszköz neve angolul, mezőnként egy.', pelda: "Smith's Tools"} : {mit: 'Írd be a választásodat.', sablon: 'Bármilyen rövid szöveg.', pelda: ''});
+    return {cim: `${c.label || FX_LABEL[c.kind] || c.src}: mit írj ide?`, ...h, mit: [h.mit]};
+  }
+  const mezo = (cim, mit, sablon, pelda) => ({cim, mit: [mit], sablon, pelda});
+  const MEZO_INFO = {
+    plus: mezo('Saját jártasságok', 'Ami a számolt jártasságokon, érzékeken és ellenállásokon felül jár (homebrew, tárgy, DM döntése). A számoltak mellé kerül, azokat nem kell ide beírni.', 'Vesszővel elválasztott lista, angolul. Az üres mező törli.', 'Nyelvek: Aquan, Druidic · Ellenállások: poison · Érzékek: blindsight 10 ft.'),
+    speed: mezo('Speed felülírása', 'A számolt speed helyett ez látszik. Üresen hagyva a számolt érték marad.', 'Szám, utána ft., és vesszővel a többi mozgásforma.', '30 ft., fly 30 ft.'),
+    attack: mezo('Saját támadás', 'Amit a program nem számol a felszerelt fegyverekből (pl. Breath Weapon, homebrew támadás). A Harc fülön kattintva dob vele.', 'Név: bármi. Találat: előjeles szám, vagy üresen, ha mentődobásos. Sebzés: kockakifejezés, utána a sebzés típusa. Megjegyzés: bármi.', 'Átkozott kard · +5 · 1d8+3 slashing · magic'),
+    resource: mezo('Saját erőforrás', 'Amit a program nem számol (pl. homebrew képesség, tárgy töltései). A max a teljes szám, a legördülő mondja meg, mikor töltődik vissza.', 'Név: bármi, a max szám.', 'Wand of Secrets, max 3, long rest'),
+    jartassag: mezo('Jártasságok és egyebek', 'Kézi lapon itt tartod nyilván őket. A program nem számol belőlük, csak kiírja: a támadás találatát kézzel írd át.', 'Vesszővel elválasztott lista, angolul.', 'Páncél: light armor, shields · Fegyver: simple weapons, longswords · Érzékek: darkvision 60 ft.'),
+    portrait: mezo('Kép linkje', 'A portré webes címe. A kép nem kerül a lapra, csak a link: ha a kép eltűnik a webről, a portré is. Biztosabb a tallózás.', 'http:// vagy https:// kezdetű, képre mutató cím.', 'https://example.com/karakter.jpg'),
+    subclass: mezo('Alosztály', 'A szabálykönyvben nem szereplő vagy homebrew alosztály neve.', 'Bármilyen szöveg, angolul, ha lehet.', 'Fiend'),
+    spell: mezo('Saját varázslat', 'Ami nincs a szabálykönyvben, vagy a listádon kívül jár (pl. Mystic Arcanum, homebrew).', 'A varázslat neve, mellette a szintje. Ha a szabálykönyvben van, ugyanúgy írd, mint ott, hogy a leírása is meglegyen: a kereső biztosabb.', 'Shadow of Moil'),
+    item: mezo('Saját tárgy', 'Ami nincs a szabálykönyvben. A program nem számol belőle AC-t vagy támadást: azt saját támadásként, az AC-t pedig kézzel vagy ✎ felülírással vidd fel.', 'A tárgy neve, mellette a darabszám.', 'Család gyűrűje, 1'),
+    feat: mezo('Saját jellemző', 'Ami nincs a szabálykönyvben: homebrew jellemző, vagy egy választásod. A program nem számol belőle, csak kiírja.', 'Név és leírás bármilyen szöveg, de a név ne egyezzen egy számolt jellemző nevével, mert akkor az újraszámoláskor eltűnik. Honnan: a forrás rövid neve.', 'Név: Kedvelt ellenfél · Leírás: undead · Honnan: Ranger 1')
+  };
+
   // ---------- faji és feat-képességbónusz a kézi lapon (a beírt értékekhez adva) ----------
   // fixed: azonnal hozzáadható; choose: a játékos választ (pl. Half-Elf 2× +1, Resilient)
   function abBonusOf(fx) {
@@ -1565,7 +1627,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch,
+    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,
