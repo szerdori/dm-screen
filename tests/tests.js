@@ -2632,7 +2632,7 @@ describe('Szintlépés: terv és mentés (sheet.js)', () => {
   test('Sorcerer 2 → 3: 2 metamagic, known +1 és csere; a metamagic nem cserélhető; a feat saját választása a plan-be kerül', () => {
     const rb = rbVarazs(), s = mkS({base: {cha: 16}, levels: lv('Sorcerer', 2), sub: {Sorcerer: 'Draconic|PHB'}, spells: {Sorcerer: {cantrips: ['Light|PHB', 'Fire Bolt|PHB', 'Mage Hand|PHB'], known: ['Shield|PHB', 'Sleep|PHB', 'Grease|PHB']}}});
     let p = terv(s, rb, 'Sorcerer');
-    eq(p.choices.map(x => [x.c.key, x.c.n, x.csere, x.missing]), [['Sorcerer:opt:Metamagic', 2, false, 2]]);
+    eq(p.choices.map(x => [x.c.key, x.c.n, x.csere, x.missing]), [['Sorcerer:opt:Metamagic', 2, false, 2], ['Sorcerer:1:pick', 1, false, 0]], 'a korábbról elmaradt sárkánytípus nem kötelező');
     const kn = p.spells.find(x => x.c.key === 'Sorcerer:known');
     eq([kn.c.n, kn.locked.length, kn.csere, kn.missing], [4, 3, true, 1]);
     // ASI → feat: a feat választása új kulcs, és megjelenik
@@ -2687,7 +2687,7 @@ describe('Szintlépés: robot (minden osztály 1 → 20)', () => {
     const H = W.Sheet;
     if (c.kind === 'asi') return H.setChoice(b, c, {str: 1, dex: 1});
     const o = H.choiceOptions(c, cr, rb);
-    if (o.free) return H.setChoice(b, c, ['Próbaeszköz']);
+    if (o.free) return H.setChoice(b, c, Array.from({length: c.n}, (_, i) => 'Próbaeszköz' + (i || '')));
     const uj = o.opts.filter(x => !x.dis && !c.ok.includes(x.v)).slice(0, c.n - c.ok.length).map(x => x.v);
     if (c.kind === 'subclass' || c.kind === 'subrace') return H.setChoice(b, c, uj[0]);
     return H.setChoice(b, c, [...c.ok, ...uj]);
@@ -2910,6 +2910,79 @@ describe('Átállítás és faji varázslat (sheet.js)', () => {
     const b = H.adoptSpells(s, rb);
     eq(b.spells.Warlock.known, ['Burning Hands|PHB'], 'a meglévő varázslat besorolva');
   });
+  test('Pact of the Tome: 3 cantrip bármelyik osztály listájáról, kötelezően a szintlépésben; a lapra kerül; Book of Ancient Secrets: 2 ritual', () => {
+    const H = W.Sheet, rb = rbElf();
+    rb.optfeatures = [...(rb.optfeatures || []).filter(o => !['Pact of the Tome', 'Book of Ancient Secrets'].includes(o.n)), {n: 'Pact of the Tome', s: 'PHB', t: ['PB'], fx: [{todo: 'known varázslat választása (1. szinttől)'}]}, {n: 'Book of Ancient Secrets', s: 'PHB', t: ['EI']}];
+    rb.spells.push({n: 'Rituálé', s: 'PHB', l: 1, ri: true, cl: ['Wizard']});
+    const b = {base: {cha: 16}, levels: lv('Warlock', 3), sub: {Warlock: 'The Fiend|PHB'}, spells: {}, ch: {'Warlock:opt:Pact Boon': ['Pact of the Tome|PHB']}};
+    let s = H.norm({auto: true, build: b}), cr = H.calc(s, rb), c = cr.choices.find(x => x.kind === 'spell');
+    eq([c.key, c.n, c.done], ['opt:Pact of the Tome:spell', 3, false]);
+    ok(!cr.todos.some(t => t.kind === 'manual' && /varázslat választása/.test(t.text)), 'nincs ✋');
+    const o = H.choiceOptions(c, cr, rb), nevek = o.opts.map(x => x.l);
+    ok(nevek.includes('Guidance') && nevek.includes('Vicious Mockery') && nevek.includes('Fire Bolt') && !nevek.includes('Sleep'), 'bármelyik osztály cantripje, csak cantrip');
+    s = H.norm({...s, build: H.setChoice(s.build, c, ['Guidance|PHB', 'Vicious Mockery|PHB', 'Fire Bolt|PHB'])});
+    cr = H.calc(s, rb);
+    ok(cr.choices.find(x => x.kind === 'spell').done);
+    const m = H.norm({...s, ...H.materialize(s, cr)});
+    eq(['Guidance', 'Vicious Mockery', 'Fire Bolt'].map(n => m.spells.find(x => x.name === n)?.always), [true, true, true]);
+    // ritual: csak ritual, 1. szintű
+    const r = H.norm({auto: true, build: {...b, ch: {...b.ch, 'Warlock:opt:Eldritch Invocations': ['Book of Ancient Secrets|PHB']}}}), rc = H.calc(r, rb), ch = rc.choices.find(x => x.key === 'opt:Book of Ancient Secrets:spell');
+    ok(ch, 'van hely a ritualoknak');
+    eq(H.choiceOptions(ch, rc, rb).opts.map(x => x.l), ['Rituálé']);
+  });
+  test('alosztály-választások: választható lehetőség, hatással (Hunter, Land, Divine Soul, Kensei, skill és jártasság); érvénytelen érték nem számít', () => {
+    const H = W.Sheet, sub = (cls, short) => ({n: short, short, cls, s: 'PHB'}), f = (cls, short, n, lvl) => ({n, cls, sub: short, ss: 'PHB', lvl, s: 'PHB', tx: 'x'});
+    const rb = rbElf();
+    rb.subclasses = [...rb.subclasses, sub('Ranger', 'Hunter'), sub('Druid', 'Land'), {...sub('Sorcerer', 'Divine Soul'), fx: [{spells: [{t: 'known', lvl: 1, sp: ['cure wounds']}]}]}, sub('Monk', 'Kensei'), sub('Cleric', 'Peace'), sub('Bard', 'Valor'), sub('Rogue', 'Scout')];
+    rb.features = [...(rb.features || []), f('Ranger', 'Hunter', "Hunter's Prey", 3), f('Druid', 'Land', 'Circle Spells', 2), f('Druid', 'Land', 'Bonus Cantrip', 2), f('Sorcerer', 'Divine Soul', 'Divine Magic', 1), f('Monk', 'Kensei', 'Path of the Kensei', 3), f('Cleric', 'Peace', 'Implement of Peace', 1), f('Bard', 'Valor', 'Bonus Proficiencies', 3), f('Rogue', 'Scout', 'Survivalist', 3)];
+    rb.spells.push({n: 'Hold Person', s: 'PHB', l: 2, cl: ['Bard']}, {n: 'Spike Growth', s: 'PHB', l: 2, cl: ['Druid']}, {n: 'Bless', s: 'PHB', l: 1, cl: ['Cleric']});
+    const lapo = (cls, short, n, ch = {}) => H.norm({auto: true, build: {base: {}, levels: lv(cls, n), sub: {[cls]: short + '|PHB'}, spells: {}, ch}});
+    const kind = (s, key) => H.calc(s, rb).choices.find(x => x.key === key);
+    // Hunter: lista; a választott jellemzőként látszik; ami nincs a listán, nem számít
+    const h = kind(lapo('Ranger', 'Hunter', 3), 'Ranger:3:pick');
+    eq(H.choiceOptions(h, H.calc(lapo('Ranger', 'Hunter', 3), rb), rb).opts.map(x => x.v), ['Colossus Slayer', 'Giant Killer', 'Horde Breaker']);
+    const hk = H.calc(lapo('Ranger', 'Hunter', 3, {'Ranger:3:pick': ['Giant Killer']}), rb);
+    ok(hk.choices.find(x => x.key === 'Ranger:3:pick').done); ok(hk.features.some(x => x.name === "Hunter's Prey: Giant Killer"));
+    ok(!kind(lapo('Ranger', 'Hunter', 3, {'Ranger:3:pick': ['Nincs']}), 'Ranger:3:pick').done);
+    // Land: a terep adja a varázslatokat (nem mindig az Arctic), a Bonus Cantrip választás
+    const land = H.calc(lapo('Druid', 'Land', 3, {'Druid:2:pick': ['Coast']}), rb);
+    ok(land.always.some(x => x.name.toLowerCase() === 'misty step') && !land.always.some(x => x.name === 'Spike Growth'), 'a terep varázslata');
+    ok(H.calc(lapo('Druid', 'Land', 3, {'Druid:2:pick': ['Arctic']}), rb).always.some(x => x.name === 'Spike Growth'));
+    ok(!H.calc(lapo('Druid', 'Land', 2, {'Druid:2:pick': ['Arctic']}), rb).always.some(x => x.name === 'Spike Growth'), '3. szint alatt még nem');
+    ok(land.choices.some(x => x.kind === 'spell' && x.src.startsWith('Bonus Cantrip')));
+    // Divine Soul: affinity varázslat, és a Cleric lista is választható
+    const ds = H.calc(lapo('Sorcerer', 'Divine Soul', 1, {'Sorcerer:1:pick': ['Law']}), rb);
+    ok(ds.always.some(x => x.name === 'Bless') && !ds.always.some(x => /cure wounds/i.test(x.name)), 'az affinity szerint');
+    ok(H.choiceOptions(ds.choices.find(x => x.kind === 'known'), ds, rb).opts.some(x => x.l === 'Bless'), 'a Cleric listáról is');
+    // Kensei: két szabad szöveg, fegyver-jártasságként; eszköz listából
+    const ke = H.calc(lapo('Monk', 'Kensei', 3, {'Monk:3:pick': ['Longbow', 'Glaive']}), rb);
+    has(ke.profs.weapons, 'Longbow'); has(ke.profs.weapons, 'Glaive');
+    ok(H.choiceOptions(ke.choices.find(x => x.key === 'Monk:3:pick'), ke, rb).free, 'szabad szöveg');
+    // skill, páncél, dupla jártasság
+    eq(kind(lapo('Cleric', 'Peace', 1), 'Cleric:1:skills2')?.from, ['insight', 'performance', 'persuasion']);
+    const va = H.calc(lapo('Bard', 'Valor', 3), rb); has(va.profs.armor, 'medium'); has(va.profs.weapons, 'martial');
+    eq(H.calc(lapo('Rogue', 'Scout', 3), rb).skills.survival.prof, 2, 'Scout: dupla jártasság');
+    // a háttértől már jártas skill is dupla lesz; arra expertise már nem választható
+    rb.backgrounds.push({n: 'Vadász', s: 'PHB', fx: [{skill: {survival: true}}]});
+    const sc = H.norm({auto: true, build: {base: {}, levels: lv('Rogue', 3), sub: {Rogue: 'Scout|PHB'}, background: 'Vadász|PHB', spells: {}}}), cs = H.calc(sc, rb);
+    eq(cs.skills.survival.prof, 2, 'a háttér után is');
+    ok(H.choiceOptions(cs.choices.find(x => x.kind === 'expertise'), cs, rb).opts.find(x => x.v === 'survival').dis);
+    // Kensei: a fegyverek száma a szinttel nő
+    eq([3, 6, 11, 17].map(n => H.calc(lapo('Monk', 'Kensei', n), rb).choices.find(x => x.key === 'Monk:3:pick').n), [2, 3, 4, 5]);
+    // szabad szöveg: a „{” nem dönti el a számolást, a jellemzők közé csak szövegként kerül
+    const fura = H.calc(lapo('Monk', 'Kensei', 3, {'Monk:3:pick': ['{x', '<img src=x onerror=alert(1)>']}), rb);
+    eq(fura.choices.find(x => x.key === 'Monk:3:pick').ok, ['{x', '<img src=x onerror=alert(1)>']);
+  });
+  test('valódi szabálykönyvvel: Land terep a valódi varázslatokkal; a táblák minden varázslata létezik; Pact of the Tome', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet;
+    const land = H.calc(H.norm({auto: true, build: {base: {}, levels: lv('Druid', 9), sub: {Druid: 'Circle of the Land|PHB'}, spells: {}, ch: {'Druid:2:pick': ['Swamp']}}}), rb);
+    for (const n of ["Melf's Acid Arrow", 'Darkness', 'Water Walk', 'Stinking Cloud', 'Scrying']) ok(land.always.some(x => x.name === n && x.ref), 'Swamp: ' + n);
+    const mind = Object.values(H.FEATURE_FX).flat().flatMap(f => f.pickChoose?.then ? Object.values(f.pickChoose.then).flat().flatMap(x => (x.spells || []).flatMap(y => y.sp)) : []);
+    eq([...new Set(mind)].filter(n => !rb.spells.some(s => s.n.toLowerCase() === n.toLowerCase())), [], 'minden táblabeli varázslat létezik');
+    const w = H.norm({auto: true, build: {base: {cha: 16}, levels: lv('Warlock', 3), sub: {Warlock: 'The Fiend|PHB'}, spells: {}, ch: {'Warlock:opt:Pact Boon': ['Pact of the Tome|PHB']}}}), cw = H.calc(w, rb), c = cw.choices.find(x => x.key === 'opt:Pact of the Tome:spell');
+    ok(c && c.n === 3); ok(H.choiceOptions(c, cw, rb).opts.length > 30, 'minden osztály cantripje');
+    ok(!cw.todos.some(t => t.kind === 'manual' && /varázslat választása/.test(t.text)), 'nincs ✋');
+  }, {online: true});
   test('valódi szabálykönyvvel: High Elf cantrip választható; Fiend Warlocknál a Burning Hands, más patrónnál nem; az átállítás a Wizard skilleket nem kéri újra', async () => {
     const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet;
     const s = H.norm({auto: true, build: {base: {}, levels: lv('Rogue', 1), race: 'Elf|PHB', subrace: 'High|PHB', spells: {}}}), cr = H.calc(s, rb), c = cr.choices.find(x => x.kind === 'spell');
@@ -3732,7 +3805,7 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     const d = kq('details[data-key="hist"]'); d.open = true; d.dispatchEvent(new K.Event('toggle'));
     await until(() => kqa('[data-act="histFull"]').length, 2000, 'betöltve');
     eq(kqa('[data-act="histFull"]').map(b => b.dataset.h), [h(4).id, h(3).id, h(2).id], 'a legfrissebb 3');
-    has(kq('[data-hist]').textContent, 'Mentés: 3. szint');
+    has(kq('[data-hist]').textContent, 'Backup: 3. szint'); has(kq('[data-hist]').textContent, 'Backup most');
     // kézi mentés: pillanatkép, a lap nem változik
     klog.length = 0;
     kclick('[data-act="histSave"]');
@@ -3951,6 +4024,26 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     openSheet({auto: true, build: b({levels: lv('Rogue', 3), sub: {Rogue: 'Thief|PHB'}, ch: {'subrace:spell': ['Fire Bolt|PHB'], 'Rogue:1:skills': ['stealth', 'perception', 'arcana', 'acrobatics'], 'Rogue:1:expertise': ['stealth', 'arcana']}}), classes: [{name: 'Rogue', subclass: 'Thief', level: 3, hitDie: 8}], levelUp: {to: 4}});
     const plan = K.Sheet.levelUpPlan(lap(), rb, K.Sheet.levelUpBuild(lap(), 'Rogue'));
     ok(![...plan.choices, ...plan.spells].some(x => x.c.kind === 'spell' && x.missing), 'nem kér újat');
+  });
+  ktest('alosztály-választó a felületen: a címke látszik, több szabad mező, gonosz szöveg nem fut, a szintlépésben az új hely kötelező', () => {
+    const rb = rbVarazs();
+    rb.subclasses.push({n: 'Way of the Kensei', short: 'Kensei', cls: 'Monk', s: 'PHB'});
+    rb.features = [...(rb.features || []), {n: 'Path of the Kensei', cls: 'Monk', sub: 'Kensei', ss: 'PHB', lvl: 3, s: 'PHB', tx: 'x'}];
+    K.KApp.setRulebook({version: 'v', rb});
+    const b = extra => ({base: {dex: 14}, levels: lv('Monk', 3), sub: {Monk: 'Way of the Kensei|PHB'}, spells: {}, ...extra});
+    openSheet({auto: true, build: b(), classes: [{name: 'Monk', subclass: 'Kensei', level: 3, hitDie: 8}]});
+    kclick('[data-tab="adat"]');
+    const box = kq('[id="ch-Monk_3_pick"]'), mezok = () => kqa('input').filter(e => e.dataset.ch === 'Monk:3:pick');
+    has(box.textContent, 'Kensei fegyverek');
+    eq(mezok().length, 2); eq(mezok()[0].placeholder, 'Kensei fegyverek');
+    kset(mezok()[0], '<img src=x onerror=window.__x7=1>');
+    eq(K.eval('sheets.get("p1")').build.ch['Monk:3:pick'], ['<img src=x onerror=window.__x7=1>']);
+    kclick('[data-tab="kep"]'); kclick('[data-tab="adat"]');
+    ok(!kq('main img[src="x"]') && !K.__x7, 'nem fut');
+    const s = K.eval('sheets.get("p1")'), Sh = K.Sheet;
+    const uj = Sh.norm({...s, build: {...s.build, levels: lv('Monk', 5), ch: {'Monk:3:pick': ['Longbow', 'Glaive']}}, classes: [{name: 'Monk', subclass: 'Kensei', level: 5, hitDie: 8}]});
+    const p = Sh.levelUpPlan(uj, rb, Sh.levelUpBuild(uj, 'Monk')), x = p.choices.find(y => y.c.key === 'Monk:3:pick');
+    eq([x.uj, x.missing], [true, 1], '6. szinten eggyel több, kötelező');
   });
   ktest('varázslat-választó: szól, ha a helyek beteltek, és ha az alosztály még nincs kiválasztva', () => {
     const rb = rbVarazs();

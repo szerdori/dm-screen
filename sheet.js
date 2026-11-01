@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 9;
+  const VERSION = 10;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -266,7 +266,7 @@ window.Sheet = (() => {
   }
   // egy varázslat egy választási helyre: 'list' = a rendes listáról, 'off' = csak kivételként, '' = nem tanulható
   function spellFit(sp, kind, k) {
-    const l = num(sp.l), inList = !k.list || (sp.cl || []).includes(k.list) || (k.expanded || []).includes(String(sp.n).toLowerCase());
+    const l = num(sp.l), inList = !k.list || (sp.cl || []).includes(k.list) || (k.lists || []).some(x => (sp.cl || []).includes(x)) || (k.expanded || []).includes(String(sp.n).toLowerCase());
     if (kind === 'cantrips') return l === 0 && inList ? 'list' : '';
     if (l === 0) return kind === 'known' && k.offAny && k.off ? 'off' : '';
     if (l > k.max) return '';
@@ -274,8 +274,8 @@ window.Sheet = (() => {
     return k.off && (k.offAny || inList) ? 'off' : '';
   }
 
-  // faji varázslat-választás (pl. High Elf: egy Wizard cantrip): a megadott lista és szint
-  const spellChooseFit = (sp, from) => (sp.cl || []).includes(from?.list) && num(sp.l) === num(from?.l);
+  // varázslat-választás egy jellemzőből (High Elf, Pact of the Tome…): a megadott lista (ha nincs: bármelyik) és szint
+  const spellChooseFit = (sp, from) => (!from?.list || (sp.cl || []).includes(from.list)) && num(sp.l) === num(from?.l) && (!from?.ri || !!sp.ri);
 
   // ---------- szabálymotor (2. fázis): a lap felépítéséből (build) és a kézi felülírásokból (ov) számol ----------
   // A szabálykönyv elemei (faj, alfaj, háttér, feat, optional feature) hatáslistát (fx) hordoznak, az osztály-feature-ökét a FEATURE_FX adja.
@@ -286,7 +286,7 @@ window.Sheet = (() => {
   //   {hpPerLevel: 1}  {hpPerClassLevel: 1}  {init: 5}  {speed: {v: 10 | 'col:Oszlop', if: 'noHeavy' | 'noArmor'}}  {heavyOk: true}
   //   {acBase: {base: 10, add: ['dex', 'con'], noShield}}  {acBonus: 1} (páncélban)  {mamCap: 3}  {rangedAtk: 2}  {duelDmg: 2}  {martialArts: true}
   //   {res: {n, max: szám | 'col:Oszlop' | 'mod:cha' | 'lvl' | 'lvl*5' | 'pb' | {lv: {szint: érték}}, add, min, reset, shortAt}}
-  //   {spells: [{t: prepared|known|innate|expanded, lvl, sp: [...]}], ab}  {spellChoose: {from: {list: 'Wizard', l: 0}, n}}  {feat: {n}}  {todo: 'szöveg'} (✋ nem automatizálható)
+  //   {spells: [{t: prepared|known|innate|expanded, lvl, sp: [...]}], ab}  {spellChoose: {from: {list?: 'Wizard', l: 0, ri?: true}, n}}  {spellList: ['Cleric']}  {pickChoose: {label, from?, n?, then?: {érték: [hatások]}, weapon?}}  {feat: {n}}  {todo: 'szöveg'} (✋ nem automatizálható)
   // A választást kérő hatások kulcsa: '<forrás>:<fajta>' (pl. 'race:ability', 'Rogue:1:skills', 'Rogue:6:expertise', 'Fighter:4:asi',
   // 'feat:Alert|PHB:skills', 'Fighter:opt:Fighting Style'); az érték a build.ch-ban van. Ha egy kulcs már foglalt, számot kap (…:skills2).
   const refName = r => String(r || '').split('|')[0];
@@ -318,19 +318,30 @@ window.Sheet = (() => {
     }
     return out;
   }
-  const CHOICE_KIND = {abChoose: 'ability', skillChoose: 'skills', expertise: 'expertise', feat: 'feat', saveChoose: 'saves', langChoose: 'lang', toolChoose: 'tool', spellChoose: 'spell'};
-  const FX_LABEL = {spell: 'faji varázslat', ability: 'képességérték-növelés', skills: 'skill-jártasság', expertise: 'expertise', feat: 'feat', asi: 'ASI vagy feat', subclass: 'alosztály',
+  const CHOICE_KIND = {abChoose: 'ability', skillChoose: 'skills', expertise: 'expertise', feat: 'feat', saveChoose: 'saves', langChoose: 'lang', toolChoose: 'tool', spellChoose: 'spell', pickChoose: 'pick'};
+  const FX_LABEL = {spell: 'varázslat', pick: 'választás', ability: 'képességérték-növelés', skills: 'skill-jártasság', expertise: 'expertise', feat: 'feat', asi: 'ASI vagy feat', subclass: 'alosztály',
     saves: 'mentő-jártasság', lang: 'nyelv', tool: 'eszköz-jártasság', subrace: 'alfaj', opt: 'választás', cantrips: 'cantrip', known: 'ismert varázslat', book: 'spellbook'};
 
+  // Circle of the Land: a terep varázslatai 3., 5., 7., 9. druidaszinten (PHB 68–69. o.)
+  const LAND_SPELLS = {
+    Arctic: [['hold person', 'spike growth'], ['sleet storm', 'slow'], ['freedom of movement', 'ice storm'], ['commune with nature', 'cone of cold']],
+    Coast: [['mirror image', 'misty step'], ['water breathing', 'water walk'], ['control water', 'freedom of movement'], ['conjure elemental', 'scrying']],
+    Desert: [['blur', 'silence'], ['create food and water', 'protection from energy'], ['blight', 'hallucinatory terrain'], ['insect plague', 'wall of stone']],
+    Forest: [['barkskin', 'spider climb'], ['call lightning', 'plant growth'], ['divination', 'freedom of movement'], ['commune with nature', 'tree stride']],
+    Grassland: [['invisibility', 'pass without trace'], ['daylight', 'haste'], ['divination', 'freedom of movement'], ['dream', 'insect plague']],
+    Mountain: [['spider climb', 'spike growth'], ['lightning bolt', 'meld into stone'], ['stone shape', 'stoneskin'], ['passwall', 'wall of stone']],
+    Swamp: [["melf's acid arrow", 'darkness'], ['water walk', 'stinking cloud'], ['freedom of movement', 'locate creature'], ['insect plague', 'scrying']],
+    Underdark: [['spider climb', 'web'], ['gaseous form', 'stinking cloud'], ['greater invisibility', 'stone shape'], ['cloudkill', 'insect plague']]
+  };
   // Kézi hatástábla: csak mechanika, szabályszöveg nélkül (a szöveg a privát szabálykönyvből jön).
   // Kulcs: 'Osztály|Feature', 'Osztály|Alosztály|Feature', 'race|Faj vagy jellemző', 'feat|Név', 'opt|Név'. Az online teszt ellenőrzi, hogy minden kulcs létezik.
   const FEATURE_FX = {
     'Barbarian|Rage': [{res: {n: 'Rage', max: 'col:Rages', reset: 'long'}}],
     'Barbarian|Unarmored Defense': [{acBase: {add: ['dex', 'con']}}],
     'Barbarian|Fast Movement': [{speed: {v: 10, if: 'noHeavy'}}],
-    'Barbarian|Totem Warrior|Totem Spirit': [{todo: 'Totem Spirit: válassz totemállatot'}],
-    'Barbarian|Totem Warrior|Aspect of the Beast': [{todo: 'Aspect of the Beast: válassz totemállatot'}],
-    'Barbarian|Totem Warrior|Totemic Attunement': [{todo: 'Totemic Attunement: válassz totemállatot'}],
+    'Barbarian|Totem Warrior|Totem Spirit': [{pickChoose: {label: 'Totem Spirit', from: ['Bear', 'Eagle', 'Wolf']}}],
+    'Barbarian|Totem Warrior|Aspect of the Beast': [{pickChoose: {label: 'Aspect of the Beast', from: ['Bear', 'Eagle', 'Wolf']}}],
+    'Barbarian|Totem Warrior|Totemic Attunement': [{pickChoose: {label: 'Totemic Attunement', from: ['Bear', 'Eagle', 'Wolf']}}],
     'Bard|Bardic Inspiration': [{res: {n: 'Bardic Inspiration', max: 'mod:cha', min: 1, reset: 'long', shortAt: 5}}],
     'Bard|Jack of All Trades': [{jack: true}],
     'Bard|Expertise': [{expertise: {n: 2}}],
@@ -341,14 +352,14 @@ window.Sheet = (() => {
     'Cleric|Tempest|Bonus Proficiencies': [{armor: ['heavy']}, {weapon: ['martial']}],
     'Cleric|War|Bonus Proficiencies': [{armor: ['heavy']}, {weapon: ['martial']}],
     'Cleric|War|War Priest': [{res: {n: 'War Priest', max: 'mod:wis', min: 1, reset: 'long'}}],
-    'Cleric|Nature|Acolyte of Nature': [{skillChoose: {from: ['animal-handling', 'nature', 'survival'], n: 1}}, {todo: 'Acolyte of Nature: válassz egy druida cantripet'}],
+    'Cleric|Nature|Acolyte of Nature': [{skillChoose: {from: ['animal-handling', 'nature', 'survival'], n: 1}}, {spellChoose: {from: {list: 'Druid', l: 0}, n: 1}}],
     'Cleric|Nature|Bonus Proficiency': [{armor: ['heavy']}],
     'Cleric|Forge|Bonus Proficiency': [{armor: ['heavy']}, {tool: ["smith's tools"]}],
     'Cleric|Twilight|Bonus Proficiencies': [{armor: ['heavy']}, {weapon: ['martial']}],
     'Druid|Wild Shape': [{res: {n: 'Wild Shape', max: 2, reset: 'short'}}],
     'Druid|Land|Natural Recovery': [{res: {n: 'Natural Recovery', max: 1, reset: 'long'}}],
-    'Druid|Land|Circle Spells': [{todo: 'Circle Spells: válassz tereptípust'}],
-    'Druid|Land|Bonus Cantrip': [{todo: 'Bonus Cantrip: válassz egy druida cantripet'}],
+    'Druid|Land|Circle Spells': [{pickChoose: {label: 'Terep', from: Object.keys(LAND_SPELLS), then: Object.fromEntries(Object.entries(LAND_SPELLS).map(([k, t]) => [k, [{spells: t.map((sp, i) => ({t: 'prepared', lvl: 3 + 2 * i, sp}))}]]))}}],
+    'Druid|Land|Bonus Cantrip': [{spellChoose: {from: {list: 'Druid', l: 0}, n: 1}}],
     'Fighter|Second Wind': [{res: {n: 'Second Wind', max: 1, reset: 'short'}}],
     'Fighter|Action Surge': [{res: {n: 'Action Surge', max: {lv: {2: 1, 17: 2}}, reset: 'short'}}],
     'Fighter|Indomitable': [{res: {n: 'Indomitable', max: {lv: {9: 1, 13: 2, 17: 3}}, reset: 'long'}}],
@@ -370,7 +381,7 @@ window.Sheet = (() => {
     'Rogue|Assassin|Bonus Proficiencies': [{tool: ['disguise kit', "poisoner's kit"]}],
     'Sorcerer|Font of Magic': [{res: {n: 'Sorcery Points', max: 'col:Sorcery Points', reset: 'long'}}],
     'Sorcerer|Draconic|Draconic Resilience': [{hpPerClassLevel: 1}, {acBase: {base: 13, add: ['dex']}}],
-    'Sorcerer|Draconic|Dragon Ancestor': [{lang: ['Draconic']}, {todo: 'Dragon Ancestor: válassz sárkánytípust'}],
+    'Sorcerer|Draconic|Dragon Ancestor': [{lang: ['Draconic']}, {pickChoose: {label: 'Sárkánytípus', from: ['Black', 'Blue', 'Brass', 'Bronze', 'Copper', 'Gold', 'Green', 'Red', 'Silver', 'White']}}],
     ...Object.fromEntries([6, 7, 8, 9].map(n => [`Warlock|Mystic Arcanum (${n}th level)`, [{todo: `Mystic Arcanum: válassz egy ${n}. szintű warlock varázslatot`}]])),
     'Wizard|Arcane Recovery': [{res: {n: 'Arcane Recovery', max: 1, reset: 'long'}}],
     'Artificer|Flash of Genius': [{res: {n: 'Flash of Genius', max: 'mod:int', min: 1, reset: 'long'}}],
@@ -388,9 +399,51 @@ window.Sheet = (() => {
     'feat|Medium Armor Master': [{mamCap: 3}],
     'opt|Defense': [{acBonus: 1}],
     'opt|Archery': [{rangedAtk: 2}],
-    'opt|Dueling': [{duelDmg: 2}]
+    'opt|Dueling': [{duelDmg: 2}],
+    'Artificer|Alchemist|Tool Proficiency': [{tool: ["alchemist's supplies"]}],
+    'Artificer|Armorer|Tools of the Trade': [{armor: ['heavy']}, {tool: ["smith's tools"]}],
+    'Artificer|Armorer|Armor Model': [{pickChoose: {label: 'Armor Model', from: ['Guardian', 'Infiltrator']}}],
+    'Artificer|Artillerist|Tool Proficiency': [{tool: ["woodcarver's tools"]}],
+    'Artificer|Battle Smith|Tool Proficiency': [{tool: ["smith's tools"]}],
+    'Artificer|Battle Smith|Battle Ready': [{weapon: ['martial']}],
+    'Barbarian|Storm Herald|Storm Aura': [{pickChoose: {label: 'Storm Aura', from: ['Desert', 'Sea', 'Tundra']}}],
+    'Bard|Valor|Bonus Proficiencies': [{armor: ['medium', 'shields']}, {weapon: ['martial']}],
+    'Bard|Swords|Bonus Proficiencies': [{armor: ['medium']}, {weapon: ['scimitar']}],
+    'Cleric|Order|Bonus Proficiencies': [{armor: ['heavy']}, {skillChoose: {from: ['intimidation', 'persuasion'], n: 1}}],
+    'Cleric|Peace|Implement of Peace': [{skillChoose: {from: ['insight', 'performance', 'persuasion'], n: 1}}],
+    'Druid|Shepherd|Speech of the Woods': [{lang: ['Sylvan']}],
+    'Fighter|Arcane Archer|Arcane Archer Lore': [{skillChoose: {from: ['arcana', 'nature'], n: 1}}, {pickChoose: {label: 'Cantrip', from: ['Prestidigitation', 'Druidcraft'], then: {Prestidigitation: [{spells: [{t: 'known', lvl: 3, sp: ['prestidigitation']}]}], Druidcraft: [{spells: [{t: 'known', lvl: 3, sp: ['druidcraft']}]}]}}}],
+    'Fighter|Cavalier|Bonus Proficiency': [{skillChoose: {from: ['animal-handling', 'history', 'insight', 'performance', 'persuasion'], n: 1}}],
+    'Fighter|Samurai|Bonus Proficiency': [{skillChoose: {from: ['history', 'insight', 'performance', 'persuasion'], n: 1}}],
+    'Fighter|Samurai|Elegant Courtier': [{save: ['wis']}],
+    'Fighter|Rune Knight|Bonus Proficiencies': [{tool: ["smith's tools"]}, {lang: ['Giant']}],
+    'Monk|Drunken Master|Bonus Proficiencies': [{skill: {performance: 1}}, {tool: ["brewer's supplies"]}],
+    'Monk|Kensei|Path of the Kensei': [{pickChoose: {label: 'Kensei fegyverek', n: {lv: {3: 2, 6: 3, 11: 4, 17: 5}}, weapon: true}}, {toolChoose: {from: ["calligrapher's supplies", "painter's supplies"], n: 1}}],
+    'Monk|Mercy|Implements of Mercy': [{skill: {insight: 1, medicine: 1}}, {tool: ['herbalism kit']}],
+    "Ranger|Beast Master|Ranger's Companion": [{pickChoose: {label: 'Állattárs'}}],
+    "Ranger|Hunter|Hunter's Prey": [{pickChoose: {label: "Hunter's Prey", from: ['Colossus Slayer', 'Giant Killer', 'Horde Breaker']}}],
+    'Ranger|Hunter|Defensive Tactics': [{pickChoose: {label: 'Defensive Tactics', from: ['Escape the Horde', 'Multiattack Defense', 'Steel Will']}}],
+    'Ranger|Hunter|Multiattack': [{pickChoose: {label: 'Multiattack', from: ['Volley', 'Whirlwind Attack']}}],
+    "Ranger|Hunter|Superior Hunter's Defense": [{pickChoose: {label: "Superior Hunter's Defense", from: ['Evasion', 'Stand Against the Tide', 'Uncanny Dodge']}}],
+    'Ranger|Gloom Stalker|Iron Mind': [{save: ['wis']}],
+    'Ranger|Fey Wanderer|Otherworldly Glamour': [{skillChoose: {from: ['deception', 'performance', 'persuasion'], n: 1}}],
+    'Rogue|Mastermind|Master of Intrigue': [{tool: ['disguise kit', 'forgery kit']}, {toolChoose: {n: 1}}, {langChoose: {n: 2}}],
+    'Rogue|Scout|Survivalist': [{skill: {nature: 2, survival: 2}}],
+    'Sorcerer|Divine Soul|Divine Magic': [{spellList: ['Cleric']}, {pickChoose: {label: 'Affinity', from: ['Good', 'Evil', 'Law', 'Chaos', 'Neutrality'], then: Object.fromEntries([['Good', 'cure wounds'], ['Evil', 'inflict wounds'], ['Law', 'bless'], ['Chaos', 'bane'], ['Neutrality', 'protection from evil and good']].map(([k, sp]) => [k, [{spells: [{t: 'known', lvl: 1, sp: [sp]}]}]]))}}],
+    'Sorcerer|Storm|Wind Speaker': [{lang: ['Primordial']}],
+    'Warlock|Hexblade|Hex Warrior': [{armor: ['medium', 'shields']}, {weapon: ['martial']}],
+    'Warlock|Genie|The Genie': [{spells: [{t: 'expanded', lvl: 1, sp: ['detect evil and good', 'phantasmal force', 'create food and water', 'phantasmal killer', 'creation', 'wish']}]}, {pickChoose: {label: 'Genie Kind', from: ['Dao', 'Djinni', 'Efreeti', 'Marid'], then: Object.fromEntries(Object.entries({Dao: ['sanctuary', 'spike growth', 'meld into stone', 'stone shape', 'wall of stone'], Djinni: ['thunderwave', 'gust of wind', 'wind wall', 'greater invisibility', 'seeming'], Efreeti: ['burning hands', 'scorching ray', 'fireball', 'fire shield', 'flame strike'], Marid: ['fog cloud', 'blur', 'sleet storm', 'control water', 'cone of cold']}).map(([k, sp]) => [k, [{spells: [{t: 'expanded', lvl: 1, sp}]}]]))}}],
+    'Wizard|Bladesinging|Training in War and Song (Bladesinging)': [{armor: ['light']}, {skill: {performance: 1}}, {pickChoose: {label: 'Egykezes fegyver', weapon: true}}],
+    'opt|Pact of the Tome': [{spellChoose: {from: {l: 0}, n: 3}}],
+    'opt|Book of Ancient Secrets': [{spellChoose: {from: {l: 1, ri: true}, n: 2}}],
+    'opt|Blessed Warrior': [{spellChoose: {from: {list: 'Cleric', l: 0}, n: 2}}],
+    'opt|Druidic Warrior': [{spellChoose: {from: {list: 'Druid', l: 0}, n: 2}}],
   };
 
+  // a szabálykönyv hatásai, amelyeket a fenti tábla vált ki: 'all' = az 5e.tools több változatából csak az első került be (pl. Land: az Arctic), 'todo' = az általános ✋ teendő helyett van választás
+  const RB_FX_OFF = {'Druid|Land': 'all', 'Sorcerer|Divine Soul': 'all', 'Fighter|Arcane Archer': 'all', 'Warlock|Genie': 'all', 'Bard|Lore': 'todo', 'Cleric|Nature': 'todo',
+    'subrace|High': 'todo', 'opt|Pact of the Tome': 'todo', 'opt|Book of Ancient Secrets': 'todo', 'opt|Blessed Warrior': 'todo', 'opt|Druidic Warrior': 'todo'};
+  const rbFx = (kulcs, list) => RB_FX_OFF[kulcs] === 'all' ? [] : RB_FX_OFF[kulcs] === 'todo' ? (list || []).filter(f => !/varázslat választása/.test(f?.todo || '')) : list || [];
   // class table oszlop értéke az adott osztályszinten (pl. Ki Points, Martial Arts 1d6, Unarmored Movement +10)
   function colOf(cols, label, lvl) {
     const c = (cols || []).find(x => String(x.l).toLowerCase() === String(label).toLowerCase());
@@ -433,9 +486,11 @@ window.Sheet = (() => {
       for (const [t, kind] of Object.entries(CHOICE_KIND)) {
         if (!fx[t]) continue;
         const o = isObj(fx[t]) ? fx[t] : {}, key = keyOf(ctx, `${prefix}:${kind}`);
-        const c = {key, kind, src, n: Math.max(1, num(o.n, 1)), amt: num(o.amt, 1), from: o.from, value: b.ch[key]};
+        const c = {key, kind, src, n: Math.max(1, isObj(o.n) ? evalMax(o.n, {lvl: kor.lvl || 1}) : num(o.n, 1)), amt: num(o.amt, 1), from: o.from, value: b.ch[key], ...(o.label ? {label: o.label} : {})};
         choices.push(c); rec.ch[kind] = c;
         if (t === 'feat' && depth < 2) for (const ref of arr(b.ch[key], c.n)) featFx(ctx, ref, depth);
+        // a választott lehetőség saját hatásai (pl. Circle of the Land: a terep varázslatai)
+        if (t === 'pickChoose' && isObj(o.then)) for (const v of arr(b.ch[key], c.n)) if (typeof v === 'string' && Array.isArray(o.then[v])) addFx(ctx, o.then[v], src, `${prefix}:pick:${v}`, kor, depth + 1);
       }
       fxs.push(rec);
     }
@@ -476,9 +531,7 @@ window.Sheet = (() => {
       addFx(ctx, [...keep(race.fx), ...(FEATURE_FX['race|' + race.n] || [])], 'Faj: ' + race.n, 'race');
       traitFx(ctx, race.traits, 'Faj: ' + race.n, 'race');
     }
-    // ha a jellemző (pl. High Elf: Cantrip) igazi választást ad, a szabálykönyv általános ✋ teendője nem kell
-    const valaszt = (subrace?.traits || []).some(t => FEATURE_FX['race|' + t.n]?.some(f => f.spellChoose));
-    const subFx = (b.origin ? keep(subrace?.fx) : subrace?.fx || []).filter(f => !(valaszt && /varázslat választása/.test(f.todo || '')));
+    const subFx = rbFx('subrace|' + subrace?.n, b.origin ? keep(subrace?.fx) : subrace?.fx);
     if (subrace) { addFx(ctx, subFx, 'Alfaj: ' + subrace.n, 'subrace'); traitFx(ctx, subrace.traits, 'Alfaj: ' + subrace.n, 'subrace'); }
     if (b.origin) fxs.push({fx: {ab: b.origin}, src: 'Faj (áthelyezett bónusz, TCE)', ctx: {}, ch: {}});
     if (bg) {
@@ -513,7 +566,7 @@ window.Sheet = (() => {
         addFx(ctx, FEATURE_FX[`${c.name}|${f.n}`], `${f.n} (${c.name} ${f.lvl})`, `${c.name}:${f.lvl}`, kor);
       }
       if (sub) {
-        addFx(ctx, sub.fx, sub.n, `${c.name}:${sub.short}`, kor);
+        addFx(ctx, rbFx(`${c.name}|${sub.short}`, sub.fx), sub.n, `${c.name}:${sub.short}`, kor);
         for (const f of (rb.features || []).filter(x => x.cls === c.name && x.sub === sub.short && x.ss === sub.s && x.lvl <= c.level)) {
           features.push({name: f.n, text: f.tx || '', src: `${sub.short} ${f.lvl}`});
           addFx(ctx, FEATURE_FX[`${c.name}|${sub.short}|${f.n}`], `${f.n} (${sub.short} ${f.lvl})`, `${c.name}:${f.lvl}`, kor);
@@ -542,15 +595,18 @@ window.Sheet = (() => {
       else if (c.kind === 'lang' || c.kind === 'tool') {
         const from = Array.isArray(c.from) ? c.from.map(x => String(x).toLowerCase()) : null;
         ok = arr(c.value, 10).filter(x => typeof x === 'string' && x.trim() && (!from || from.includes(x.trim().toLowerCase())));
+      } else if (c.kind === 'pick') {
+        ok = arr(c.value, 10).filter(x => typeof x === 'string' && x.trim() && (!Array.isArray(c.from) || c.from.includes(x)));
       } else if (c.kind === 'spell') ok = arr(c.value, 10).filter(ref => { const sp = typeof ref === 'string' && rbFind(rb?.spells, ref); return sp && spellChooseFit(sp, c.from); });
       else if (c.kind === 'opt') {
         ok = arr(c.value, 30).filter(ref => { const o = rbFind(rb?.optfeatures, ref); return o && (o.t || []).some(t => c.from.includes(t)) && (!o.lv || o.lv <= c.ctx.lvl); });
       }
-      c.ok = [...new Set(ok.map(x => isObj(x) ? JSON.stringify(x) : x))].slice(0, c.n).map(x => typeof x === 'string' && x[0] === '{' ? JSON.parse(x) : x);
+      c.ok = [...new Set(ok.map(x => isObj(x) ? JSON.stringify(x) : x))].slice(0, c.n).map(x => c.kind === 'asi' && typeof x === 'string' ? JSON.parse(x) : x);
+      if (c.kind === 'pick') for (const v of c.ok) features.push({name: `${c.label || c.src}: ${v}`, text: '', src: c.src});
       if (c.kind === 'opt') for (const ref of c.ok) {
         const o = rbFind(rb.optfeatures, ref);
         features.push({name: o.n, text: o.tx || '', src: c.src});
-        addFx(ctx, [...(o.fx || []), ...(FEATURE_FX['opt|' + o.n] || [])], o.n, 'opt:' + o.n, c.ctx);
+        addFx(ctx, [...rbFx('opt|' + o.n, o.fx), ...(FEATURE_FX['opt|' + o.n] || [])], o.n, 'opt:' + o.n, c.ctx);
       }
     }
   }
@@ -560,13 +616,13 @@ window.Sheet = (() => {
     const abil = {};
     for (const a of ABIL) abil[a] = {base: b.base[a], parts: [{v: b.base[a], src: 'alapérték'}], set: null};
     const A = {saves: {}, skills: {}, expert: [], jack: null, remarkable: null, saveAll: null, saveBonus: [], hp: [], init: [], passive: {}, armor: [], weapon: [], tool: [], lang: [],
-      dv: 0, resist: [], acBase: [], acBonus: [], speed: [], heavyOk: false, mamCap: 2, rangedAtk: 0, duelDmg: 0, martialArts: null, res: [], spells: [], todo: []};
+      dv: 0, resist: [], acBase: [], acBonus: [], speed: [], heavyOk: false, mamCap: 2, rangedAtk: 0, duelDmg: 0, martialArts: null, res: [], spells: [], lists: [], todo: []};
     for (const {fx, src, ctx: kor, ch} of fxs) {
       if (isObj(fx.ab)) for (const a of ABIL) if (num(fx.ab[a])) abil[a].parts.push({v: num(fx.ab[a]), src});
       if (ch.ability) for (const a of ch.ability.ok) abil[a].parts.push({v: ch.ability.amt, src});
       if (isObj(fx.abSet)) for (const a of ABIL) if (num(fx.abSet[a]) > (abil[a].set?.v || 0)) abil[a].set = {v: num(fx.abSet[a]), src};
       for (const a of [...arr(fx.save, 6), ...(ch.saves?.ok || [])]) if (ABIL.includes(a) && !A.saves[a]) A.saves[a] = src;
-      if (isObj(fx.skill)) for (const k of Object.keys(fx.skill).map(skillKey)) if (SKILLS[k] && !A.skills[k]) A.skills[k] = {p: 1, src};
+      if (isObj(fx.skill)) for (const [n, v] of Object.entries(fx.skill)) { const k = skillKey(n); if (SKILLS[k] && (!A.skills[k] || (v === 2 && A.skills[k].p < 2))) A.skills[k] = {p: v === 2 ? 2 : 1, src}; }
       if (ch.skills) for (const k of ch.skills.ok) if (!A.skills[k]) A.skills[k] = {p: 1, src};
       if (ch.expertise) A.expert.push(ch.expertise);
       if (fx.jack && !A.jack) A.jack = src;
@@ -579,6 +635,8 @@ window.Sheet = (() => {
       if (isObj(fx.passive)) for (const [k, v] of Object.entries(fx.passive)) A.passive[k] = (A.passive[k] || 0) + num(v);
       for (const k of ['armor', 'weapon', 'tool', 'lang']) A[k].push(...arr(fx[k], 30).map(x => str(x, 80)));
       if (ch.tool) A.tool.push(...ch.tool.ok); if (ch.lang) A.lang.push(...ch.lang.ok);
+      if (ch.pick && fx.pickChoose.weapon) A.weapon.push(...ch.pick.ok);
+      if (Array.isArray(fx.spellList) && kor.cls) A.lists.push(...fx.spellList.map(l => ({l, cls: kor.cls})));
       if (num(fx.dv) > A.dv) A.dv = num(fx.dv);
       A.resist.push(...arr(fx.resist, 20).map(x => str(x, 40)));
       if (isObj(fx.acBase)) A.acBase.push({...fx.acBase, src});
@@ -792,7 +850,8 @@ window.Sheet = (() => {
     if (ctx.full && spells.length) for (const cast of casting) {
       const lvl = classes.find(c => c.name === cast.cls).level, sub = subclassOf(b, cast.cls, rb), rule = spellRule(cast.cls, lvl, sub);
       const expanded = A.spells.filter(x => x.t === 'expanded' && x.ctx.cls === cast.cls).flatMap(x => arr(x.sp, 30).map(n => String(n).toLowerCase()));
-      const kor = {cls: cast.cls, lvl, max: cast.maxSpell, list: rule.list, schools: rule.schools, off: rule.off, offAny: !!rule.offAny, expanded};
+      const lists = A.lists.filter(x => x.cls === cast.cls).map(x => x.l);
+      const kor = {cls: cast.cls, lvl, max: cast.maxSpell, list: rule.list, schools: rule.schools, off: rule.off, offAny: !!rule.offAny, expanded, ...(lists.length ? {lists} : {})};
       const helyek = [['cantrips', cast.cantrips, 'Cantrip'], ['known', cast.known ? cast.known + rule.extra : 0, 'Ismert varázslatok'], ['book', cast.cls === BOOK_CLASS ? 6 + 2 * (lvl - 1) : 0, 'Spellbook']];
       for (const [kind, n, label] of helyek) {
         if (!n) continue;
@@ -964,7 +1023,8 @@ window.Sheet = (() => {
     } else if (c.kind === 'expertise') {
       multi = true;
       const taken = new Set(others('expertise'));
-      opts = Object.keys(SKILLS).filter(k => cr?.skills?.[k]?.prof >= 1).map(k => ({v: k, l: skillLabel(k), note: taken.has(k) ? 'már expertise' : '', dis: taken.has(k)}));
+      // ami máshonnan már dupla (pl. Scout: Nature, Survival), arra hatástalan lenne
+      opts = Object.keys(SKILLS).filter(k => cr?.skills?.[k]?.prof >= 1).map(k => { const dupla = taken.has(k) || (cr.skills[k].prof === 2 && !cr.skills[k].ov && !has.has(k)); return {v: k, l: skillLabel(k), note: dupla ? 'már expertise' : '', dis: dupla}; });
     } else if (c.kind === 'lang') {
       // a PHB nyelvei (vagy a forrás listája); ami máshonnan már megvan, az „már tudja” és nem választható
       const own = new Set([...has].map(x => x.toLowerCase()));
@@ -983,6 +1043,7 @@ window.Sheet = (() => {
       const race = refName(c.src.replace(/^Faj: /, ''));
       opts = (rb?.subraces || []).filter(x => x.race === race).map(x => ({v: x.n + '|' + x.s, l: /\(alap\)$/.test(x.n) ? race + ' (alap)' : x.n}));
     } else if (c.kind === 'asi') opts = refs(rb?.feats);
+    else if (c.kind === 'pick') { if (Array.isArray(c.from)) opts = c.from.map(x => ({v: x, l: x})); else free = true; }
     else if (c.kind === 'spell') {
       // ami máshonnan már megvan (osztály, más faji varázslat), az nem választható
       const megvan = new Set([...(cr?.choices || []).filter(x => SPELL_KINDS.includes(x.kind)).flatMap(x => x.ok).map(refName), ...(cr?.always || []).map(x => x.name)].map(x => String(x).toLowerCase()));
