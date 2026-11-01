@@ -2811,6 +2811,119 @@ describe('Szintlépés: robot (minden osztály 1 → 20)', () => {
   }, {online: true});
 });
 
+describe('Átállítás és faji varázslat (sheet.js)', () => {
+  const rbElf = () => {
+    const rb = rbVarazs();
+    rb.races.push({n: 'Elf', s: 'PHB', subs: 1, fx: [{ab: {dex: 2}}, {skill: {perception: true}}], traits: []});
+    rb.subraces.push({n: 'High', race: 'Elf', s: 'PHB', fx: [{ab: {int: 1}}, {langChoose: {n: 1}}, {todo: 'known varázslat választása (1. szinttől)'}], traits: [{n: 'Cantrip', tx: 'Egy wizard cantrip.'}]});
+    rb.backgrounds = [{n: 'Sage', s: 'PHB', fx: [{skill: {arcana: true, history: true}}, {langChoose: {n: 2}}]}];
+    rb.subclasses = [...rb.subclasses.filter(x => x.short !== 'Fiend'), {n: 'The Fiend', short: 'Fiend', cls: 'Warlock', s: 'PHB', fx: [{spells: [{t: 'expanded', lvl: 1, sp: ['burning hands']}]}]}];
+    rb.spells = [...rb.spells.filter(x => x.n !== 'Burning Hands'), {n: 'Burning Hands', s: 'PHB', l: 1, sc: 'evocation', cl: ['Sorcerer', 'Wizard']}];
+    return rb;
+  };
+  const elf = (extra = {}) => ({auto: true, build: {base: {dex: 14}, levels: lv('Rogue', 1), race: 'Elf|PHB', subrace: 'High|PHB', spells: {}, ...extra}});
+  test('High Elf: valódi választás a Wizard cantripekből, ✋ teendő nélkül; a választott a lapra kerül; érvénytelen nem számít; ami megvan, nem választható', () => {
+    const H = W.Sheet, rb = rbElf();
+    let s = H.norm(elf()), cr = H.calc(s, rb), c = cr.choices.find(x => x.kind === 'spell');
+    ok(c && !c.done, 'van hely');
+    ok(!cr.todos.some(t => t.kind === 'manual' && /varázslat/.test(t.text)), 'nincs ✋ teendő');
+    const o = H.choiceOptions(c, cr, rb);
+    ok(!o.multi && !o.free && o.opts.length && o.opts.every(x => x.v.endsWith('|PHB')));
+    ok(o.opts.some(x => x.l === 'Fire Bolt') && !o.opts.some(x => x.l === 'Sleep') && !o.opts.some(x => x.l === 'Guidance'), 'csak Wizard cantrip');
+    s = H.norm({...s, build: H.setChoice(s.build, c, ['Fire Bolt|PHB'])});
+    cr = H.calc(s, rb); c = cr.choices.find(x => x.kind === 'spell');
+    ok(c.done, 'kész'); eq(c.ok, ['Fire Bolt|PHB']);
+    ok(cr.always.some(x => x.name === 'Fire Bolt' && x.level === 0), 'megvan');
+    const m = H.norm({...s, ...H.materialize(s, cr)});
+    ok(m.spells.some(x => x.name === 'Fire Bolt' && x.always), 'a Varázslat fülön');
+    // érvénytelen: nem Wizard vagy nem cantrip
+    for (const rossz of ['Guidance|PHB', 'Sleep|PHB', 'Nincs|PHB']) {
+      const y = H.norm({...s, build: H.setChoice(s.build, c, [rossz])}); ok(!H.calc(y, rb).choices.find(x => x.kind === 'spell').done, rossz);
+    }
+    // Wizardként a már tanult cantrip nem választható
+    const w = H.norm(elf({levels: lv('Wizard', 1), spells: {Wizard: {cantrips: ['Fire Bolt|PHB']}}})), cw = H.calc(w, rb);
+    ok(H.choiceOptions(cw.choices.find(x => x.kind === 'spell'), cw, rb).opts.find(x => x.l === 'Fire Bolt').dis);
+  });
+  test('átállítás: a nyitott helyek a meglévő jártasságokból, nyelvekből, faji varázslatból töltődnek; nem marad felülírás és új kérés; ami nem fér be, felülírás marad', () => {
+    const H = W.Sheet, rb = rbElf();
+    const lap = H.norm({race: 'High Elf', background: 'Sage', classes: [{name: 'Rogue', level: 1}], abilities: {dex: 16, int: 11},
+      skillProf: {arcana: 1, history: 1, perception: 1, stealth: 2, acrobatics: 2, deception: 1, insight: 1, 'sleight-of-hand': 1, athletics: 1},
+      profs: {languages: 'Common, Elvish, Dwarvish, Giant, Goblin', tools: "thieves' tools"}, spells: [{name: 'Fire Bolt', level: 0}]});
+    const p = H.toAuto(lap, rb), cr = H.calc({...lap, ...p}, rb);
+    const ch = k => cr.choices.find(x => x.key === k);
+    for (const k of ['stealth', 'acrobatics', 'sleight-of-hand']) ok(ch('Rogue:1:skills').ok.includes(k), 'skillek: ' + fmt(ch('Rogue:1:skills').ok));
+    ok(!ch('Rogue:1:skills').ok.includes('arcana') && !ch('Rogue:1:skills').ok.includes('perception'), 'ami máshonnan jár, nem foglal helyet');
+    eq(ch('Rogue:1:expertise').ok.sort(), ['acrobatics', 'stealth'], 'expertise');
+    eq(ch('subrace:lang').ok.length + ch('bg:lang').ok.length, 3, 'nyelvek');
+    eq(cr.choices.find(x => x.kind === 'spell').ok, ['Fire Bolt|PHB'], 'a faji cantrip');
+    for (const k of ['stealth', 'arcana', 'perception']) ok(!('skill:' + k in p.ov), k + ' nem felülírás');
+    eq(cr.skills.stealth.prof, 2);
+    // ami nem fér be egyetlen helyre sem, felülírásként megmarad (semmi nem vész el)
+    const sok = H.norm({...lap, skillProf: {...lap.skillProf, survival: 1, nature: 1, medicine: 1, religion: 1, intimidation: 1}});
+    const q = H.toAuto(sok, rb), c2 = H.calc({...sok, ...q}, rb);
+    for (const k of Object.keys(sok.skillProf)) ok(c2.skills[k].prof === sok.skillProf[k], k);
+  });
+  test('átállítás után a felülírásból jártas skill még választható a helyre (a már átállított lapokhoz), és a felülírás megszűnik; a máshonnan jártas nem, felülírással sem', () => {
+    const H = W.Sheet, rb = rbElf();
+    const s = H.norm({...elf(), ov: {'skill:stealth': 1, 'skill:perception': 2}}), cr = H.calc(s, rb), c = cr.choices.find(x => x.key === 'Rogue:1:skills');
+    const o = H.choiceOptions(c, cr, rb), sor = k => o.opts.find(x => x.v === k);
+    ok(!sor('stealth').dis, 'választható');
+    ok(sor('perception').dis, 'a fajtól jár, a felülírás expertise');
+    eq(H.ovAfterChoice(s, c, ['stealth']), {'skill:perception': 2});
+    const e = {kind: 'expertise'};
+    eq(H.ovAfterChoice(H.norm({ov: {'skill:stealth': 2}}), e, ['stealth']), {});
+    eq(H.ovAfterChoice(H.norm({ov: {'skill:stealth': 2}}), c, ['stealth']), {'skill:stealth': 2}, 'skill-hely az expertise felülírást nem viszi');
+    eq(H.ovAfterChoice(s, {kind: 'lang'}, ['x']), s.ov);
+  });
+  test('átállítás: a helyre nem férő nyelv, eszköz, páncél, fegyver, érzék, ellenállás nem vész el; a szinonima (light armor) nem duplázódik; szintlépés után is megmarad', () => {
+    const H = W.Sheet, rb = rbElf();
+    const lap = H.norm({classes: [{name: 'Fighter', level: 1}], abilities: {str: 16}, senses: 'blindsight 10 ft.', resist: 'poison',
+      profs: {armor: 'light armor, medium armor, heavy armor, shields, Saját vért', weapons: 'simple weapons, martial weapons, Saját fegyver', tools: 'Saját eszköz', languages: 'Common, Aquan, Druidic'}});
+    const p = H.toAuto(lap, rb);
+    eq([p.ov['plus:armor'], p.ov['plus:weapons'], p.ov['plus:tools'], p.ov['plus:senses'], p.ov['plus:resist']], ['Saját vért', 'Saját fegyver', 'Saját eszköz', 'blindsight 10 ft.', 'poison']);
+    has(p.ov['plus:languages'], 'Aquan');
+    const s = H.norm({...lap, ...p}), m = H.norm({...s, ...H.materialize(s, H.calc(s, rb))});
+    has(m.profs.languages, 'Druidic'); has(m.profs.armor, 'Saját vért'); has(m.profs.tools, 'Saját eszköz');
+    has(m.senses, 'blindsight'); has(m.resist, 'poison');
+    eq(H.norm(JSON.parse(JSON.stringify(m))).ov, m.ov, 'a tisztító stabil');
+    const u = H.norm({...m, ...H.levelUpApply(m, rb, H.levelUpBuild(m, 'Fighter'))});
+    has(u.profs.languages, 'Druidic', 'szintlépés után');
+    eq(H.norm({ov: {'plus:rossz': 'x', 'plus:armor': '  '}}).ov, {});
+  });
+  test('átállítás: a faji cantrip az osztálylistán kívülit veszi, és nem foglal osztályhelyet; a jegyzete megmarad', () => {
+    const H = W.Sheet, rb = rbElf();
+    const lap = H.norm({race: 'High Elf', classes: [{name: 'Bard', level: 1}], abilities: {cha: 16}, spells: [{name: 'Fire Bolt', level: 0, note: 'jegyzet'}, {name: 'Light', level: 0}, {name: 'Vicious Mockery', level: 0}]});
+    const s = H.norm({...lap, ...H.toAuto(lap, rb)}), cr = H.calc(s, rb);
+    eq(cr.choices.find(x => x.kind === 'spell').ok, ['Fire Bolt|PHB'], 'a Bard listáján nincs');
+    const b = H.adoptSpells(s, rb);
+    eq(b.spells.Bard.cantrips.sort(), ['Light|PHB', 'Vicious Mockery|PHB'], 'az osztályhelyre a többi');
+    const n = H.norm({...s, build: b}), m = H.norm({...n, ...H.materialize(n, H.calc(n, rb))});
+    eq(m.spells.filter(x => x.name === 'Fire Bolt').map(x => [x.always, x.note]), [[true, 'jegyzet']]);
+  });
+  test('Warlock: a patrón kibővíti a listát (Burning Hands); kézzel írt patrónnév is felismerve; két találatnál nem talál', () => {
+    const H = W.Sheet, rb = rbElf();
+    eq(['The Fiend', 'fiend', 'Fiend patron', 'A Fiend (ördög)'].map(n => H.subclassRef('Warlock', n, rb)), Array(4).fill('The Fiend|PHB'));
+    eq(H.subclassRef('Warlock', 'Sárkány', rb), '');
+    const l = H.norm({classes: [{name: 'Warlock', subclass: 'Fiend patron', level: 3}], abilities: {cha: 16}, spells: [{name: 'Burning Hands', level: 1, prepared: true}]});
+    const p = H.toAuto(l, rb), s = H.norm({...l, ...p});
+    eq(s.build.sub.Warlock, 'The Fiend|PHB');
+    const b = H.adoptSpells(s, rb);
+    eq(b.spells.Warlock.known, ['Burning Hands|PHB'], 'a meglévő varázslat besorolva');
+  });
+  test('valódi szabálykönyvvel: High Elf cantrip választható; Fiend Warlocknál a Burning Hands, más patrónnál nem; az átállítás a Wizard skilleket nem kéri újra', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet;
+    const s = H.norm({auto: true, build: {base: {}, levels: lv('Rogue', 1), race: 'Elf|PHB', subrace: 'High|PHB', spells: {}}}), cr = H.calc(s, rb), c = cr.choices.find(x => x.kind === 'spell');
+    ok(c, 'van hely'); ok(H.choiceOptions(c, cr, rb).opts.some(x => x.l === 'Fire Bolt'));
+    ok(!cr.todos.some(t => t.kind === 'manual' && /varázslat választása/.test(t.text)), 'nincs ✋');
+    const lista = sub => { const x = H.norm({auto: true, build: {base: {cha: 16}, levels: lv('Warlock', 3), sub: {Warlock: sub}, spells: {}}}), y = H.calc(x, rb); return H.choiceOptions(y.choices.find(k => k.kind === 'known'), y, rb).opts.map(k => k.l); };
+    ok(lista('The Fiend|PHB').includes('Burning Hands')); ok(!lista('The Archfey|PHB').includes('Burning Hands'));
+    const m = H.norm({race: 'High Elf', background: 'Sage', classes: [{name: 'Wizard', level: 3}], skillProf: {arcana: 1, history: 1, perception: 1, investigation: 1, medicine: 1}, abilities: {int: 16}, profs: {languages: 'Common, Elvish, Dwarvish, Giant, Goblin'}, spells: [{name: 'Fire Bolt', level: 0}]});
+    const p = H.toAuto(m, rb), c3 = H.calc({...m, ...p}, rb);
+    eq(['Wizard:1:skills', 'subrace:lang', 'bg:lang'].map(k => c3.choices.find(x => x.key === k).done), [true, true, true]);
+    eq(Object.keys(p.ov).filter(k => k.startsWith('skill:')), []);
+  }, {online: true});
+});
+
 describe('Választó-modul: további választástípusok (sheet.js)', () => {
   test('skill: a forrás listája vagy minden skill; a máshonnan jártas tiltva, a saját választás nem', () => {
     const H = W.Sheet, cr = {skills: {stealth: {prof: 1}, arcana: {prof: 1}}, choices: []};
@@ -3788,6 +3901,65 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     openSheet({...blank(), newChar: {step: 'kep', target: 1, methods: ['roll', 'buy', 'manual'], method: 'buy'}});
     await wait(30);
     ok(K.document.documentElement.scrollWidth <= K.document.documentElement.clientWidth + 1, 'nincs vízszintes görgetés 320 px-en');
+  });
+  ktest('új karakter, Alapok: az alignment legördülő, a régi érték megmarad; a portré tallózható és kicsinyítve kerül a lapra; nem kép: üzenet', async () => {
+    const H = K.Sheet;
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    openSheet({...JSON.parse(JSON.stringify(H.ncBlank({owner: 'a@x.hu'}))), alignment: 'saját <b>'});
+    const lap = () => K.eval('sheets.get("p1")'), al = () => kq('select[data-ncf="alignment"]');
+    eq(al().value, 'saját <b>', 'a nem szabványos érték is látszik');
+    eq([...al().options].filter(o => o.value).length, 10, '9 alignment + a saját');
+    ok(!kq('main b b'), 'nincs befecskendezés');
+    kset(al(), 'chaotic good'); eq(lap().alignment, 'chaotic good');
+    K.eval('render(true)'); eq(al().value, 'chaotic good');
+    eq([...al().options].filter(o => o.value).length, 9);
+    const cv = K.document.createElement('canvas'); cv.width = 800; cv.height = 400; cv.getContext('2d').fillRect(0, 0, 800, 400);
+    const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+    await K.ncPortre(blob);
+    ok(lap().portrait.startsWith('data:image/jpeg'), 'a lapon');
+    const kep = new K.Image(); await new Promise(r => { kep.onload = r; kep.src = lap().portrait; });
+    eq([kep.width, kep.height], [256, 256], 'kicsinyítve');
+    ok(kq('main img.av'), 'előnézet');
+    eq(kq('[data-ncf="portrait"]').value, '', 'a link mezőbe nem kerül');
+    ok(klog.some(l => l[0] === 'update' && l[2].portrait), 'a felhőbe is');
+    kclick('[data-act="ncPortreTorol"]'); eq(lap().portrait, '');
+    await K.ncPortre(new K.Blob(['nem kép'], {type: 'text/plain'}));
+    eq(lap().portrait, ''); has(kq('#toast').textContent, 'képként');
+  });
+  ktest('High Elf cantrip a felületen: Felépítésen választható, a Varázslat fülre kerül; a varázslóban kötelező; szintlépésnél zárolt; a felülírt skill a helyre választva tisztul', () => {
+    const rb = rbVarazs();
+    rb.races.push({n: 'Elf', s: 'PHB', subs: 1, fx: [], traits: []});
+    rb.subraces.push({n: 'High', race: 'Elf', s: 'PHB', fx: [{todo: 'known varázslat választása (1. szinttől)'}], traits: [{n: 'Cantrip', tx: 'x'}]});
+    K.KApp.setRulebook({version: 'v', rb});
+    const b = extra => ({base: {dex: 14}, levels: lv('Rogue', 1), race: 'Elf|PHB', subrace: 'High|PHB', spells: {}, ...extra});
+    openSheet({auto: true, build: b(), classes: [{name: 'Rogue', level: 1, hitDie: 8}], ov: {'skill:stealth': 1}});
+    const lap = () => K.eval('sheets.get("p1")'), sel = () => kq('select[data-ch="subrace:spell"]');
+    kclick('[data-tab="adat"]');
+    ok(sel(), 'van választó');
+    ok(!sel().disabled, 'nem szürke');
+    kset(sel(), 'Fire Bolt|PHB');
+    eq(lap().build.ch['subrace:spell'], ['Fire Bolt|PHB']);
+    ok(lap().spells.some(x => x.name === 'Fire Bolt'), 'a lapon');
+    const box = kqa('input[type=checkbox]').find(e => e.dataset.ch === 'Rogue:1:skills' && e.value === 'stealth');
+    ok(box && !box.disabled, 'a felülírt skill választható');
+    box.checked = true; box.dispatchEvent(new K.Event('change', {bubbles: true}));
+    eq(lap().ov['skill:stealth'], undefined, 'a felülírás megszűnt'); eq(lap().skillProf.stealth, 1);
+    // varázsló: kötelező
+    openSheet({auto: true, build: b(), newChar: {step: 'val', target: 1, methods: ['manual'], method: 'manual'}});
+    ok(sel(), 'a varázslóban is'); ok(kq('[data-act="ncNext"]').disabled, 'kötelező');
+    // szintlépés: a meglévő választás zárolt
+    openSheet({auto: true, build: b({levels: lv('Rogue', 3), sub: {Rogue: 'Thief|PHB'}, ch: {'subrace:spell': ['Fire Bolt|PHB'], 'Rogue:1:skills': ['stealth', 'perception', 'arcana', 'acrobatics'], 'Rogue:1:expertise': ['stealth', 'arcana']}}), classes: [{name: 'Rogue', subclass: 'Thief', level: 3, hitDie: 8}], levelUp: {to: 4}});
+    const plan = K.Sheet.levelUpPlan(lap(), rb, K.Sheet.levelUpBuild(lap(), 'Rogue'));
+    ok(![...plan.choices, ...plan.spells].some(x => x.c.kind === 'spell' && x.missing), 'nem kér újat');
+  });
+  ktest('varázslat-választó: szól, ha a helyek beteltek, és ha az alosztály még nincs kiválasztva', () => {
+    const rb = rbVarazs();
+    rb.subclasses.filter(x => x.cls === 'Warlock').forEach(x => { x.fx = [{spells: [{t: 'expanded', lvl: 1, sp: ['sleep']}]}]; });
+    K.KApp.setRulebook({version: 'v', rb});
+    openSheet({auto: true, build: {base: {cha: 16}, levels: lv('Warlock', 1), spells: {}}});
+    kclick('[data-tab="adat"]');
+    has(kq('#ch-Warlock_known').textContent, 'Előbb válaszd ki az alosztályt');
+    hasNot(kq('#ch-Warlock_known').textContent, 'Minden hely foglalt');
   });
   ktest('átállítás előtt mentés készül; ha a mentés nem megy, a lap nem változik', async () => {
     K.KApp.setRulebook({version: 'v', rb: rbVarazs()});

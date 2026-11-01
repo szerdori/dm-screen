@@ -178,7 +178,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=8"></script>
+<script src="sheet.js?v=9"></script>
 <script src="szerzodes.js?v=2"></script>
 <script>
 'use strict';
@@ -187,7 +187,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 8, szerzodes: 2};
+const VART_MODULOK = {kozos: 3, sheet: 9, szerzodes: 2};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -598,12 +598,15 @@ const optList = (opts, cur) => `<option value="">(válassz)</option>${cur && !op
 // varázslat-választó: fölül a választottak, alatta keresés és szintenként összecsukva a többi (egy Wizard-lista több száz sor)
 const chSearch = {};
 const spellHidden = (key, x) => { const q = (chSearch[key] || '').trim().toLowerCase(); return q && !x.l.toLowerCase().includes(q); };
-function spellPicker(c, o, lock) {
+function spellPicker(c, o, lock, cr) {
   const K = esc(c.key), sel = new Set(c.ok), full = !o.over && sel.size >= c.n, zar = lockedFn(c, lock);
+  // miért szürke vagy miért hiányzik egy varázslat: a helyek betelve; az alosztály (pl. Warlock patrón) még nincs kiválasztva, pedig a listát bővítheti
+  const nincsAl = cr?.choices.some(x => x.key === c.ctx.cls + ':sub' && !x.done) && H.subclassesOf(c.ctx.cls, RB()).some(x => JSON.stringify(x.fx || []).includes('"expanded"'));
+  const miert = `${full ? '<p class="hint" style="margin:4px 0">Minden hely foglalt: másikat csak akkor választhatsz, ha előbb leveszel egyet. Ezen felül saját varázslatot a Varázslat fülön vehetsz fel.</p>' : ''}${nincsAl ? '<p class="warn" style="margin:4px 0">Előbb válaszd ki az alosztályt: a kibővített varázslatlistája (pl. Warlock patrón) csak utána látszik.</p>' : ''}`;
   const item = x => `<label ${spellHidden(c.key, x) ? 'hidden' : ''} data-chl="${esc(x.l.toLowerCase())}"><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${zar(x.v) || (!sel.has(x.v) && (full || x.dis)) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`;
   const rest = o.opts.filter(x => !sel.has(x.v)), szintek = [...new Set(rest.map(x => x.lvl))];
   const off = c.ctx.off ? `<p class="hint" style="margin:4px 0">Ebből ${esc(c.ctx.off)} lehet a rendes listán kívül („kivétel”).</p>` : '';
-  return `${off}${sel.size ? `<div class="chopts">${o.opts.filter(x => sel.has(x.v)).map(item).join('')}</div>` : ''}
+  return `${miert}${off}${sel.size ? `<div class="chopts">${o.opts.filter(x => sel.has(x.v)).map(item).join('')}</div>` : ''}
     <input data-chq="${K}" value="${esc(chSearch[c.key] || '')}" placeholder="Keresés név szerint (angolul)…" autocomplete="off">
     ${szintek.map(l => det('chl:' + c.key + ':' + l, `<b>${l ? esc(H.ORD[l]) + ' level' : 'Cantrip'}</b> <span class="hint">(${rest.filter(x => x.lvl === l).length})</span>`,
       `<div class="chopts" style="margin-top:6px">${rest.filter(x => x.lvl === l).map(item).join('')}</div>`)).join('')}
@@ -628,7 +631,7 @@ function choiceBox(c, cr, lock = null) {
       + (mode === 'feat' ? `<select data-ch="${K}" data-asi="feat">${optList(o.opts, feat)}</select>`
         : [0, 1].map(j => `<select data-ch="${K}" data-asi="a${j}"><option value="">(+1: válassz képességet)</option>${H.ABIL.map(a => `<option value="${a}" ${picks[j] === a ? 'selected' : ''}>+1 ${a.toUpperCase()} (${esc(cr.abilities[a].v)})</option>`).join('')}</select>`).join('')
           + (picks.length === 1 ? '<p class="hint" style="margin:4px 0 0">Még 1 pont kiosztható.</p>' : ''));
-  } else if (H.SPELL_KINDS.includes(c.kind)) body = spellPicker(c, o, lock);
+  } else if (H.SPELL_KINDS.includes(c.kind)) body = spellPicker(c, o, lock, cr);
   else if (o.multi) {
     const sel = new Set(c.ok.map(String)), full = sel.size >= c.n;
     body = `<div class="chopts">${o.opts.map(x => `<label><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${zar(x.v) || (!sel.has(x.v) && (full || x.dis)) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`).join('')}</div>`
@@ -659,7 +662,8 @@ function choicePicked(t) {
   else if (c.kind === 'subclass' || c.kind === 'subrace') v = els[0].value;
   else v = els.map(e => e.value.trim()).filter(Boolean);
   if (lu) { lu.build = H.setChoice(lu.build, c, v); luStore(); render(true); return; }
-  patch({build: H.setChoice(s.build, c, v)});
+  const ov = H.ovAfterChoice(s, c, v);
+  patch({build: H.setChoice(s.build, c, v), ...(Object.keys(ov).length !== Object.keys(s.ov).length ? {ov} : {})});
 }
 
 // ---------- szintlépés-varázsló: a piszkozat (lu) egy ideiglenes felépítés; a mentésig a lap nem változik, és a telefonon megmarad (újratöltés, elalvó telefon) ----------
@@ -838,6 +842,25 @@ function luAct(act, el, s) {
 
 // ---------- új karakter: a kezdő varázsló a lap helyén fut; a választások egyből a lapra íródnak (másik eszközön folytatható, a DM is látja) ----------
 const NC_LEPESEK = [['alap', 'Alapok'], ['faj', 'Faj'], ['oszt', 'Osztály'], ['kep', 'Képességek'], ['hat', 'Háttér'], ['val', 'Választások'], ['var', 'Varázslatok'], ['sum', 'Összegzés']];
+const NC_ALIGN = ['lawful good', 'neutral good', 'chaotic good', 'lawful neutral', 'neutral', 'chaotic neutral', 'lawful evil', 'neutral evil', 'chaotic evil'];
+// a tallózott kép 256 px-re kicsinyítve kerül a lapra, hogy ne hízzon meg a lap és a mentés
+function ncPortre(file) {
+  return new Promise(kesz => {
+    const id = view.id, img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const m = 256, cv = document.createElement('canvas'); cv.width = cv.height = m;
+      const k = Math.max(m / img.width, m / img.height), w = img.width * k, h = img.height * k;
+      const g = cv.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, m, m);  // a JPEG-ben az átlátszó rész különben fekete lenne
+      g.drawImage(img, (m - w) / 2, (m - h) / 2, w, h);
+      URL.revokeObjectURL(url);
+      write(id, {portrait: cv.toDataURL('image/jpeg', 0.85)});
+      render(true); kesz();
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); toast('Ezt a fájlt nem sikerült képként megnyitni.', true); kesz(); };
+    img.src = url;
+  });
+}
 const NC_MOD = {array: 'Standard array', buy: 'Point buy', roll: 'Dobott (4d6)', manual: 'Kézi'};
 const ncSteps = plan => NC_LEPESEK.filter(([k]) => (k !== 'val' || plan.choices.length) && (k !== 'var' || plan.spells.length));
 function ncBlocked(s, plan, step) {
@@ -871,8 +894,10 @@ function ncStepBody(s, plan, step) {
   const b = s.build, rb = RB(), cr = plan.cr;
   const ft = list => list.length ? `<div class="list" style="margin-top:8px">${list.map(f => det('ncf:' + f.name + f.src, `<span class="nm"><b>${esc(f.name)}</b><small>${esc(f.src)}</small></span>`, f.text ? `<div class="tx">${esc(f.text)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>')).join('')}</div>` : '';
   if (step === 'alap') return `<p class="hint">A karakter neve és külseje. Ezeket később is átírhatod.</p>
-    <label>Név<input data-ncf="name" value="${esc(s.name)}" autocomplete="off"></label><label>Alignment<input data-ncf="alignment" value="${esc(s.alignment)}" placeholder="pl. chaotic good"></label>
-    <label>Portré (kép linkje, nem kötelező)<input data-ncf="portrait" value="${esc(s.portrait)}" placeholder="https://…"></label>`;
+    <label>Név<input data-ncf="name" value="${esc(s.name)}" autocomplete="off"></label>
+    <label>Alignment<select data-ncf="alignment"><option value="">(válassz)</option>${[...(s.alignment && !NC_ALIGN.includes(s.alignment) ? [s.alignment] : []), ...NC_ALIGN].map(a => `<option value="${esc(a)}" ${a === s.alignment ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select></label>
+    <div class="row" style="margin:10px 0 6px">${avatar(s.portrait, s.name)}<button data-act="ncPortre">📷 Kép tallózása…</button>${s.portrait ? '<button class="small" data-act="ncPortreTorol">Törlés</button>' : ''}<input type="file" id="ncPortreFile" accept="image/*" hidden></div>
+    <label>Vagy a kép linkje (nem kötelező)<input data-ncf="portrait" value="${s.portrait.startsWith('data:') ? '' : esc(s.portrait)}" placeholder="${s.portrait.startsWith('data:') ? '(feltöltött kép)' : 'https://…'}"></label>`;
   if (step === 'faj') {
     const races = H.raceOptions(rb), ri = races.findIndex(o => o.race === b.race && (o.subrace || '') === (b.subrace || ''));
     const nevek = [b.race, b.subrace].filter(Boolean).map(H.refName);
@@ -1332,6 +1357,8 @@ document.addEventListener('click', e => {
   if (!s && !['signIn', 'signOut', 'reload'].includes(act)) return;
   switch (act) {
     case 'luStart': if (canEdit(s) && luEnabled(s) && luReady(s) && !sheetStale) { luLoad(view.id, s); window.scrollTo(0, 0); render(true); } break;
+    case 'ncPortre': $('#ncPortreFile')?.click(); break;
+    case 'ncPortreTorol': if (s.newChar && canEdit(s)) patch({portrait: ''}); break;
     case 'ncCls': case 'ncMethod': case 'ncRollDo': case 'ncReroll': case 'ncNext': case 'ncBack': case 'ncDone': case 'ncSkip': if (s.newChar && canEdit(s)) ncAct(act, el, s); break;
     case 'luClose': case 'luCls': case 'luHow': case 'luNext': case 'luBack': case 'luSave': if (lu) luAct(act, el, s); break;
     case 'histRestore': case 'histFull': case 'histDl': {
@@ -1474,6 +1501,7 @@ document.addEventListener('change', e => {
   const t = e.target, s = cur(); if (!s) return;
   const i = +t.dataset.i, act = t.dataset.act;
   const setItem = f => patch(invPatch(s, s.inventory.map((it, k) => k === i ? {...it, ...f} : it), s.inventory[i]));
+  if (t.id === 'ncPortreFile') { if (t.files[0]) ncPortre(t.files[0]); return; }
   if (t.dataset.ncf) { ncCsend = Date.now() + 500; write(view.id, {[t.dataset.ncf]: t.value}); return; }  // újrarajzolás nélkül (a Tovább koppintása így nem vész el)
   if (t.dataset.ncPick) {
     const nc = s.newChar, pick = {...nc.pick};
