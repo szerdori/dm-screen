@@ -4276,6 +4276,8 @@ describe('Telefonos karakterlap (karakter.html)', () => {
   });
   ktest('HP: sebzés, gyógyítás, temp; mezőnként menti, a csapat felé is; 0 HP-n halálmentők', () => {
     openSheet({hp: {max: 24, cur: 24, temp: 0}});
+    // a gombok előjele a DM Screen szokását követi: + = sebzés, − = gyógyítás
+    eq([kq('[data-act="hpDmg"]').textContent, kq('[data-act="hpHeal"]').textContent], ['+ Sebzés', '− Gyógyítás']);
     kset('#hpIn', '5', 'input'); kclick('[data-act="hpDmg"]');
     eq(lastUpdate().hp, {max: 24, cur: 19, temp: 0}); eq(lastUpdate().updatedBy, 'a@x.hu');
     eq(Object.keys(lastUpdate()).sort(), ['hp', 'updatedAt', 'updatedBy'], 'csak a változott mező');

@@ -355,7 +355,7 @@ function hpBox(s, ed) {
   return `<div class="box">
     <div class="row spread"><div class="hpnum">${esc(s.hp.cur)}<small> / ${esc(s.hp.max)} HP</small></div>${s.hp.temp ? `<div class="chip" style="border-color:var(--blue)"><b>${esc(s.hp.temp)}</b><small>temp HP</small></div>` : ''}</div>
     ${ed ?`<div class="row hprow" style="margin-top:10px"><input id="hpIn" type="number" inputmode="numeric" min="0" placeholder="0">
-      <button data-act="hpDmg" style="border-color:var(--red)">− Sebzés</button><button data-act="hpHeal" style="border-color:var(--green)">+ Gyógyítás</button><button data-act="hpTemp">Temp</button></div>` : ''}
+      <button data-act="hpDmg" style="border-color:var(--red)">+ Sebzés</button><button data-act="hpHeal" style="border-color:var(--green)">− Gyógyítás</button><button data-act="hpTemp">Temp</button></div>` : ''}
     ${s.hp.cur === 0 ? `<div class="row" style="margin-top:10px"><b>Halálmentők</b> <span class="hint">siker</span> <span class="pips">${pips('ok', ds.ok)}</span> <span class="hint">kudarc</span> <span class="pips">${pips('fail', ds.fail)}</span>
       ${ed ? '<button class="small" data-act="dsRoll">🎲 Dobás</button>' : ''}${ds.ok >= 3 ? ' <b style="color:var(--green)">Stabil</b>' : ds.fail >= 3 ? ' <b style="color:var(--red)">Meghalt</b>' : ''}</div>` : ''}
   </div>`;
