@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 11;
+  const VERSION = 12;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -655,11 +655,11 @@ window.Sheet = (() => {
     ctx.A = A;
   }
   function calcExpertise(ctx) {
-    const {A, choices} = ctx;
-    // expertise csak jártas skillre (mindegyik után, hogy a sorrend ne számítson)
+    const {A, choices, ov} = ctx;
+    // expertise csak jártas skillre (mindegyik után, hogy a sorrend ne számítson); a csak kézi felülírásból (✎) jártas is az (kezi: a jártasság alapja a felülírás)
     for (const c of A.expert) {
-      c.ok = c.ok.filter(k => A.skills[k]);
-      for (const k of c.ok) A.skills[k] = {p: 2, src: A.skills[k].src + ' + expertise (' + c.src + ')'};
+      c.ok = c.ok.filter(k => A.skills[k] || ov['skill:' + k] >= 1);
+      for (const k of c.ok) A.skills[k] = A.skills[k] ? {...A.skills[k], p: 2, src: A.skills[k].src + ' + expertise (' + c.src + ')'} : {p: 2, src: 'kézi jártasság + expertise (' + c.src + ')', kezi: true};
     }
     // a választás kész állapota: az expertise szűrése után dől el
     for (const c of choices) c.done = c.ok.length >= c.n || ((c.kind === 'ability' || c.kind === 'saves') && c.ok.length >= listFrom(c).length);
@@ -704,14 +704,15 @@ window.Sheet = (() => {
     const skills = {};
     for (const k of Object.keys(SKILLS)) {
       const a = SKILLS[k], ra = A.remarkable && ['str', 'dex', 'con'].includes(a);
-      const pc = A.skills[k]?.p || (jack ? 0.5 : ra ? 0.5 : 0), p = 'skill:' + k in ov ? ov['skill:' + k] : pc;
+      // a kézi jártasságra választott expertise a felülírást felülmúlja (a felülírás csak az alapja)
+      const kezi = !!A.skills[k]?.kezi, pc = A.skills[k]?.p || (jack ? 0.5 : ra ? 0.5 : 0), p = kezi ? 2 : 'skill:' + k in ov ? ov['skill:' + k] : pc;
       const pv = p === 0.5 ? (ra && !('skill:' + k in ov) ? Math.max(halfUp, jack ? half : 0) : half) : p * PB;
       const label = p === 2 ? 'expertise' : p === 1 ? 'jártasság' : ra && pv === halfUp ? 'Remarkable Athlete' : 'Jack of All Trades';
-      skills[k] = {prof: p, ov: p !== pc, v: mods[a] + pv,
+      skills[k] = {prof: p, ov: p !== pc || kezi, v: mods[a] + pv,
         parts: [{v: mods[a], src: a.toUpperCase() + '-módosító'}, ...(p ? [{v: pv, src: label + (A.skills[k] && p === pc ? ' – ' + A.skills[k].src : '')}] : [])]};
     }
     // a felülírás nélküli jártasság a választóknak (nem része a kimenet szövegének: az aranyminta bájtra ugyanaz)
-    for (const k of Object.keys(SKILLS)) Object.defineProperty(skills[k], 'pc', {value: A.skills[k]?.p || 0});
+    for (const k of Object.keys(SKILLS)) Object.defineProperty(skills[k], 'pc', {value: A.skills[k]?.kezi ? 0 : A.skills[k]?.p || 0});
     const passive = Object.fromEntries(['perception', 'investigation', 'insight'].map(k => [k, 10 + skills[k].v + (A.passive[k] || 0)]));
     ctx.jack = jack;
     ctx.half = half;
@@ -1065,11 +1066,18 @@ window.Sheet = (() => {
     const sorok = new Set(o.opts.map(x => x.v));
     return arr(c.value, 120).filter(ref => { const sp = rbFind(rb?.spells, ref); return !sp || !sorok.has(sp.n + '|' + sp.s); });
   }
-  // ha a felülírásból jártas skillt egy helyre választják, a felülírás már nem kell (különben egy későbbi expertise hatástalan lenne)
-  function ovAfterChoice(s, c, v) {
+  // ha a felülírásból jártas skillt egy helyre választják, a felülírás már nem kell (különben egy későbbi expertise hatástalan lenne).
+  // Expertise-nél (cr = a választás előtti számolás) a csak felülírásból jártas skill felülírása marad 1-en: az a jártasság alapja, törölve a skill kiesne a választásból.
+  // A cr-t minden hívó adja át: nélküle a régi viselkedés (a felülírás törlődik).
+  function ovAfterChoice(s, c, v, cr) {
     if (c.kind !== 'skills' && c.kind !== 'expertise') return s.ov;
     const ov = {...s.ov};
-    for (const k of arr(v, 18).map(skillKey)) if ('skill:' + k in ov && ov['skill:' + k] <= (c.kind === 'expertise' ? 2 : 1)) delete ov['skill:' + k];
+    for (const k of arr(v, 18).map(skillKey)) {
+      const o = 'skill:' + k;
+      if (!(o in ov) || ov[o] > (c.kind === 'expertise' ? 2 : 1)) continue;
+      if (c.kind === 'expertise' && ov[o] >= 1 && cr?.skills?.[k] && !(cr.skills[k].pc >= 1)) ov[o] = 1;
+      else delete ov[o];
+    }
     return ov;
   }
   // a választás beírása a felépítésbe (alosztály → sub, alfaj → subrace, a többi → ch); üres érték = törlés

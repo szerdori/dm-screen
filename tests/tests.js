@@ -2875,6 +2875,33 @@ describe('Átállítás és faji varázslat (sheet.js)', () => {
     eq(H.ovAfterChoice(H.norm({ov: {'skill:stealth': 2}}), c, ['stealth']), {'skill:stealth': 2}, 'skill-hely az expertise felülírást nem viszi');
     eq(H.ovAfterChoice(s, {kind: 'lang'}, ['x']), s.ov);
   });
+  test('expertise a csak kézi felülírásból (✎) jártas skillre: kiválasztható, nem esik ki a választásból, és expertise lesz; levéve a jártasság marad', () => {
+    const H = W.Sheet, rb = rbElf();
+    // Rogue 1: a skill-hely más négy skillel tele, a Stealth és az Athletics csak felülírásból jártas (az utóbbi kézi expertise-szel)
+    let s = H.norm({...elf(), build: {...elf().build, ch: {'Rogue:1:skills': ['acrobatics', 'sleight-of-hand', 'arcana', 'perception']}}, ov: {'skill:stealth': 1, 'skill:athletics': 2}});
+    const pick = v => { const cr = H.calc(s, rb), c = cr.choices.find(x => x.key === 'Rogue:1:expertise'); s = H.norm({...s, build: H.setChoice(s.build, c, v), ov: H.ovAfterChoice(s, c, v, cr)}); return H.calc(s, rb); };
+    let cr = H.calc(s, rb), o = H.choiceOptions(cr.choices.find(x => x.key === 'Rogue:1:expertise'), cr, rb);
+    for (const k of ['stealth', 'athletics']) ok(o.opts.some(x => x.v === k && !x.dis), k + ' választható');
+    cr = pick(['stealth']);
+    eq(cr.choices.find(x => x.key === 'Rogue:1:expertise').ok, ['stealth'], 'a választás megmarad');
+    eq(cr.skills.stealth.prof, 2, 'expertise');
+    eq(s.ov['skill:stealth'], 1, 'a felülírás a jártasság alapjaként marad');
+    o = H.choiceOptions(cr.choices.find(x => x.key === 'Rogue:1:expertise'), cr, rb);
+    ok(o.opts.some(x => x.v === 'stealth'), 'a sor nem tűnik el');
+    cr = pick(['stealth', 'athletics']);
+    eq(cr.choices.find(x => x.key === 'Rogue:1:expertise').ok, ['stealth', 'athletics']);
+    ok(cr.choices.find(x => x.key === 'Rogue:1:expertise').done, 'kész');
+    eq([cr.skills.stealth.prof, cr.skills.athletics.prof, s.ov['skill:athletics']], [2, 2, 1], 'a kézi expertise-t a választás viszi, a jártasság alapja marad');
+    ok(cr.skills.stealth.ov, 'kézi jelölés (✎) marad');
+    // a skill-helyre választva a felülírás megszűnik, az expertise az új alapon marad
+    const c = cr.choices.find(x => x.key === 'Rogue:1:skills'), v = ['acrobatics', 'sleight-of-hand', 'arcana', 'stealth'];
+    ok(!H.choiceOptions(c, cr, rb).opts.find(x => x.v === 'stealth').dis, 'a kézi jártasság expertise-szel is helyre választható');
+    s = H.norm({...s, build: H.setChoice(s.build, c, v), ov: H.ovAfterChoice(s, c, v, cr)}); cr = H.calc(s, rb);
+    ok(!('skill:stealth' in s.ov), 'nincs felülírás');
+    eq([cr.skills.stealth.prof, cr.skills.stealth.ov], [2, false]);
+    cr = pick(['stealth']);
+    eq([cr.skills.athletics.prof, s.ov['skill:athletics']], [1, 1], 'levéve: a kézi jártasság marad');
+  });
   test('átállítás: a helyre nem férő nyelv, eszköz, páncél, fegyver, érzék, ellenállás nem vész el; a szinonima (light armor) nem duplázódik; szintlépés után is megmarad', () => {
     const H = W.Sheet, rb = rbElf();
     const lap = H.norm({classes: [{name: 'Fighter', level: 1}], abilities: {str: 16}, senses: 'blindsight 10 ft.', resist: 'poison',
@@ -4017,6 +4044,15 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     ok(box && !box.disabled, 'a felülírt skill választható');
     box.checked = true; box.dispatchEvent(new K.Event('change', {bubbles: true}));
     eq(lap().ov['skill:stealth'], undefined, 'a felülírás megszűnt'); eq(lap().skillProf.stealth, 1);
+    // expertise a csak felülírásból jártas skillre: a doboz bepipálva megmarad, a felülírás 1-re vált (2 → 1 is beíródik), a ✎ sor szól
+    openSheet({auto: true, build: b({ch: {'Rogue:1:skills': ['perception', 'arcana', 'acrobatics', 'sleight-of-hand']}}), classes: [{name: 'Rogue', level: 1, hitDie: 8}], ov: {'skill:stealth': 2}});
+    kclick('[data-tab="adat"]');
+    const exp = () => kqa('input[type=checkbox]').find(e => e.dataset.ch === 'Rogue:1:expertise' && e.value === 'stealth');
+    ok(exp() && !exp().disabled, 'expertise-re választható');
+    exp().checked = true; exp().dispatchEvent(new K.Event('change', {bubbles: true}));
+    ok(exp() && exp().checked, 'a doboz megmaradt, bepipálva');
+    eq([lap().ov['skill:stealth'], lap().skillProf.stealth], [1, 2]);
+    has(K.document.body.textContent, 'az expertise a Felépítés választásából jön');
     // varázsló: kötelező
     openSheet({auto: true, build: b(), newChar: {step: 'val', target: 1, methods: ['manual'], method: 'manual'}});
     ok(sel(), 'a varázslóban is'); ok(kq('[data-act="ncNext"]').disabled, 'kötelező');

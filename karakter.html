@@ -189,7 +189,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 <div id="infoPop" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=11"></script>
+<script src="sheet.js?v=12"></script>
 <script src="szerzodes.js?v=2"></script>
 <script>
 'use strict';
@@ -198,7 +198,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 11, szerzodes: 2};
+const VART_MODULOK = {kozos: 3, sheet: 12, szerzodes: 2};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -673,8 +673,8 @@ function choicePicked(t) {
   else if (c.kind === 'subclass' || c.kind === 'subrace') v = els[0].value;
   else v = els.map(e => e.value.trim()).filter(Boolean);
   if (lu) { lu.build = H.setChoice(lu.build, c, v); luStore(); render(true); return; }
-  const ov = H.ovAfterChoice(s, c, v);
-  patch({build: H.setChoice(s.build, c, v), ...(Object.keys(ov).length !== Object.keys(s.ov).length ? {ov} : {})});
+  const ov = H.ovAfterChoice(s, c, v, calcOf(s));
+  patch({build: H.setChoice(s.build, c, v), ...(JSON.stringify(ov) !== JSON.stringify(s.ov) ? {ov} : {})});
 }
 
 // ---------- szintlépés-varázsló: a piszkozat (lu) egy ideiglenes felépítés; a mentésig a lap nem változik, és a telefonon megmarad (újratöltés, elalvó telefon) ----------
@@ -1100,7 +1100,8 @@ function ovRow(s, key, label, x, kind = 'num') {
     : `<input data-ov="${esc(key)}" ${kind === 'num' ? 'type="number" inputmode="numeric"' : ''} value="${esc(cur)}" placeholder="számolt: ${esc(x.calc ?? x.v)}">`;
   return det('ov:' + key, `<span class="nm"><b>${esc(label)}</b>${isOv ? ` <span class="warn" title="kézzel felülírva">✎</span>${x.calc != null && x.calc !== x.v ? `<small>számolt: ${esc(x.calc)}</small>` : ''}` : ''}</span><b>${esc(shown)}</b>`,
     `${parts ? `<div class="hint" style="margin-top:6px">ℹ Bontás</div><ul class="parts">${parts}</ul>` : ''}
-    <div class="row" style="margin-top:8px"><label class="hint grow">✎ Felülírás${edit}</label>${kind === 'text' ? iGomb(H.MEZO_INFO.speed) : ''}${isOv ? `<button class="small" data-act="ovReset" data-key="${esc(key)}">↺ számolt</button>` : ''}</div>`);
+    <div class="row" style="margin-top:8px"><label class="hint grow">✎ Felülírás${edit}</label>${kind === 'text' ? iGomb(H.MEZO_INFO.speed) : ''}${isOv ? `<button class="small" data-act="ovReset" data-key="${esc(key)}">↺ számolt</button>` : ''}</div>
+    ${kind === 'skill' && isOv && x.prof === 2 && s.ov[key] < 2 ? '<p class="hint" style="margin:4px 0 0">A jártasság kézi, az expertise a Felépítés választásából jön: levenni ott lehet.</p>' : ''}`);
 }
 // ---------- felugró leírás (i gomb): a teendők és a szabad szöveges mezők magyarázata; a szövegek a sheet.js-ben (Sheet.todoInfo, freeInfo, MEZO_INFO) ----------
 const infoReg = new Map();
