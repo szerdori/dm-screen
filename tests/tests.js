@@ -1738,13 +1738,13 @@ describe('Csapat: tagok és rendezés', () => {
 // ======================================================================
 describe('Játékos app: láthatóság és közzététel', () => {
   const npc = (name, share, extra = {}) => ({name, kind: 'npc', ac: 13, hp: {max: 20, cur: 8}, share, ...extra});
-  test('tisztítás: gazda csak játékosnál, kisbetűvel; hibás e-mail kimarad; alapértékek típusonként', () => {
+  test('tisztítás: gazda játékosnál és NPC-nél (szörnynél nem), kisbetűvel; hibás e-mail kimarad; alapértékek típusonként', () => {
     const p = W.normCreature(pc('Rella', 3, {owner: '  Jatekos@Example.COM '}));
     eq([p.owner, p.share], ['jatekos@example.com', {vis: 'party', hp: 'exact', ac: true}]);
     eq(W.normCreature(pc('X', 1, {owner: 'nem email'})).owner, undefined);
     eq(W.normCreature(pc('X', 1, {owner: '<b>@x.hu'})).owner, undefined);
     const n = W.normCreature(npc('Bob', null, {owner: 'a@b.hu'}));
-    eq([n.owner, n.share], [undefined, {vis: 'dm', hp: 'label', ac: false}]);
+    eq([n.owner, n.share], ['a@b.hu', {vis: 'dm', hp: 'label', ac: false}], 'NPC-nél is megmarad (a visszaállításhoz)');
     eq(W.normCreature(npc('Bob', {vis: 'xx', hp: 'yy', ac: 'igen'})).share, {vis: 'dm', hp: 'label', ac: false});
     const m = W.normCreature(mk('Goblin', {owner: 'a@b.hu', share: {vis: 'party'}}));
     eq([m.owner, m.share], [undefined, undefined]);
@@ -3268,6 +3268,60 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     eq([x.hp, x.temp], [20, 5]);
     W.damage(x, 7); W.save(); await wait(500);
     eq(f.store['sheets/p1'].hp, {max: 24, cur: 18, temp: 0});
+  });
+  test('Játékos → NPC → Játékos: NPC-ként a lap gazda nélküli (a játékos nem látja), az e-mail megmarad; visszaállítva ugyanaz a lap, semmi nem vész el', async () => {
+    // gazdag lap: szintek, felépítés (választások, varázslatok), tárgyak, pénz, HP, szintlépés-engedély
+    const gazdag = sheetDoc({auto: true, classes: [{name: 'Rogue', subclass: 'Thief', level: 3, hitDie: 8}],
+      build: {base: {dex: 16, con: 14}, levels: lv('Rogue', 3), sub: {Rogue: 'Thief|PHB'}, spells: {}, ch: {'Rogue:1:skills': ['stealth', 'perception', 'arcana', 'acrobatics'], 'Rogue:1:expertise': ['stealth', 'arcana']}},
+      spells: [{name: 'Mage Hand', level: 0}, {name: 'Sleep', level: 1, prepared: true, note: 'jegyzet'}], inventory: [{name: 'Bag of Holding', qty: 1, ref: 'Bag of Holding|DMG'}, {name: 'Rope', qty: 2}],
+      currency: {gp: 42, sp: 3}, hp: {max: 24, cur: 17, temp: 2}, notes: 'titok', levelUp: {to: 4}});
+    const f = await loadWith({'sheets/p1': gazdag});
+    const nelkul = s => { const {owner, updatedAt, updatedBy, ...rest} = s; return W.stableJson(rest); }, eredeti = nelkul(f.store['sheets/p1']);
+    const tipus = async k => { W.openLib('lib'); click('[data-act="libEdit"]'); setVal($('#edForm').elements.kind, k); return $('#edForm'); };
+    // → NPC: a szerkesztő szól, az e-mail megmarad, a lap és a nyilvános rész gazda nélküli
+    let fm = await tipus('npc');
+    has(fm.textContent, 'a@x.hu telefonos lapja megmarad, de amíg NPC, a játékos nem látja');
+    f.log.splice(0); click('[data-act="edSave"]'); await wait(500);
+    eq([lib().kind, lib().owner], ['npc', 'a@x.hu']);
+    eq(f.store['sheets/p1'].owner, '', 'a játékos nem látja / nem szerkeszti (a szabály a lap gazdáját nézi)');
+    ok(f.log.includes('update sheets/p1 owner'), f.log.join('; '));
+    ok(!f.store['characters/p1'] || f.store['characters/p1'].owner === '', 'a nyilvános rész sem az övé');
+    eq(nelkul(f.store['sheets/p1']), eredeti, 'a lap többi része változatlan');
+    // a lap változása (pl. a DM írja a telefonján) nem állítja vissza Játékosra
+    f.store['sheets/p1'].hp.cur = 16; f.emit('sheets'); await wait(500);
+    eq([lib().kind, lib().owner, f.store['sheets/p1'].owner], ['npc', 'a@x.hu', '']);
+    f.store['sheets/p1'].hp.cur = 17; f.emit('sheets'); await wait(500);
+    // → Játékos: a lap visszakapja a gazdát, minden más ugyanaz
+    fm = await tipus('pc');
+    eq(fm.elements.owner.value, 'a@x.hu', 'az e-mail újra beírás nélkül ott van');
+    f.log.splice(0); click('[data-act="edSave"]'); await wait(500);
+    eq([lib().kind, f.store['sheets/p1'].owner, f.store['characters/p1'].owner], ['pc', 'a@x.hu', 'a@x.hu']);
+    eq(nelkul(f.store['sheets/p1']), eredeti, 'szint, választások, varázslatok, tárgyak, pénz, HP, engedély: semmi nem veszett el');
+    ok(!f.log.some(l => /update sheets\/p1 (?!owner$)/.test(l)), 'csak a gazda íródott: ' + f.log.join('; '));
+  });
+  test('NPC-vé tett játékos betöltéskor: ha a lapon még ott a gazda (pl. elmaradt írás), mentéskor lekerül; a régebben NPC-vé tett e-mailje a lapról átmentődik', async () => {
+    let f = await loadWith({'dmscreen_library/p1': pc('Régi név', 1, {id: 'p1', owner: 'a@x.hu', kind: 'npc'})});
+    eq([lib().kind, lib().owner], ['npc', 'a@x.hu']);
+    A('save()'); await wait(500);
+    eq(f.store['sheets/p1'].owner, '');
+    eq(W.playerEmails(), [], 'NPC gazdája nem kerül a játékosok listájára');
+    // a régi kód az NPC-ről letörölte az e-mailt, a lapon viszont megmaradt: most a könyvtárba kerül, a lapról lekerül
+    f = await loadWith({'dmscreen_library/p1': pc('Régi név', 1, {id: 'p1', kind: 'npc'})});
+    A('save()'); await wait(500);
+    eq([lib().owner, f.store['sheets/p1'].owner], ['a@x.hu', '']);
+  });
+  test('NPC-ként a DM szerkesztése (AC, tárgy) továbbra is a lapra kerül, a harcbeli HP nem; törölt, majd NPC-vé tett karakter visszahozva gazda nélküli lapot kap', async () => {
+    const f = await loadWith({'dmscreen_library/p1': pc('Régi név', 1, {id: 'p1', owner: 'a@x.hu', kind: 'npc'})});
+    A('save()'); await wait(500); f.log.splice(0);
+    A('S.library[0].ac = 18; save()'); await wait(500);
+    eq([f.store['sheets/p1'].ac, f.store['sheets/p1'].owner], [18, '']);
+    const [x] = W.addToEncounter(lib(), 1), hp0 = f.store['sheets/p1'].hp.cur;
+    W.damage(x, 3); W.save(); await wait(500);
+    eq(f.store['sheets/p1'].hp.cur, hp0, 'NPC-ként a harcbeli sebzés nem a lapé');
+    // visszahozás NPC-ként
+    A('SHEETS.p1 = Sheet.norm({...SHEETS.p1, owner: "", deleted: {owner: "a@x.hu", vis: "party", at: "2026-11-01T00:00:00.000Z", by: "a@x.hu"}})');
+    ok(W.lapVisszahoz('p1')); await wait(300);
+    eq([lib().owner, f.store['sheets/p1'].owner, f.store['sheets/p1'].deleted ?? null], ['a@x.hu', '', null]);
   });
   test('DM oldali módosítás (tárgy a Tárgyak fülről, gazda, AC a szerkesztőben) mezőnként a lapra kerül', async () => {
     const f = await loadWith();

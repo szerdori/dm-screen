@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 6);
+modul('lapszinkron', 7);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -9,7 +9,7 @@ modul('lapszinkron', 6);
 // visszaíródik a lapra. Hogy melyik oldal változott, azt a „shadow” dönti el: a legutóbb egyeztetett értékek másolata.
 let SHEETS = {}, shadow = {}, cshadow = {}, sheetOps = {set: new Set(), del: new Set()}, sheetUnsub = null, sheetsWarn = '';
 const LINK = {name: 'name', portrait: 'portrait', owner: 'owner', ac: 'ac', hpMax: 'hp.max', hpCur: 'hp.cur', speed: 'speed', abilities: 'abilities', inventory: 'inventory', currency: 'currency'};
-const linkFields = c => ({name: c.name, portrait: c.portrait || '', owner: c.owner || '', ac: c.ac, hpMax: c.hp.max, hpCur: c.hp.cur ?? c.hp.max,
+const linkFields = c => ({name: c.name, portrait: c.portrait || '', owner: c.kind === 'pc' ? c.owner || '' : '', ac: c.ac, hpMax: c.hp.max, hpCur: c.hp.cur ?? c.hp.max,
   speed: c.speed, abilities: c.abilities, inventory: Sheet.normInventory(c.inventory), currency: c.currency});
 // a harcbeli példány lappal egyeztetett része: HP, temp, koncentráció, állapotok (az „Exhaustion” a lapon szint, az nem megy át)
 const syncedConds = list => list.map(k => k.name ?? k).filter(n => n && n !== 'Exhaustion');
@@ -41,7 +41,8 @@ function sheetToCreature(s, base) {
   }
   // az AC és a speed az aktív hatásokkal (Mage Armor, Haste, Grappled…) együtt; a hatások a lap állapotai között vannak
   const fx = H.effects(s);
-  return normCreature({...base, kind: 'pc', name: s.name, portrait: s.portrait, cr: 'Szint ' + H.level(s),
+  // a típus a könyvtári lényé marad: NPC-vé tett játékosnál a lap változása se állítsa vissza Játékosra
+  return normCreature({...base, kind: base?.kind === 'npc' ? 'npc' : 'pc', name: s.name, portrait: s.portrait, cr: 'Szint ' + H.level(s),
     type: [s.race, H.classLabel(s)].filter(Boolean).join(' — '), alignment: s.alignment, ac: fx.ac,
     acNote: [s.acNote, fx.acParts.length ? '+ ' + fx.acParts.join(', ') : ''].filter(Boolean).join(' '),
     hp: {max: s.hp.max, cur: s.hp.cur, formula: ''}, speed: fx.speed, abilities: s.abilities, saves, skillMods,
@@ -73,10 +74,16 @@ function syncSheets(ops) {
   for (const id of sheetOps.del) { delete SHEETS[id]; delete shadow[id]; if (Tar.kapcsolva()) ops.push(Tar.lapok.torol(id), elozmenyTakarit(id, 0)); }
   sheetOps.del.clear();
   for (const c of S.library) {
-    const s = SHEETS[c.id]; if (!s || c.kind !== 'pc') continue;
+    const s = SHEETS[c.id]; if (!s) continue;
+    // NPC-vé tett játékos: a lapja gazda nélküli, így a játékos nem látja és nem szerkeszti; a gazda e-mailje a könyvtárban marad,
+    // Játékosra visszaállítva a lap visszakapja. A név, AC, HP, képességek, tárgyak szinkronja közben is megy (nincs mit szétválni), a harcbeli HP nem.
+    const jatekos = c.kind === 'pc';
+    if (!jatekos && !c.owner && s.owner && !s.deleted) c.owner = s.owner;  // a régebben NPC-vé tett: az e-mail csak a lapon maradt meg
     if (s.deleted) { c.owner = ''; c.share = {...c.share, vis: 'dm'}; }  // törölt karakter gazdát csak a visszahozással kap
-    const patch = {};
-    for (const x of S.enc.list) if (x.c.libId === c.id) {
+    const patch = {}, gazda = jatekos ? c.owner || '' : '';
+    // a lap gazdája mindig a könyvtárból jön (NPC-nél üres; NPC-ből visszaállítva, vagy ha egy korábbi írás elmaradt, helyreáll)
+    if (!s.deleted && (s.owner || '') !== gazda) patch.owner = gazda;
+    if (jatekos) for (const x of S.enc.list) if (x.c.libId === c.id) {
       // most került harcba: a lap értékeihez mérjük (a hozzáadáskor onnan kapta a HP-t)
       const prev = cshadow[x.cid] ?? JSON.stringify([s.hp.cur, s.hp.temp, !!s.concentration, syncedConds(s.conditions)]);
       const [ph, pt, pc, pk] = JSON.parse(prev);
@@ -173,10 +180,12 @@ function lapVisszahoz(id) {
   const s = SHEETS[id], lib = S.library.find(c => c.id === id);
   if (!s?.deleted || !lib || regiFajl()) return false;
   const {owner, vis} = s.deleted, updatedAt = new Date().toISOString(), updatedBy = authInfo.email || 'DM';
-  SHEETS[id] = Sheet.norm({...s, owner, deleted: null, updatedAt, updatedBy});
+  // NPC-nél az e-mail a könyvtárba kerül, a lap gazda nélküli marad (a játékos csak Játékosra visszaállítva látja)
+  const lapGazda = lib.kind === 'pc' ? owner : '';
+  SHEETS[id] = Sheet.norm({...s, owner: lapGazda, deleted: null, updatedAt, updatedBy});
   lib.owner = owner; lib.share = {...lib.share, vis};
   shadow[id] = stableJson(linkFields(lib));
-  if (Tar.kapcsolva()) Tar.lapok.mezok(id, {owner, deleted: null, updatedAt, updatedBy}).catch(e => Ertesito.naplo(`⚠ A visszahozás mentése nem sikerült (${esc(e.code || e.message)}).`, 'warn'));
+  if (Tar.kapcsolva()) Tar.lapok.mezok(id, {owner: lapGazda, deleted: null, updatedAt, updatedBy}).catch(e => Ertesito.naplo(`⚠ A visszahozás mentése nem sikerült (${esc(e.code || e.message)}).`, 'warn'));
   save();
   return true;
 }

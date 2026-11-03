@@ -101,7 +101,8 @@ window.Szerzodes = (() => {
     o.importedAt = typeof c.importedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(c.importedAt) ? c.importedAt : '';
     // játékos app: kié a karakter (Google-fiók), ki láthatja, és NPC-nél mennyi látszik belőle
     const owner = str(c.owner).trim().toLowerCase();
-    if (o.kind === 'pc' && EMAIL_RE.test(owner)) o.owner = owner; else delete o.owner;
+    // NPC-nél is megmarad (egy NPC-vé tett játékos visszaállításához), de ott sehol nem számít gazdának: a lapja és a nyilvános része gazda nélküli
+    if (o.kind !== 'monster' && EMAIL_RE.test(owner)) o.owner = owner; else delete o.owner;
     if (o.kind === 'monster') delete o.share;
     else {
       const sh = isObj(c.share) ? c.share : {}, npc = o.kind === 'npc';
@@ -162,7 +163,7 @@ window.Szerzodes = (() => {
     };
   }
 
-  if (typeof modul === 'function') modul('szerzodes', 3);
+  if (typeof modul === 'function') modul('szerzodes', 4);
   return {UT, HELYI, CSATORNA, SECTIONS, TEMPLATE, KINDS, SIDES, VIS, ALLAPOTOK, ALAP_BEALLITASOK, str, safeId, blankCreature, splitEntry,
     normInventory, normCreature, normCombatant, sanitizeState, normPublicChar};
 })();

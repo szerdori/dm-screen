@@ -20,13 +20,13 @@ window.Tar = (() => {
   function nyilvanosResz(library) {
     return library.filter(c => c.kind === 'pc' ? c.owner || c.share.vis === 'party' : c.kind === 'npc' && c.share.vis === 'party').map(c => {
       const pc = c.kind === 'pc', cur = c.hp.cur ?? c.hp.max, exact = pc || c.share.hp === 'exact';
-      return {id: c.id, kind: c.kind, owner: c.owner || '', visibility: c.share.vis, name: c.name, portrait: c.portrait || '',
+      return {id: c.id, kind: c.kind, owner: pc ? c.owner || '' : '', visibility: c.share.vis, name: c.name, portrait: c.portrait || '',
         level: pc ? c.cr : '', ac: pc || c.share.ac ? c.ac : null,
         hp: exact ? {cur, max: c.hp.max} : null, status: exact ? null : Sheet.hpStatus(cur, c.hp.max)};
     });
   }
 
-  if (typeof modul === 'function') modul('tar', 2);
+  if (typeof modul === 'function') modul('tar', 3);
   return {
     kapcsol: port => { db = port || null; },
     kapcsolva: () => !!db,

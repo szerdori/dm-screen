@@ -67,6 +67,7 @@ function shareFieldsHtml(c, note = '') {
       <label data-for="npc">AC a játékosoknak<select name="shareAc">${opt('1', 'látszik', sh.ac ? '1' : '0')}${opt('0', 'rejtve', sh.ac ? '1' : '0')}</select></label>
       <p class="hint w4" data-for="pc">A játékos a saját karakterét mindig látja. „Csak a DM” esetén a többi játékos nem látja.</p>
       <p class="hint w4" data-for="npc">„Csak a DM” esetén a játékosok egyáltalán nem látják ezt az NPC-t. A statok, akciók és jegyzetek sosem látszanak.</p>
+      ${!c.libId && c.owner && SHEETS[c.id] ? `<p class="hint w4" data-for="npc" style="border:1px solid var(--accent);border-radius:6px;padding:6px 8px">📱 ${esc(c.owner)} telefonos lapja megmarad, de amíg NPC, a játékos nem látja és nem szerkeszti. Játékosra visszaállítva ugyanúgy látja és szerkesztheti (a szint, a választások, a varázslatok és a tárgyak megmaradnak).</p>` : ''}
       ${note ? `<p class="hint w4">${esc(note)}</p>` : ''}
     </div>`;
 }
