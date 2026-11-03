@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 13;
+  const VERSION = 14;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -121,7 +121,7 @@ window.Sheet = (() => {
     }
     return out;
   }
-  // a szabálymotor által számolt tételek (jellemző, erőforrás, támadás, mindig felkészített spell) jelölése; a sajátok nem kapják meg
+  // a szabálymotor által számolt tételek (jellemző, erőforrás, támadás, mindig bekészített spell) jelölése; a sajátok nem kapják meg
   const AUTO = x => x.auto ? {auto: true} : {};
   // a számolt értékek gyorsítótára (a régi számoló függvények és a DM Screen ezt olvassa a szabálymotoros lapnál)
   function normCache(c) {
@@ -461,7 +461,7 @@ window.Sheet = (() => {
     const m = t.match(/^lvl\*(\d+)$/);
     return m ? ctx.lvl * +m[1] : 0;
   }
-  // felkészíthető varázslatok száma (pl. 'lvl+wis', 'lvl/2+cha'), legalább 1
+  // bekészíthető varázslatok száma (pl. 'lvl+wis', 'lvl/2+cha'), legalább 1
   function prepCount(expr, lvl, mods) {
     if (!expr) return 0;
     let t = 0;
@@ -830,7 +830,7 @@ window.Sheet = (() => {
       casting.push({cls: c.name, type, ab, dc: 8 + PB + mods[ab], atk: PB + mods[ab], cantrips: num(tbl.cantrips?.[c.level - 1]), known: num(tbl.known?.[c.level - 1]),
         prepared: !sub?.caster && ci.r?.prep ? prepCount(ci.r.prep, c.level, mods) : 0, maxSpell: maxSpellLevel(type, c.level)});
     }
-    // mindig felkészített / ismert varázslatok (domain, oath, faji)
+    // mindig bekészített / ismert varázslatok (domain, oath, faji)
     const always = [];
     for (const x of A.spells) {
       if (!['prepared', 'known', 'innate'].includes(x.t) || num(x.lvl, 1) > (x.ctx.lvl || L)) continue;
@@ -902,6 +902,16 @@ window.Sheet = (() => {
     const t = Object.values(inc).reduce((x, y) => x + y, 0);
     return t > 0 && t <= 2 ? inc : null;
   }
+  // a lapon beállított sorrend marad (a támadások a Harc fülön átrendezhetők): a már a lapon lévők egymáshoz képest a régi sorrendben,
+  // az új tétel ott, ahová a számolás teszi (pl. az újonnan felszerelt fegyver elöl)
+  // azonos nevű tételeknél (pl. két Dagger) a név k-adik előfordulása a kulcs
+  const regiSorrend = (old, list) => {
+    const kulcsok = l => { const db = {}; return l.map(x => { const n = x.name.toLowerCase(); db[n] = (db[n] || 0) + 1; return n + '#' + db[n]; }); };
+    const hely = new Map(kulcsok(old).map((k, i) => [k, i])), uj = kulcsok(list);
+    const regiek = list.map((x, i) => [x, uj[i]]).filter(([, k]) => hely.has(k)).sort((a, b) => hely.get(a[1]) - hely.get(b[1])).map(([x]) => x);
+    let j = 0;
+    return list.map((x, i) => hely.has(uj[i]) ? regiek[j++] : x);
+  };
   // a számolt értékek kiírása a lap mezőibe (gyorsítótár: a DM Screen, a harc és a régi kód ezeket olvassa); csak a változott mezők.
   // Szabálykönyv nélkül (c.full = false) csak a szabálykönyvtől független mezők íródnak, hogy a meglévő jellemzők ne vesszenek el.
   function materialize(s, c) {
@@ -927,10 +937,10 @@ window.Sheet = (() => {
       Object.assign(p, {ac: c.ac.v, acNote: c.acNote, speed: c.speed.v, profs: c.profs, senses: c.senses, resist: c.resist,
         features: merge(s.features, c.features),
         resources: merge(s.resources, c.resources, r => { const o = s.resources.find(x => x.name === r.name); return {...r, used: Math.min(o?.used || 0, r.max)}; }),
-        attacks: merge(s.attacks, c.attacks),
+        attacks: regiSorrend(s.attacks, merge(s.attacks, c.attacks)),
         spells: merge(s.spells, [...c.always.map(x => ({...x, always: true})), ...(c.learned || s.spells.filter(x => x.auto && !x.always))].filter((x, i, l) => l.findIndex(y => y.name.toLowerCase() === x.name.toLowerCase()) === i), x => {
           if (x.always) return {name: x.name, level: x.level, prepared: false, always: true, note: s.spells.find(y => y.name.toLowerCase() === x.name.toLowerCase())?.note || '', ref: x.ref};
-          // a felkészítés és a jegyzet a lapon marad; az újonnan tanult varázslat ismert casternél kész, a spellbookban még nem felkészített
+          // a bekészítés és a jegyzet a lapon marad; az újonnan tanult varázslat ismert casternél kész, a spellbookban még nem bekészített
           const o = s.spells.find(y => y.name.toLowerCase() === x.name.toLowerCase());
           return {name: x.name, level: x.level, prepared: o ? o.prepared : !x.book, always: false, note: o?.note || '', ref: x.ref, cls: x.cls, ...(x.book ? {book: true} : {})};
         })});
@@ -997,7 +1007,7 @@ window.Sheet = (() => {
   function equipPatch(s, rb, withAc) {
     if (!rb?.classes?.length) return {};
     const c = legacyCalc(s, rb), names = new Set(c.attacks.map(x => x.name.toLowerCase()));
-    const p = {attacks: [...c.attacks.map(x => ({...x, auto: true})), ...s.attacks.filter(x => !x.auto && !names.has(x.name.toLowerCase()))]};
+    const p = {attacks: regiSorrend(s.attacks, [...c.attacks.map(x => ({...x, auto: true})), ...s.attacks.filter(x => !x.auto && !names.has(x.name.toLowerCase()))])};
     if (withAc) Object.assign(p, {ac: c.ac.v, acNote: c.acNote});
     return p;
   }
@@ -1143,13 +1153,13 @@ window.Sheet = (() => {
     for (const k of OV_PLUS) { const van = new Set(szet(uj[k]).map(tetel)), tobb = szet(regi[k]).map(x => x.trim()).filter(x => !van.has(tetel(x))); if (tobb.length) ov['plus:' + k] = tobb.join(', '); }
     return {auto: true, build: b, ov: normOv(ov), todoDone: []};
   }
-  // a szabálymotoros lap meglévő varázslatainak besorolása a felépítésbe (build.spells): ami egyértelműen egy helyre való, az oda kerül (a felkészítés és a jegyzet marad),
+  // a szabálymotoros lap meglévő varázslatainak besorolása a felépítésbe (build.spells): ami egyértelműen egy helyre való, az oda kerül (a bekészítés és a jegyzet marad),
   // a többi saját varázslat marad (pl. kétosztályos lapon a mindkét listán szereplő); a hiányzó helyek teendők lesznek. Csak egyszer fut: utána a build.spells nem null.
   function adoptSpells(s, rb) {
     if (!rb?.classes?.length || !rb.spells?.length) return s.build;
     const cr = calc({...s, build: {...s.build, spells: {}}}, rb), helyek = cr.choices.filter(c => SPELL_KINDS.includes(c.kind));
     const fel = {}, off = Object.fromEntries(helyek.map(h => [h.key, h.ctx.off]));
-    // a felkészítős osztály (Cleric, Druid, Paladin, Artificer) leveled varázslatainak nincs helye: ami az ő listájukon is rajta van, az saját marad
+    // a bekészítős osztály (Cleric, Druid, Paladin, Artificer) leveled varázslatainak nincs helye: ami az ő listájukon is rajta van, az saját marad
     const prep = cr.casting.filter(x => x.prepared && !helyek.some(h => h.ctx.cls === x.cls && h.kind !== 'cantrips')).map(x => x.cls);
     const faji = new Set(cr.choices.filter(c => c.kind === 'spell').flatMap(c => c.ok).map(refName));   // a faji helyre választott nem foglal osztályhelyet
     const sajat = s.spells.filter(x => !x.auto && !x.always && !faji.has(x.name)).map(x => rbFind(rb.spells, x.ref || x.name)).filter(sp => sp && !(num(sp.l) && prep.some(p => (sp.cl || []).includes(p))));
@@ -1713,5 +1723,5 @@ window.Sheet = (() => {
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,
-    RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine, ddbSablon, ddbSablonLap, ddbSkala};
+    RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine, ddbSablon, ddbSablonLap, ddbSkala, regiSorrend};
 })();

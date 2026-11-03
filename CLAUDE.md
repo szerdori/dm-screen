@@ -11,6 +11,7 @@ Harckezelő és csapatnyilvántartó webapp D&D 5e mesélőnek. A felhasználó 
 - **A GitHub-tároló nyilvános**: kampányadat, személyes adat, e-mail nem kerülhet a kódba vagy a tesztekbe. Valódi D&D Beyond karakter JSON-ját se commitold (tesztekhez szintetikus minta van).
 - **Minden változtatás után**: `.\teszt.ps1` (≈30 mp, láthatatlan Chrome), és **az új funkcióhoz / javításhoz új teszt** a `tests\tests.js`-be. Hibát ideiglenes visszarontással érdemes ellenőrizni, hogy a teszt tényleg elkapja.
 - **Böngészős próbánál a valódi adatokat óvd**: a helyi próbaoldalt `?test=1`-gyel nyisd (ilyenkor nem kapcsolódik a Firebase-hez), és a konzolban előbb `save = () => {}`. Az ideiglenes fájlokat utána töröld.
+- **Szóhasználat** (a felhasználó kérése, 2026-11-03): a prepared spell **bekészített** (bekészíthető, bekészíteni), nem „felkészített”.
 - A felhasználó nem fejlesztő: a teendőit lépésről lépésre, kattintásonként írd le (Firebase konzolban a menü neve „Product categories”, nem „Build”).
 - **Kérdezz, ne találgass:** ha két forrás (kód, ez a fájl, `SZERZODES.md`, `docs/mukodes.md`, egy terv) ellentmond, vagy új tervezési döntés kell, kérdezd meg a felhasználót, a javasolt lehetőséggel elöl. Ha a beszélgetésben új szabály vagy döntés születik, írd be a helyére (lásd „Hol mi van”), hogy legközelebb ne kelljen újra megvitatni.
 - **Ellenőrzés:** egy lépés végén, commit előtt futtasd az `ellenorzo` ügynököt (`.claude/agents/ellenorzo.md`) a változásra; a súlyos és közepes találatokat javítsd, a többit sorold fel a felhasználónak.

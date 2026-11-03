@@ -116,6 +116,8 @@ nav.tabs button.on{background:var(--accent);color:#1a1405;border-color:var(--acc
 .abil .sv.p{color:var(--accent)}
 .list{display:flex;flex-direction:column;gap:6px}
 .li{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.drag{touch-action:none;cursor:grab;user-select:none;color:var(--muted);font-size:1.3em;padding:4px 6px;margin:-4px 0 -4px -4px}
+.li.dragging{opacity:.7;border-color:var(--accent)}
 .nm{flex:1;min-width:0;overflow-wrap:anywhere}
 .nm small{display:block;color:var(--muted);font-size:12px}
 .rb{background:#2a2414;border:1px solid #5a4a20;color:var(--accent);border-radius:8px;padding:5px 10px;font-weight:700;cursor:pointer;white-space:nowrap}
@@ -189,8 +191,8 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 <div id="infoPop" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=13"></script>
-<script src="szerzodes.js?v=2"></script>
+<script src="sheet.js?v=14"></script>
+<script src="szerzodes.js?v=3"></script>
 <script>
 'use strict';
 // Játékos app: belépés Google-fiókkal; a saját karakter teljes telefonos lapja (sheets/{id}) és a csapat nyilvános lapjai (characters/{id}).
@@ -198,7 +200,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 13, szerzodes: 2};
+const VART_MODULOK = {kozos: 3, sheet: 14, szerzodes: 3};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -210,7 +212,7 @@ const TABS = [['harc', '⚔ Harc'], ['kep', '🎲 Képességek'], ['var', '✨ V
 
 let me = '', isDM = false, chars = [], sheets = new Map(), sheetErr = '';
 let view = {id: null, tab: 'harc'}, rbInfo = null, rbErr = '', rollMode = '', rolls = [];
-let hdOpen = false, castOpen = null, featPick = null, pendingRender = false, draft = null, openKeys = new Set(), searchQ = {spell: '', item: '', feat: ''}, notesTimer = null;
+let hdOpen = false, castOpen = null, featPick = null, pendingRender = false, draft = null, openKeys = new Set(), searchQ = {spell: '', item: '', feat: ''}, notesTimer = null, atkDrag = null;
 
 // a karakter nyilvános része (characters/{id}): a szerződés tisztítója
 const normChar = Szerzodes.normPublicChar;
@@ -363,7 +365,8 @@ function hpBox(s, ed) {
 const pipRow = (n, used, attrs, dis, label) => Array.from({length: n}, (_, j) => `<button class="pip ${j < used ? 'used' : ''}" ${attrs} data-j="${j}" ${dis} aria-label="${esc(label)} ${j + 1}"></button>`).join('');
 function tabHarc(s, ed) {
   const dis = ed ? '' : 'disabled';
-  const atk = s.attacks.map(a => `<div class="li"><span class="nm"><b>${esc(a.name)}</b><small>${esc([a.dmg.replace(diceOf(a.dmg), '').trim(), a.note].filter(Boolean).join(' · '))}</small></span>
+  const fog = ed && s.attacks.length > 1;
+  const atk = s.attacks.map((a, i) => `<div class="li">${fog ? `<span class="drag" data-drag="atk" data-i="${i}" title="Húzd a sorrend megváltoztatásához" aria-label="${esc(a.name)} áthelyezése">⠿</span>` : ''}<span class="nm"><b>${esc(a.name)}</b><small>${esc([a.dmg.replace(diceOf(a.dmg), '').trim(), a.note].filter(Boolean).join(' · '))}</small></span>
     ${a.hit.trim() ? rollBtn(parseInt(a.hit.replace('−', '-')) || 0, a.name + ' – támadás', undefined, 'atk') : ''}${diceOf(a.dmg) ? dmgBtn(diceOf(a.dmg), a.name + ' – sebzés', /range|ranged|bow\b|crossbow|sling|dart/i.test(a.name + ' ' + a.note) ? 'wdmg' : 'wdmg:melee') : ''}</div>`).join('');
   const sDc = H.spellDc(s);
   const res = s.resources.map((r, i) => `<div class="li"><span class="nm"><b>${esc(r.name)}</b><small>${esc(r.max - r.used)} / ${esc(r.max)} · ${esc(RESET_HU[r.reset])}</small></span>
@@ -420,8 +423,8 @@ function castChoices(s, sp, r) {
 }
 function spellRow(sp, i, ed, s) {
   const r = rbSpell(sp);
-  const sum = `${sp.level ? `<input type="checkbox" data-act="prep" data-i="${i}" ${sp.prepared || sp.always ? 'checked' : ''} ${sp.always || !ed ? 'disabled' : ''} title="Felkészítve">` : ''}
-    <span class="nm"><b>${esc(sp.name)}</b><small>${esc([r ? H.spellLine(r) : '', sp.always ? 'mindig felkészítve' : '', sp.note].filter(Boolean).join(' · '))}</small></span>
+  const sum = `${sp.level ? `<input type="checkbox" data-act="prep" data-i="${i}" ${sp.prepared || sp.always ? 'checked' : ''} ${sp.always || !ed ? 'disabled' : ''} title="Bekészítve">` : ''}
+    <span class="nm"><b>${esc(sp.name)}</b><small>${esc([r ? H.spellLine(r) : '', sp.always ? 'mindig bekészítve' : '', sp.note].filter(Boolean).join(' · '))}</small></span>
     ${r && diceOf(r.tx) ? dmgBtn(diceOf(r.tx), sp.name) : ''}${ed && sp.level ? `<button class="small cast ${castOpen === i ? 'on' : ''}" data-act="castOpen" data-i="${i}">✨ Cast</button>`
       : ed && (r?.k || H.effectOf(sp.name)) ? `<button class="small cast" data-act="cast" data-i="${i}" data-how="0">✨ Cast</button>` : ''}${r?.k ? '<span class="hint" title="koncentráció">🌀</span>' : ''}`;
   const ch = ed && sp.level && castOpen === i ? castChoices(s, sp, r) : null;
@@ -429,19 +432,25 @@ function spellRow(sp, i, ed, s) {
     || '<span class="hint">Nincs szabad slot ehhez a szinthez.</span>'}<button class="small" data-act="castOpen" data-i="${i}">Mégse</button></div>` : '';
   return det('sp:' + sp.name, sum, `${r ? `<div class="tx">${esc(r.tx)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>'}${ed && !sp.auto ? `<div class="row" style="margin-top:8px"><button class="small" data-act="spellRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`) + pick;
 }
+// a „csak a bekészítettek” szűrő eszközönként marad meg (böngésző-tároló; ha nem elérhető, alapból minden látszik)
+let csakBekTartalek = false;
+function csakBekeszitett() { try { return localStorage.getItem(window.Szerzodes.HELYI.csakBekeszitett) === '1'; } catch { return csakBekTartalek; } }
+function csakBekeszitettAllit(v) { csakBekTartalek = v; try { if (v) localStorage.setItem(window.Szerzodes.HELYI.csakBekeszitett, '1'); else localStorage.removeItem(window.Szerzodes.HELYI.csakBekeszitett); } catch {} }
 function tabVar(s, ed) {
   const sc = s.spellcasting, dis = ed ? '' : 'disabled', ab = H.spellAbility(s);
   const slots = sc.slots.map((n, l) => n ? `<div class="li"><span class="nm"><b>${H.ORD[l + 1]} level</b><small>${n - sc.used[l]} / ${n} szabad</small></span>
     <span class="pips">${pipRow(n, sc.used[l], `data-act="slot" data-l="${l}"`, dis, (l + 1) + '. szintű slot')}</span></div>` : '').join('');
   const pact = sc.pact.max ? `<div class="li"><span class="nm"><b>Pact Magic (${H.ORD[sc.pact.level] || '?'} level)</b><small>${sc.pact.max - sc.pact.used} / ${sc.pact.max} szabad · short restnél visszatöltődik</small></span>
     <span class="pips">${pipRow(sc.pact.max, sc.pact.used, 'data-act="pact"', dis, 'Pact slot')}</span></div>` : '';
-  const by = {};
-  s.spells.forEach((sp, i) => (by[sp.level] = by[sp.level] || []).push(spellRow(sp, i, ed, s)));
-  const prepared = s.spells.filter(sp => sp.level && (sp.prepared || sp.always)).length;
+  // „csak a bekészítettek”: a cantripek mindig látszanak (nem kell bekészíteni őket)
+  const csak = csakBekeszitett(), by = {};
+  s.spells.forEach((sp, i) => { if (!csak || !sp.level || sp.prepared || sp.always) (by[sp.level] = by[sp.level] || []).push(spellRow(sp, i, ed, s)); });
+  const prepared = s.spells.filter(sp => sp.level && (sp.prepared || sp.always)).length, rejtett = s.spells.filter(sp => sp.level && !sp.prepared && !sp.always).length;
   return `${ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>'}
     ${slots || pact ? `<h3>Spell slotok</h3><div class="list">${slots}${pact}</div>` : ''}
-    <h3>Varázslatok <span class="hint">(${prepared} felkészítve)</span></h3>
-    ${Object.keys(by).sort((a, b) => a - b).map(l => `<h3 class="sub2">${l == 0 ? 'Cantripek' : H.ORD[l] + ' level'}</h3><div class="list">${by[l].join('')}</div>`).join('') || '<p class="hint">Még nincs varázslat a lapon.</p>'}
+    <h3>Varázslatok <span class="hint">(${prepared} bekészítve)</span></h3>
+    ${s.spells.some(sp => sp.level) ? `<label class="hint"><input type="checkbox" data-act="csakBek" ${csak ? 'checked' : ''}> csak a bekészítettek${csak && rejtett ? ` (${rejtett} elrejtve)` : ''}</label>` : ''}
+    ${Object.keys(by).sort((a, b) => a - b).map(l => `<h3 class="sub2">${l == 0 ? 'Cantripek' : H.ORD[l] + ' level'}</h3><div class="list">${by[l].join('')}</div>`).join('') || `<p class="hint">${s.spells.length ? 'Nincs bekészített varázslat.' : 'Még nincs varázslat a lapon.'}</p>`}
     ${ed ? `<h3>＋ Varázslat hozzáadása</h3>${rbNote()}
       ${RB() ? `<div class="row"><input id="spellQ" class="grow" placeholder="Keresés név szerint (angolul)…" autocomplete="off"><label class="hint"><input type="checkbox" id="spellMine" ${searchQ.all ? '' : 'checked'}> csak az osztályaim listája</label></div><div class="list" id="spellRes" style="margin-top:6px"></div>` : ''}
       <div class="row" style="margin-top:8px"><input id="spellNew" class="grow" placeholder="Saját / homebrew varázslat neve">${iGomb(H.MEZO_INFO.spell)}<select id="spellNewL">${H.ORD.map((o, l) => `<option value="${l}">${l ? o + ' level' : 'Cantrip'}</option>`).join('')}</select><button data-act="spellCustom">＋</button></div>` : ''}`;
@@ -757,7 +766,7 @@ function luBox(x, plan) {
   return `${note ? `<p class="hint" style="margin:8px 0 2px">${esc(note)}</p>` : ''}${choiceBox(x.c, plan.nw, x)}`;
 }
 function luStepSp(plan) {
-  const cast = plan.nw.casting.find(x => x.cls === plan.cls), info = cast ? `<p class="hint">${cast.prepared ? `Mostantól ${esc(cast.prepared)} varázslatot készíthetsz fel. ` : ''}${cast.maxSpell ? `Legfeljebb ${esc(cast.maxSpell)}. szintű varázslatot tanulhatsz. ` : ''}DC ${esc(cast.dc)}, attack ${esc(sgn(cast.atk))}.</p>` : '';
+  const cast = plan.nw.casting.find(x => x.cls === plan.cls), info = cast ? `<p class="hint">${cast.prepared ? `Mostantól ${esc(cast.prepared)} varázslatot készíthetsz be. ` : ''}${cast.maxSpell ? `Legfeljebb ${esc(cast.maxSpell)}. szintű varázslatot tanulhatsz. ` : ''}DC ${esc(cast.dc)}, attack ${esc(sgn(cast.atk))}.</p>` : '';
   return info + plan.spells.map(x => luBox(x, plan)).join('');
 }
 function luStepFt(plan) {
@@ -770,7 +779,7 @@ function luStepSum(s, plan) {
   const n = H.norm({...s, ...H.levelUpApply(s, RB(), lu.build)}), row = (l, a, b) => a === b ? '' : `<tr><td>${esc(l)}</td><td>${esc(a)} → <b>${esc(b)}</b></td></tr>`;
   const hd = x => H.hitDice(x).map(h => h.max + 'd' + h.die).join(' + ');
   const slots = x => [...x.spellcasting.slots.map((v, i) => v ? `${i + 1}.: ${v}` : '').filter(Boolean), x.spellcasting.pact.max ? `Pact: ${x.spellcasting.pact.max} (${x.spellcasting.pact.level}.)` : ''].filter(Boolean).join(', ') || '–';
-  const casting = plan.nw.casting.map(c => { const o = plan.old.casting.find(x => x.cls === c.cls); return row(`${c.cls}: spell DC`, o?.dc ?? '–', c.dc) + (c.prepared ? row(`${c.cls}: felkészíthető`, o?.prepared ?? 0, c.prepared) : ''); }).join('');
+  const casting = plan.nw.casting.map(c => { const o = plan.old.casting.find(x => x.cls === c.cls); return row(`${c.cls}: spell DC`, o?.dc ?? '–', c.dc) + (c.prepared ? row(`${c.cls}: bekészíthető`, o?.prepared ?? 0, c.prepared) : ''); }).join('');
   const ovK = Object.keys(n.ov), nyitott = plan.nw.todos.length;
   return `<table class="lutab">
       ${row('Szint', H.level(s), H.level(n))}${row('Osztályok', H.classLabel(s), H.classLabel(n))}${row('Jártassági bónusz', sgn(H.pb(s)), sgn(H.pb(n)))}${row('Max HP', s.hp.max, n.hp.max)}${row('Jelenlegi HP', s.hp.cur, n.hp.cur)}${row('Hit Dice', hd(s), hd(n))}
@@ -929,7 +938,7 @@ function ncStepBody(s, plan, step) {
   }
   if (step === 'var') {
     const c = cr.casting[0];
-    return `${c ? `<p class="hint">${c.prepared ? `${esc(c.prepared)} varázslatot készíthetsz fel. ` : ''}DC ${esc(c.dc)}, attack ${esc(sgn(c.atk))}.</p>` : ''}${plan.spells.map(x => choiceBox(x.c, cr)).join('')}`;
+    return `${c ? `<p class="hint">${c.prepared ? `${esc(c.prepared)} varázslatot készíthetsz be. ` : ''}DC ${esc(c.dc)}, attack ${esc(sgn(c.atk))}.</p>` : ''}${plan.spells.map(x => choiceBox(x.c, cr)).join('')}`;
   }
   // összegzés
   const row = (l, v) => v === '' || v == null ? '' : `<tr><td>${esc(l)}</td><td><b>${esc(v)}</b></td></tr>`;
@@ -1313,7 +1322,7 @@ const pipToggle = (used, j) => used === j + 1 ? j : j + 1;  // az adott pöttyig
 function render(force = false) {
   const a = document.activeElement;
   const typing = a && a.closest?.('#main') && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !['checkbox', 'button', 'radio'].includes(a.type)));
-  if (typing && !force) { pendingRender = true; return; }
+  if ((typing || atkDrag) && !force) { pendingRender = true; return; }
   pendingRender = false;
   // kívülről jött újrarajzolásnál az űrlapba gépelt, még nem mentett értékek megmaradnak
   if (view.tab === 'adat' && !force) readForm();
@@ -1380,6 +1389,39 @@ window.KApp = {
   setRulebook(info, err = '') { rbInfo = info?.rb ? info : {rb: null}; rbErr = err; recalcAll(); render(); }
 };
 
+// támadások sorrendje (Harc fül): a ⠿ fogantyúval húzható; pointer események, mert a HTML5 drag & drop telefonon nem működik.
+// Húzás közben a beérkező változás nem rajzol újra (lásd render); elengedéskor a lap új sorrendje mentődik, megszakított gesztusnál (pointercancel) nem.
+// Csak a fogantyús sorok között mozog (a lista végén lévő spell attack sor a helyén marad); egyszerre egy húzás, csak bal gombbal / egy ujjal.
+const atkSorok = list => [...list.children].filter(x => x.querySelector(':scope > [data-drag="atk"]'));
+document.addEventListener('pointerdown', e => {
+  const h = e.target.closest?.('[data-drag="atk"]');
+  if (!h || atkDrag || e.button > 0) return;
+  e.preventDefault();
+  const row = h.closest('.li');
+  atkDrag = {row, list: row.parentElement, from: +h.dataset.i, id: e.pointerId, n: cur()?.attacks.length};
+  try { h.setPointerCapture(e.pointerId); } catch {}
+  row.classList.add('dragging');
+});
+document.addEventListener('pointermove', e => {
+  if (!atkDrag || e.pointerId !== atkDrag.id) return;
+  e.preventDefault();
+  const {row, list} = atkDrag, sorok = atkSorok(list), ele = sorok.find(x => x !== row && e.clientY < x.getBoundingClientRect().top + x.offsetHeight / 2);
+  const ide = ele || sorok.filter(x => x !== row).at(-1)?.nextElementSibling || null;
+  if (ide !== row && ide !== row.nextElementSibling) list.insertBefore(row, ide);
+});
+function atkDrop(e) {
+  if (!atkDrag || e.pointerId !== atkDrag.id) return;
+  const {row, list, from, n} = atkDrag, to = atkSorok(list).indexOf(row), s = cur();
+  atkDrag = null;
+  row.classList.remove('dragging');
+  // a húzás közben máshonnan megváltozott lista (pl. a DM írt) nem rendeződik át vakon
+  if (e.type === 'pointercancel' || !s || to < 0 || to === from || s.attacks.length !== n) { render(true); return; }
+  const a = [...s.attacks], [x] = a.splice(from, 1);
+  a.splice(to, 0, x);
+  if (!patch({attacks: a})) render(true);
+}
+document.addEventListener('pointerup', atkDrop);
+document.addEventListener('pointercancel', atkDrop);
 document.addEventListener('click', e => {
   const t = e.target;
   if (t.id === 'infoPop') { t.hidden = true; return; }  // a háttérre koppintva bezárul
@@ -1520,7 +1562,7 @@ document.addEventListener('click', e => {
         // a számolt tételek (auto) a lapról maradnak, a piszkozatból csak a sajátok jönnek
         const d = readForm();
         draft = null;
-        savedToast(patch(changedOnly(s, {name: d.name, alignment: d.alignment, attacks: [...s.attacks.filter(a => a.auto), ...d.attacks.filter(a => !a.auto)], resources: [...s.resources.filter(r => r.auto), ...d.resources.filter(r => !r.auto)]})));
+        savedToast(patch(changedOnly(s, {name: d.name, alignment: d.alignment, attacks: H.regiSorrend(d.attacks, [...s.attacks.filter(a => a.auto), ...d.attacks.filter(a => !a.auto)]), resources: [...s.resources.filter(r => r.auto), ...d.resources.filter(r => !r.auto)]})));
         break;
       }
       const d = H.norm(readForm()), p = {};
@@ -1554,6 +1596,7 @@ document.addEventListener('change', e => {
     if (H.ABIL.every(a => base[a] >= 1 && base[a] <= 30)) write(view.id, {build: {...s.build, base}});
     return;
   }
+  if (act === 'csakBek') { csakBekeszitettAllit(t.checked); render(true); return; }
   if (t.dataset.ch != null) choicePicked(t);
   else if (t.dataset.ov != null) { const ov = {...s.ov}; if (t.value.trim() === '') delete ov[t.dataset.ov]; else ov[t.dataset.ov] = t.value.trim(); patch({ov}); }
   else if (act === 'bRace') { const o = H.raceOptions(RB())[+t.value]; patch({build: {...s.build, race: o?.race || '', subrace: o?.subrace || ''}, ...(s.newChar ? {race: o?.label || ''} : {})}); }

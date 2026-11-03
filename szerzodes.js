@@ -27,7 +27,7 @@ window.Szerzodes = (() => {
     szabalyMeta: 'rules/meta',            // szabálykönyv (sheet.js: loadRulebook)
     szabalyDarab: id => 'rules/' + id,
   };
-  const HELYI = {allapot: 'dmscreen', lapok: 'dmscreen-sheets', szintlepes: id => 'dmscreen-szintlepes-' + id};  // szintlepes: a varázsló piszkozata a telefonon
+  const HELYI = {allapot: 'dmscreen', lapok: 'dmscreen-sheets', szintlepes: id => 'dmscreen-szintlepes-' + id, csakBekeszitett: 'dmscreen-csak-bekeszitett'};  // szintlepes: a varázsló piszkozata a telefonon; csakBekeszitett: a Varázslat fül szűrője (eszközönként)
   const CSATORNA = 'dmscreen-player';
 
   // ---------- lények ----------
@@ -162,7 +162,7 @@ window.Szerzodes = (() => {
     };
   }
 
-  if (typeof modul === 'function') modul('szerzodes', 2);
+  if (typeof modul === 'function') modul('szerzodes', 3);
   return {UT, HELYI, CSATORNA, SECTIONS, TEMPLATE, KINDS, SIDES, VIS, ALLAPOTOK, ALAP_BEALLITASOK, str, safeId, blankCreature, splitEntry,
     normInventory, normCreature, normCombatant, sanitizeState, normPublicChar};
 })();

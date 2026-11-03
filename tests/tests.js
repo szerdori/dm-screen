@@ -2212,7 +2212,7 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     eq([c.ac.v, c.acNote, c.speed.v], [15, 'páncél nélkül, Shield', '30 ft.'], 'pajzzsal a Monk UD és Unarmored Movement nem jár');
   });
 
-  test('Paladin 6: Aura of Protection, Defense, mágikus tárgyak (hangolás), felkészítés, slotok; érvénytelen Fighting Style', () => {
+  test('Paladin 6: Aura of Protection, Defense, mágikus tárgyak (hangolás), bekészítés, slotok; érvénytelen Fighting Style', () => {
     const H = W.Sheet, rb = rb3();
     const it = inv('Chain Mail', 'Shield', '+1 Longsword', {name: 'Cloak of Protection', attuned: true}, {name: 'Gauntlets of Ogre Power', attuned: true});
     const build = {race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {str: 15, dex: 10, wis: 12, cha: 16}, levels: lv('Paladin', 6), sub: {Paladin: 'Devotion|PHB'},
@@ -2260,7 +2260,19 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     eq(H.calc(H.norm({...r, todoDone: ['✋ Favored Enemy (Ranger 1)']}), rb).todos, []);
   });
 
-  test('Life Cleric 3 / Wizard 1: mindig felkészített domain spellek, két varázsló osztály, kiírás a lapra (saját tételek maradnak), cache', () => {
+  test('támadások sorrendje: az újraszámolás (materialize) a lapon beállított sorrendet tartja, azonos nevű tételekkel is; az új tétel a számolt helyén', () => {
+    const H = W.Sheet, rb = rb3();
+    const s = mkS({base: {str: 16, dex: 14}, levels: lv('Fighter', 1)}, {inventory: inv('+1 Longsword'),
+      attacks: [{name: 'Dagger', hit: '+5', dmg: '1d4+3'}, {name: 'Saját ütés', hit: '+1', dmg: '1d4'}, {name: 'Dagger', hit: '+5', dmg: '1d4+3', note: 'dobva'}]});
+    const s2 = H.norm({...s, ...H.materialize(s, H.calc(s, rb))});
+    eq(s2.attacks.map(a => a.name), ['+1 Longsword', 'Dagger', 'Saját ütés', 'Dagger'], 'az új számolt tétel elöl, a sajátok a sorrendjükben');
+    // a játékos átrendezi: a két Dagger körbe, a kard középre
+    const at = s2.attacks, s3 = H.norm({...s2, attacks: [at[3], at[2], at[0], at[1]]});
+    const s4 = H.norm({...s3, ...H.materialize(s3, H.calc(s3, rb))});
+    eq(s4.attacks.map(a => [a.name, a.note || '']), [['Dagger', 'dobva'], ['Saját ütés', ''], ['+1 Longsword', at[0].note], ['Dagger', '']], 'megmaradt, a két Dagger sem cserélődött');
+    eq(H.regiSorrend([{name: 'X'}, {name: 'y'}, {name: 'X', n: 2}], [{name: 'X'}, {name: 'X', n: 2}, {name: 'Y'}]).map(x => x.n || 1), [1, 1, 2], 'azonos nevűek: előfordulás szerint');
+  });
+  test('Life Cleric 3 / Wizard 1: mindig bekészített domain spellek, két varázsló osztály, kiírás a lapra (saját tételek maradnak), cache', () => {
     const H = W.Sheet, rb = rb3();
     const s = mkS({base: {wis: 16, int: 14}, levels: [...lv('Cleric', 3), {c: 'Wizard'}], sub: {Cleric: 'Life|PHB'}}, {
       spells: [{name: 'Bless', level: 1, prepared: true}, {name: 'Shield', level: 1, prepared: true}],
@@ -2576,7 +2588,7 @@ describe('Szintlépés: varázslat-választások (sheet.js)', () => {
     eq(o.opts.map(x => x.l), ['Guidance', 'Light']);
     eq(H.choiceOptions({kind: 'known', key: 'Bard:known', n: 1, ok: [], ctx: {list: 'Bard', max: 1, off: 0}}, null, rb).opts.map(x => [x.l, x.lvl]), [['Cure Wounds', 1], ['Sleep', 1], ['Thunderwave', 1]], 'számolás nélkül is');
   });
-  test('a lapra kiírva: cls, book, a felkészítés és a jegyzet megmarad, az új spellbook-varázslat nem felkészített; a saját varázslat marad; a levett lekerül', () => {
+  test('a lapra kiírva: cls, book, a bekészítés és a jegyzet megmarad, az új spellbook-varázslat nem bekészített; a saját varázslat marad; a levett lekerül', () => {
     const H = W.Sheet, rb = rbVarazs();
     const s = mkS({base: {int: 16}, levels: lv('Wizard', 3), spells: {Wizard: {cantrips: ['Light|PHB'], book: ['Shield|PHB', 'Sleep|PHB']}}}, {spells: [{name: 'Shield', level: 1, prepared: true, note: 'jegyzet', auto: true, cls: 'Wizard', book: true}, {name: 'Saját bűbáj', level: 1, prepared: true}, {name: 'Web', level: 2, auto: true, cls: 'Wizard'}]});
     const p = H.materialize(s, H.calc(s, rb)), by = Object.fromEntries(p.spells.map(x => [x.name, x]));
@@ -2605,7 +2617,7 @@ describe('Szintlépés: varázslat-választások (sheet.js)', () => {
     eq(H.adoptSpells(s, null), s.build, 'szabálykönyv nélkül nem nyúl hozzá');
     eq(H.adoptSpells(mkS({levels: lv('Fighter', 1)}), rb).spells, {}, 'nem varázslónál üres, így többször nem fut le');
     s = mkS({base: {cha: 16, wis: 16}, levels: [...lv('Cleric', 1), ...lv('Bard', 10)]}, {spells: sp('Cure Wounds', 'Bless', 'Sleep')});
-    eq(H.adoptSpells(s, rb).spells, {Bard: {known: ['Sleep|PHB']}}, 'ami a felkészítős osztály listáján is rajta van, az saját marad (kivételt sem fogyaszt)');
+    eq(H.adoptSpells(s, rb).spells, {Bard: {known: ['Sleep|PHB']}}, 'ami a bekészítős osztály listáján is rajta van, az saját marad (kivételt sem fogyaszt)');
   });
   test('adatvédelem: szabálykönyvbeli varázslatok nélkül a tanult varázslatok a lapon maradnak; az érvénytelenné vált ref nem vész el a felépítésből', () => {
     const H = W.Sheet, rb = rbVarazs();
@@ -4308,6 +4320,53 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="var"]');
     eq(kq('nav.tabs').scrollLeft, got);
   });
+  ktest('Harc: a támadások sorrendje a ⠿ fogantyúval áthúzható (pointer események, telefonon is), és mentődik; csak szerkeszthető lapon', () => {
+    const at = n => ({name: n, hit: '+5', dmg: '1d6+3 piercing', note: ''});
+    openSheet({attacks: [at('Shortsword'), at('Shortbow'), at('Dagger')]});
+    const fog = () => kqa('[data-drag="atk"]'), sorok = () => kqa('.li').filter(r => r.querySelector('[data-drag="atk"]'));
+    eq(fog().length, 3, 'minden sorban fogantyú');
+    const pe = (el, type, y) => el.dispatchEvent(new K.PointerEvent(type, {bubbles: true, cancelable: true, pointerId: 7, clientY: y}));
+    const r = sorok().map(x => x.getBoundingClientRect());
+    pe(fog()[0], 'pointerdown', r[0].top + 5);
+    ok(sorok()[0].classList.contains('dragging'), 'húzás közben jelölve');
+    pe(fog()[0], 'pointermove', r[2].bottom + 5);
+    pe(fog()[0], 'pointerup', r[2].bottom + 5);
+    eq(lastUpdate().attacks.map(x => x.name), ['Shortbow', 'Dagger', 'Shortsword'], 'az első a végére');
+    eq(kqa('[data-drag="atk"]').length, 3, 'újrarajzolva');
+    // ugyanoda elengedve nincs írás
+    const n = klog.length;
+    pe(fog()[1], 'pointerdown', 0); pe(fog()[1], 'pointerup', 0);
+    eq(klog.length, n);
+    // megszakított gesztus (pl. rendszer-gesztus telefonon): nem ment, a sorrend visszaáll
+    const r2 = sorok().map(x => x.getBoundingClientRect());
+    pe(fog()[0], 'pointerdown', r2[0].top + 5); pe(fog()[0], 'pointermove', r2[2].bottom + 5); pe(fog()[0], 'pointercancel', r2[2].bottom + 5);
+    eq([klog.length, sorok().map(x => x.querySelector('b').textContent)], [n, ['Shortbow', 'Dagger', 'Shortsword']]);
+    // jobb gombbal nem indul húzás
+    fog()[0].dispatchEvent(new K.PointerEvent('pointerdown', {bubbles: true, cancelable: true, pointerId: 8, button: 2}));
+    ok(!sorok()[0].classList.contains('dragging'));
+    // a szabálymotor újraszámolása (és a kézi lap felszerelés-frissítése) megtartja a meglévők sorrendjét; az új a számolt helyén marad
+    eq(K.Sheet.regiSorrend([{name: 'B'}, {name: 'a'}], [{name: 'A', auto: true}, {name: 'C'}, {name: 'b'}]).map(x => x.name), ['b', 'C', 'A']);
+    // egy támadásnál nincs mit rendezni: nincs fogantyú
+    openSheet({attacks: [at('Shortsword')]}); eq(fog().length, 0);
+  });
+  ktest('Varázslat fül: „csak a bekészítettek” szűrő (a cantrip mindig látszik), eszközönként megmarad; a szöveg „bekészítve”', async () => {
+    K.KApp.setRulebook({version: 'v1', rb: await fakeRb()});
+    const kulcs = K.Szerzodes.HELYI.csakBekeszitett;
+    K.localStorage.removeItem(kulcs);
+    openSheet({classes: [{name: 'Wizard', level: 5}], spells: [{name: 'Fire Bolt', level: 0}, {name: 'Shield', level: 1, prepared: true}, {name: 'Sleep', level: 1, prepared: false}, {name: 'Fireball', level: 3, prepared: false}]});
+    kclick('[data-tab="var"]');
+    has(ktext(), '1 bekészítve'); hasNot(ktext(), 'felkészít');
+    has(ktext(), 'Sleep');
+    kset('[data-act="csakBek"]', true);
+    eq(K.localStorage.getItem(kulcs), '1', 'eszközönként tárolva');
+    has(ktext(), 'Fire Bolt'); has(ktext(), 'Shield'); hasNot(ktext(), 'Sleep'); hasNot(ktext(), 'Fireball');
+    has(ktext(), '2 elrejtve');
+    openSheet({classes: [{name: 'Wizard', level: 5}], spells: [{name: 'Sleep', level: 1, prepared: false}]}); kclick('[data-tab="var"]');
+    ok(kq('[data-act="csakBek"]').checked, 'másik lapon is be van kapcsolva');
+    has(ktext(), 'Nincs bekészített varázslat.');
+    kset('[data-act="csakBek"]', false);
+    has(ktext(), 'Sleep'); eq(K.localStorage.getItem(kulcs), null);
+  });
   ktest('Jellemzők: a régebben importált D&D Beyond sablon ({{scalevalue}}) a lap adataiból látszik, a tárolt szöveg nem változik', () => {
     openSheet({classes: [{name: 'Rogue', level: 5, hitDie: 8}], features: [{name: 'Sneak Attack', text: 'Extra {{scalevalue}} damage.', src: ''}]});
     kclick('[data-tab="kep"]');
@@ -4358,7 +4417,7 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="harc"]'); kclick('[data-act="longRest"]');
     eq([lastUpdate().spellcasting.used[0], lastUpdate().hp.cur], [0, 24]);
   });
-  ktest('varázslat a szabálykönyvből (osztálylista szűrő), leírás, felkészítés, saját varázslat', async () => {
+  ktest('varázslat a szabálykönyvből (osztálylista szűrő), leírás, bekészítés, saját varázslat', async () => {
     K.KApp.setRulebook({version: 'v1', rb: await fakeRb()});
     openSheet({classes: [{name: 'Wizard', level: 5}]});
     kclick('[data-tab="var"]');
@@ -4623,7 +4682,7 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="fel"]');
     kset(kq('[data-act="equip"][data-i="2"]'), true);
     let u = lastUpdate();
-    eq(u.attacks.map(a => [a.name, a.hit, a.dmg, !!a.auto]), [['Longsword', '+5', '1d8+3 slashing', true], ['Saját ütés', '+1', '1d4', false]]);
+    eq(u.attacks.map(a => [a.name, a.hit, a.dmg, !!a.auto]), [['Saját ütés', '+1', '1d4', false], ['Longsword', '+5', '1d8+3 slashing', true]], 'a régi Longsword helyén');
     ok(!('ac' in u), 'a kard nem változtat AC-t');
     kset(kq('[data-act="equip"][data-i="1"]'), true);
     eq([lastUpdate().ac, lastUpdate().acNote], [15, 'Leather Armor, Shield']);

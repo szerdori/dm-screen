@@ -35,7 +35,7 @@ function sheetToCreature(s, base) {
   if (s.resources.length) traits.unshift({name: 'Erőforrások', text: s.resources.map(r => `${r.name}: ${r.max - r.used}/${r.max}`).join(', ')});
   if (s.spells.length) {
     const dc = H.spellDc(s), by = {};
-    s.spells.forEach(sp => (by[sp.level] = by[sp.level] || []).push(sp.name + (sp.level && !sp.prepared && !sp.always ? ' (nincs felkészítve)' : '')));
+    s.spells.forEach(sp => (by[sp.level] = by[sp.level] || []).push(sp.name + (sp.level && !sp.prepared && !sp.always ? ' (nincs bekészítve)' : '')));
     traits.unshift({name: 'Varázslatok', text: [dc ? `spell save DC ${dc}, ${sgn(H.spellAtk(s))} to hit` : '',
       ...Object.keys(by).sort((a, b) => a - b).map(l => `${l == 0 ? 'Cantrips' : ordinal(+l) + ' level'}: ${by[l].join(', ')}`)].filter(Boolean).join('\n')});
   }
