@@ -1,7 +1,7 @@
 // D&D Beyond import (logika, DOM nélkül): a karakter-JSON átalakítása a DM Screen lényformátumára és telefonos lapra.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('import-ddb', N) és az index.html-ben az import-ddb.js?v=N és a VART_MODULOK.
 'use strict';
-modul('import-ddb', 1);
+modul('import-ddb', 2);
 
 // D&D Beyond import: fegyver- és páncéljártasság (nem eszköz)
 const WEAPON_ARMOR_PROF = /^(simple|martial)-weapons$|-armor$|^shields$|^(club|dagger|greatclub|handaxe|javelin|light-hammer|mace|quarterstaff|sickle|spear|crossbow-light|crossbow-heavy|crossbow-hand|dart|shortbow|sling|battleaxe|flail|glaive|greataxe|greatsword|halberd|lance|longsword|maul|morningstar|pike|rapier|scimitar|shortsword|trident|war-pick|warhammer|whip|blowgun|longbow|net|firearms)$/;
@@ -111,11 +111,21 @@ function ddbFegyverek({d, M, pb}) {
     return {name: w.definition.name, text};
   });
 }
+// a szöveg sablonjai ({{scalevalue}}, {{savedc:wis}} …) a karakter adataiból: a feature szinttáblája (levelScale) és az osztálya a componentId szerint
+function ddbSablonok(a, {d, abilities, classes, level, pb}) {
+  const own = classes.find(c => (c.classFeatures || []).some(f => f.definition?.id != null && f.definition.id === a.componentId));
+  const ls = own && own.classFeatures.find(f => f.definition?.id === a.componentId)?.levelScale;
+  const sk = Sheet.ddbSkala(a.name), byName = sk && classes.find(c => c.definition?.name === sk[1]);
+  // a lap feloldójával egyezően: más osztály szinttáblájához illő névnél (pl. feat) nem a saját osztály szintjével számol
+  const cls = own || (sk ? byName : classes.length === 1 ? classes[0] : null);
+  const scale = ls?.dice?.diceString || ls?.fixedValue || (sk && cls ? sk[2](cls.level) : undefined);
+  return Sheet.ddbSablon(stripHtml(a.snippet || a.description), {pb, ab: abilities, lvl: level, cl: cls?.level, scale});
+}
 // a D&D Beyond akciói az aktiválás módja szerint
-function ddbAkciok({d}) {
-  const actions = [], bonusActions = [], reactions = [], traits = [];
+function ddbAkciok(alap) {
+  const {d} = alap, actions = [], bonusActions = [], reactions = [], traits = [];
   Object.values(d.actions || {}).flat().filter(Boolean).forEach(a => {
-    const e = {name: a.name, text: stripHtml(a.snippet || a.description).slice(0, 500)};
+    const e = {name: a.name, text: ddbSablonok(a, alap).slice(0, 500)};
     const t = a.activation?.activationType;
     (t === 1 ? actions : t === 3 ? bonusActions : t === 4 ? reactions : traits).push(e);
   });

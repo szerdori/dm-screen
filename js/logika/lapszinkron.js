@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 5);
+modul('lapszinkron', 6);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -206,11 +206,19 @@ function restoreSheets(list) {
 }
 const sheetList = () => Object.entries(SHEETS).map(([id, s]) => ({...s, id}));
 // meglévő (pl. D&D Beyondból importált) játékosból karakterlap: amit a könyvtári adatokból ki lehet olvasni
-function creatureToSheet(c) {
-  const [race, cls] = c.type.includes(' — ') ? c.type.split(' — ') : ['', c.type];
+// a játékos osztályai a típus-sorból („Elf — Rogue 3 (Thief) / Fighter 2”)
+function lenyOsztalyok(c) {
+  const cls = c.type.includes(' — ') ? c.type.split(' — ')[1] : c.type;
   const classes = [...String(cls).matchAll(/([A-Za-z][A-Za-z' ]*?)\s+(\d{1,2})(?:\s*\(([^)]*)\))?/g)]
     .map(m => ({name: m[1].trim(), level: +m[2], subclass: m[3] || ''})).filter(x => Sheet.findClass(x.name));
   if (!classes.length) classes.push({name: '', level: pcLevel(c) || 1});
+  return classes;
+}
+// a D&D Beyondból régebben importált szöveg sablonjai ({{scalevalue}}, {{savedc:wis}} …) a játékos adataiból
+const lenySablon = (c, e) => c.kind === 'pc' ? Sheet.ddbSablonLap(e.text, e.name, {classes: lenyOsztalyok(c), abilities: c.abilities}) : e.text;
+function creatureToSheet(c) {
+  const race = c.type.includes(' — ') ? c.type.split(' — ')[0] : '';
+  const classes = lenyOsztalyok(c);
   const skillProf = {}; let jack = false;
   for (const [k, v] of Object.entries(c.skillMods || {})) { if (v.p >= 1) skillProf[k] = v.p; if (v.p === 0.5) jack = true; }
   // kézzel felvitt játékosnál a „Skills” szövegből (pl. „Stealth +7”): a bónusz és a képességmódosító különbsége adja a jártasságot

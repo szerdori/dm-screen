@@ -189,7 +189,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 <div id="infoPop" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=12"></script>
+<script src="sheet.js?v=13"></script>
 <script src="szerzodes.js?v=2"></script>
 <script>
 'use strict';
@@ -198,7 +198,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 12, szerzodes: 2};
+const VART_MODULOK = {kozos: 3, sheet: 13, szerzodes: 2};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -488,7 +488,7 @@ function tabJell(s, ed) {
   const feats = s.features.map((f, i) => {
     const r = !f.text && RB()?.feats.find(x => x.n.toLowerCase() === f.name.toLowerCase());
     return det('f:' + i + ':' + f.name, `<span class="nm"><b>${esc(f.name)}</b>${f.src ? `<small>${esc(f.src)}</small>` : ''}</span>`,
-      `<div class="tx">${esc(f.text || r?.tx || '')}</div>${ed ? `<div class="row" style="margin-top:8px"><button class="small" data-act="featRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`);
+      `<div class="tx">${esc(H.ddbSablonLap(f.text || r?.tx || '', f.name, s))}</div>${ed ? `<div class="row" style="margin-top:8px"><button class="small" data-act="featRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`);
   }).join('');
   const pick = ed && featPick ? `<div class="box" id="featPickBox"><b>${esc(featPick.name)}</b>: válassz képességet (+${esc(featPick.amt)}${featPick.left > 1 ? `, még ${esc(featPick.left)}` : ''})
     <div class="row" style="margin-top:6px">${featPick.from.map(a => `<button class="small" data-act="featPick" data-a="${a}">${a.toUpperCase()} ${esc(s.abilities[a])}</button>`).join('')}

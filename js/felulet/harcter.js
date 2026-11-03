@@ -106,8 +106,8 @@ function tileHtml(x) {
   const chips = (x.conc ? `<span class="chip conc" data-act="toggleConc" title="Koncentráció – kattints a megszüntetéshez">Koncentráció</span>` : '') +
     x.cond.map((k, i) => `<span class="chip" data-act="rmCond" data-i="${i}" title="Kattints az eltávolításhoz">${esc(k.name)}${k.rounds != null ? ' (' + k.rounds + ')' : ''}</span>`).join('');
   const atkRows = [], others = [];
-  [...c.actions.map(a => [a, '']), ...c.bonusActions.map(a => [a, 'B'])].forEach(([a, t]) => {
-    const inf = atkInfo(a.name + ' ' + a.text);
+  [...c.actions.map(a => [a, '']), ...c.bonusActions.map(a => [a, 'B'])].forEach(([a0, t]) => {
+    const a = {...a0, text: lenySablon(c, a0)}, inf = atkInfo(a.name + ' ' + a.text);
     const rech = (a.name.match(/Recharge (\d)/) || [])[1];
     if (inf.hit || inf.dice.length) {
       atkRows.push(`<div class="atk" data-label="${esc(a.name)}">${t ? `<span class="tag">${t}</span>` : ''}<span class="an" title="${esc(a.text)}">${esc(a.name.replace(/\s*\(Recharge[^)]*\)/, ''))}</span>` +
@@ -149,7 +149,7 @@ function statblock(c) {
   const line = (k, v) => v ? `<p class="line"><b>${k}</b> ${linkify(v)}</p>` : '';
   const saves = ABIL.filter(a => c.saves[a] != null).map(a => `${cap(a)} ${sgn(+c.saves[a])}`).join(', ');
   const sec = k => c[k].length ? `<h3>${SECTION_HU[k]}${k === 'legendary' && c.legendaryCount ? ` (${c.legendaryCount}/kör)` : ''}</h3>` +
-    c[k].map(e => `<p data-label="${esc(e.name)}">${e.name ? `<b><i>${linkify(e.name)}.</i></b> ` : ''}${linkify(e.text)}</p>`).join('') : '';
+    c[k].map(e => `<p data-label="${esc(e.name)}">${e.name ? `<b><i>${linkify(e.name)}.</i></b> ` : ''}${linkify(lenySablon(c, e))}</p>`).join('') : '';
   return `<div class="sb">
     ${c.portrait ? `<img class="portrait" src="${esc(c.portrait)}" alt="" onerror="this.style.display='none'">` : ''}
     <h2>${esc(c.name)}</h2>

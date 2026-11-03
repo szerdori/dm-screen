@@ -576,6 +576,40 @@ describe('D&D Beyond átalakítás', () => {
     await wait(100);
     eq(W.__stripXss, undefined, 'az onerror nem futott le');
   });
+  test('szövegsablonok ({{scalevalue}}, {{savedc:wis}} …): a karakter adataiból; a feature szinttáblája az adatból, osztályszint a componentId szerint; ami nem dönthető el, „?”', () => {
+    const d = structuredClone(DDB).data;
+    d.classes[0].classFeatures = [{definition: {id: 11, name: 'Preserve Life'}}];
+    d.classes[1].classFeatures = [{definition: {id: 22, name: 'Sneak Attack'}, levelScale: {dice: {diceString: '9d6'}}}];
+    d.actions.class.push(
+      {name: 'Sneak Attack', componentId: 22, snippet: 'Extra {{scalevalue}} damage.'},
+      {name: 'Preserve Life', componentId: 11, snippet: 'Restore {{classlevel*5#unsigned}} HP, DC {{savedc:wis}}, up to level {{(proficiency/2)@roundup#unsigned}}.'},
+      {name: 'Mix', componentId: 11, snippet: '{{(modifier:cha+classlevel)@min:1#unsigned}} / {{modifier:cha@min:1#unsigned}} / {{proficiency#signed}} / {{(classlevel/2)@rounddown}}'},
+      {name: 'Ismeretlen', snippet: '{{limiteduse}} és {{classlevel}} és {{1+}}'});
+    const t = n => W.convertDDB({data: d}).traits.find(x => x.name === n).text;
+    eq(t('Sneak Attack'), 'Extra 9d6 damage.', 'a levelScale nyer');
+    eq(t('Preserve Life'), 'Restore 15 HP, DC 12, up to level 2.', 'Fighter 3, PB 3, WIS +1');
+    eq(t('Mix'), '2 / 1 / +3 / 1');
+    eq(t('Ismeretlen'), '? és ? és ?', 'multiclass, componentId nélkül az osztályszint nem dönthető el');
+    // levelScale nélkül a PHB szinttáblája (Rogue 2 → 1d6)
+    delete d.classes[1].classFeatures[0].levelScale;
+    eq(t('Sneak Attack'), 'Extra 1d6 damage.');
+  });
+  test('szövegsablon a már elmentett szövegben: a telefonos lap és a DM Screen statblokkja a lap / játékos adataiból oldja fel', () => {
+    const H = W.Sheet, lap = (cls, ab = {}) => H.norm({classes: cls, abilities: {wis: 14, cha: 16, ...ab}});
+    eq(H.ddbSablonLap('Extra {{scalevalue}} damage.', 'Sneak Attack', lap([{name: 'Rogue', level: 5}, {name: 'Fighter', level: 2}])), 'Extra 3d6 damage.', 'a Rogue szintje');
+    eq(H.ddbSablonLap('Die ({{scalevalue}}), DC {{savedc:cha}}', 'Bardic Inspiration', lap([{name: 'Bard', level: 10}])), 'Die (d10), DC 15');
+    eq(H.ddbSablonLap('{{classlevel*5#unsigned}} HP', 'Channel Divinity: Preserve Life', lap([{name: 'Cleric', level: 6}])), '30 HP', 'egy osztály');
+    eq(H.ddbSablonLap('{{scalevalue}}', 'Valami', lap([{name: 'Cleric', level: 6}])), '?', 'ismeretlen szinttábla');
+    eq(H.ddbSablonLap('sima szöveg', 'X', lap([])), 'sima szöveg');
+    // szélső esetek: osztás nullával, negatív, @ zárójelen belül, kocka a kifejezésben, túl hosszú / túl mély kifejezés
+    const k = {pb: 2, ab: {cha: 8}, cl: 3};
+    eq(['{{classlevel/0}}', '{{-classlevel+1#signed}}', '{{modifier:cha#signed}}', '{{(classlevel@min:1)*2}}', '{{2d6+1}}', '{{' + '('.repeat(5000) + '1' + ')'.repeat(5000) + '}}'].map(x => H.ddbSablon(x, k)),
+      ['?', '-2', '-1', '?', '?', '?']);
+    eq(H.ddbSablon('{{(1+2)*3}}', k), '9');
+    const pc = {kind: 'pc', type: 'Elf — Rogue 3 (Thief)', abilities: {str: 10, dex: 16, con: 10, int: 10, wis: 12, cha: 10}};
+    eq(W.lenySablon(pc, {name: 'Sneak Attack', text: '{{scalevalue}}, DC {{savedc:dex}}'}), '2d6, DC 13');
+    eq(W.lenySablon({...pc, kind: 'enemy'}, {name: 'Sneak Attack', text: '{{scalevalue}}'}), '{{scalevalue}}', 'szörnynél nem nyúl hozzá');
+  });
   test('képességek: alap + bónusz + faji bónusz + „set” + felülírás', () => {
     eq(W.convertDDB(DDB).abilities, {str: 17, dex: 16, con: 19, int: 12, wis: 12, cha: 8});
   });
@@ -4274,6 +4308,13 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="var"]');
     eq(kq('nav.tabs').scrollLeft, got);
   });
+  ktest('Jellemzők: a régebben importált D&D Beyond sablon ({{scalevalue}}) a lap adataiból látszik, a tárolt szöveg nem változik', () => {
+    openSheet({classes: [{name: 'Rogue', level: 5, hitDie: 8}], features: [{name: 'Sneak Attack', text: 'Extra {{scalevalue}} damage.', src: ''}]});
+    kclick('[data-tab="kep"]');
+    has(kq('main').textContent, 'Extra 3d6 damage.');
+    hasNot(kq('main').textContent, '{{');
+    eq(K.eval('sheets.get("p1")').features[0].text, 'Extra {{scalevalue}} damage.');
+  });
   ktest('HP: sebzés, gyógyítás, temp; mezőnként menti, a csapat felé is; 0 HP-n halálmentők', () => {
     openSheet({hp: {max: 24, cur: 24, temp: 0}});
     // a gombok előjele a DM Screen szokását követi: + = sebzés, − = gyógyítás
@@ -5092,7 +5133,7 @@ async function run() {
   for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'loadLoot', 'confirm', 'alert', 'download', 'buildRulebook']) ORIG[k] = W[k];
   K.addEventListener('unhandledrejection', e => appErrors.push('karakter.html promise: ' + (e.reason?.message || e.reason)));
   // a „const f = ...” segédfüggvények nem window-tulajdonságok, ezért elérhetővé tesszük őket W.f néven
-  for (const k of ['normCreature', 'normCombatant', 'splitEntry', 'sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp', 'hpStatus', 'playerEmails', 'stableJson', 'sharingDirty']) W[k] = A(k);
+  for (const k of ['normCreature', 'normCombatant', 'splitEntry', 'sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp', 'hpStatus', 'playerEmails', 'stableJson', 'sharingDirty', 'lenySablon']) W[k] = A(k);
   for (const t of TESTS) {
     if (t.online && !ONLINE) { skip++; continue; }
     try {

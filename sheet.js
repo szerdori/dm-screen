@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 12;
+  const VERSION = 13;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -1629,6 +1629,80 @@ window.Sheet = (() => {
     senses: '', resist: '', notes: ''
   };
 
+  // ---------- D&D Beyond szövegsablonok ({{scalevalue}}, {{savedc:wis}}, {{(proficiency/2)@roundup#unsigned}} …) feloldása ----------
+  // k = {pb, ab: {str: 10, …} (pontszám), lvl, cl (az osztály szintje), scale (a feature szinttáblás értéke)}; ami nem dönthető el, „?” lesz
+  // a PHB 2014 szinttáblás értékei, ha a D&D Beyond adat nem hozza (és a régi, már beírt szövegekhez): [osztály, szint → érték]
+  const lepcso = (l, t) => t.filter(([n]) => l >= n).at(-1)?.[1];
+  const DDB_SKALA = [
+    [/^sneak attack/i, 'Rogue', l => Math.ceil(l / 2) + 'd6'],
+    [/^bardic inspiration/i, 'Bard', l => lepcso(l, [[1, 'd6'], [5, 'd8'], [10, 'd10'], [15, 'd12']])],
+    [/^song of rest/i, 'Bard', l => lepcso(l, [[2, 'd6'], [9, 'd8'], [13, 'd10'], [17, 'd12']])],
+    [/^martial arts/i, 'Monk', l => lepcso(l, [[1, '1d4'], [5, '1d6'], [11, '1d8'], [17, '1d10']])],
+    [/^rage/i, 'Barbarian', l => lepcso(l, [[1, '+2'], [9, '+3'], [16, '+4']])],
+    [/^(combat superiority|superiority dice|maneuvers)/i, 'Fighter', l => lepcso(l, [[3, 'd8'], [10, 'd10'], [18, 'd12']])],
+    [/^destroy undead/i, 'Cleric', l => lepcso(l, [[5, 'CR 1/2'], [8, 'CR 1'], [11, 'CR 2'], [14, 'CR 3'], [17, 'CR 4']])]];
+  const ddbSkala = name => DDB_SKALA.find(([re]) => re.test(String(name || '').trim()));
+  function ddbErtek(expr, k) {
+    // a rekurzió mélysége miatt: a valódi sablonok rövidek
+    if (String(expr).length > 200) return null;
+    const toks = String(expr).replace(/\s+/g, '').match(/\d+(?:\.\d+)?|[a-z]+(?::[a-z]+)?|[-+*/()]/gi) || [];
+    if (toks.join('') !== String(expr).replace(/\s+/g, '')) return null;
+    const mo = a => k.ab?.[a] != null ? mod(k.ab[a]) : null;
+    const nev = t => {
+      const [n, a] = t.toLowerCase().split(':');
+      if (n === 'proficiency') return k.pb ?? null;
+      if (n === 'characterlevel') return k.lvl ?? null;
+      if (n === 'classlevel') return k.cl ?? null;
+      if (n === 'scalevalue') return k.scale ?? null;
+      if (!ABIL.includes(a) || mo(a) == null || k.pb == null) return null;
+      return n === 'modifier' ? mo(a) : n === 'savedc' ? 8 + k.pb + mo(a) : n === 'spellattack' ? k.pb + mo(a) : null;
+    };
+    let i = 0;
+    // egyszerű rekurzív kiértékelő (eval nélkül): összeg → szorzat → tényező
+    const tenyezo = () => {
+      const t = toks[i++];
+      if (t === '(') { const v = osszeg(); return toks[i++] === ')' ? v : null; }
+      if (t === '-') { const v = tenyezo(); return typeof v === 'number' ? -v : null; }
+      return t == null ? null : /^\d/.test(t) ? +t : nev(t);
+    };
+    const muvelet = (al, ops) => () => {
+      let v = al();
+      while (ops.includes(toks[i])) {
+        const op = toks[i++], w = al();
+        if (typeof v !== 'number' || typeof w !== 'number') return null;
+        v = op === '+' ? v + w : op === '-' ? v - w : op === '*' ? v * w : w ? v / w : null;
+      }
+      return v;
+    };
+    const szorzat = muvelet(tenyezo, ['*', '/']), osszeg = muvelet(szorzat, ['+', '-']);
+    const v = osszeg();
+    return i === toks.length ? v : null;
+  }
+  function ddbSablon(text, k = {}) {
+    return String(text || '').replace(/\{\{([^{}]*)\}\}/g, (_, belso) => {
+      const [fo, fmt] = belso.split('#'), [expr, ...mods] = fo.split('@');
+      let v = ddbErtek(expr, k);
+      if (v == null) return '?';
+      if (typeof v === 'number') {
+        let kerek = false;
+        for (const m of mods) {
+          const [n, p] = m.toLowerCase().split(':'), h = parseFloat(p);
+          if (n === 'roundup') { v = Math.ceil(v); kerek = true; } else if (n === 'rounddown') { v = Math.floor(v); kerek = true; } else if (n === 'round') { v = Math.round(v); kerek = true; }
+          else if (n === 'min' && !isNaN(h)) v = Math.max(v, h); else if (n === 'max' && !isNaN(h)) v = Math.min(v, h);
+        }
+        if (!kerek) v = Math.floor(v);
+        return fmt === 'signed' ? sgn(v) : String(v);
+      }
+      return String(v);
+    });
+  }
+  // a lapon már bent lévő (régebben importált) sablon a lap adataiból: a szinttáblás érték a jellemző nevéből, az osztályszint az osztály neve szerint
+  function ddbSablonLap(text, name, s) {
+    if (!/\{\{/.test(String(text || ''))) return String(text || '');
+    const sk = ddbSkala(name), cls = sk ? s.classes.find(c => c.name === sk[1]) : s.classes.length === 1 ? s.classes[0] : null;
+    return ddbSablon(text, {pb: pb(s), ab: s.abilities, lvl: level(s), cl: cls?.level, scale: sk && cls ? sk[2](cls.level) : undefined});
+  }
+
   // verzióőr: a kozos.js nyilvántartásába (az oldalak a kozos.js-t a sheet.js előtt töltik)
   if (typeof modul === 'function') modul('sheet', VERSION);
 
@@ -1639,5 +1713,5 @@ window.Sheet = (() => {
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,
-    RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine};
+    RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine, ddbSablon, ddbSablonLap, ddbSkala};
 })();
