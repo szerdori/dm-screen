@@ -47,7 +47,7 @@ h3.sub2{color:var(--muted);font-weight:600}
 .own .av{width:72px;height:72px}
 .main{flex:1;min-width:0}
 .name{font:700 18px Georgia,serif;overflow-wrap:anywhere}
-.sub{color:var(--muted);font-size:13px}
+.sub{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
 .stats{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
 .ac{border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-weight:700}
 .bar{flex:1;min-width:120px;height:22px;background:#08090b;border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative}
@@ -85,6 +85,8 @@ button.cast.on{background:var(--accent);color:#1a1405;border-color:var(--accent)
 .chip{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px 6px;text-align:center;flex:1;min-width:56px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;line-height:1.3}
 .hero .av{width:44px;height:44px;font-size:18px}
 .hero .name{font-size:17px}
+.hero .main{flex:1;min-width:0}
+.hero .chip.ac{flex:none;margin-left:auto;min-width:52px}
 .hpline{display:flex;gap:8px;align-items:center;margin-top:8px}
 .bar.slim{height:16px;min-width:0}
 .bar.slim span{font-size:12px;line-height:14px}
@@ -325,7 +327,7 @@ function renderSheet(s) {
       <button class="small" data-act="hd" data-die="${h.die}" ${h.used >= h.max ? 'disabled' : ''}>Elköltés</button></div>`).join('')}
       <p class="hint" style="margin:6px 0 0">Short rest: a „short rest” erőforrások és a Pact Magic slotok töltődnek vissza. Long rest: teljes HP, minden slot és erőforrás, a Hit Dice fele, −1 exhaustion.</p></div>` : ''}
     <div class="hero">${avatar(s.portrait, s.name)}<div class="main"><div class="name">${esc(s.name)}</div>
-      <div class="sub">${esc([s.race, H.classLabel(s) || 'Szint ' + L].filter(Boolean).join(' · '))}</div></div></div>
+      <div class="sub">${esc([s.race, H.classLabel(s) || 'Szint ' + L].filter(Boolean).join(' · '))}</div></div>${acChip(s)}</div>
     <div class="hpline">${hpBar(s.hp, 'slim')}${s.hp.temp ? `<span class="tmp">+${esc(s.hp.temp)} temp</span>` : ''}${s.hp.cur === 0 ? '<span class="tmp" style="color:var(--red)">halálmentők a Harc fül alján</span>' : ''}</div>
     ${s.deleted ? `<div class="lubar"><span class="grow">🗑 <b>Törölt karakter</b>${s.deleted.owner ? ` (${esc(s.deleted.owner)})` : ''}: a játékos nem látja. A DM Screen Könyvtárában hozhatod vissza, vagy törölheted véglegesen.</span></div>` : ''}
     ${ed ? luBar(s) : ''}
@@ -340,10 +342,15 @@ function fxBar(s) {
   const list = [...s.conditions.map(c => ({c, neg: !!H.effectOf(c)?.neg, off: s.effOff.includes(c)})), ...(s.exhaustion ? [{c: 'Exhaustion ' + s.exhaustion, neg: true, off: s.effOff.includes('Exhaustion')}] : [])];
   return list.length ? `<div class="fxbar">${list.map(x => `<span class="fxchip ${x.neg ? 'neg' : ''} ${x.off ? 'off' : ''}" title="${esc(H.effectOf(x.c)?.text || '')}">${esc(x.c)}</span>`).join('')}</div>` : '';
 }
+// AC az aktív hatásokkal (Mage Armor, Shield…): a fejlécben a név mellett (minden fülön) és az Alapadatok sorában
+function acChip(s) {
+  const e = H.effects(s, RB());
+  return `<div class="chip ac ${e.ac !== s.ac ? 'fx' : ''}" title="${esc([s.acNote, e.acParts.length ? `alap ${s.ac} + ${e.acParts.join(', ')}` : ''].filter(Boolean).join(' · '))}"><b>${esc(e.ac)}</b><small>AC${e.ac !== s.ac ? ' ✨' : ''}</small></div>`;
+}
 function statChips(s) {
   const e = H.effects(s, RB());
   return `<div class="chips">
-      <div class="chip ${e.ac !== s.ac ? 'fx' : ''}" title="${esc([s.acNote, e.acParts.length ? `alap ${s.ac} + ${e.acParts.join(', ')}` : ''].filter(Boolean).join(' · '))}"><b>${esc(e.ac)}</b><small>AC${e.ac !== s.ac ? ' ✨' : ''}</small></div>
+      ${acChip(s)}
       <button class="chip" data-act="d20" data-bonus="${H.initiative(s)}" data-label="Initiative" data-kind="init"><b>${esc(sgn(H.initiative(s)))}</b><small>Initiative</small></button>
       <div class="chip ${e.speed !== s.speed ? 'fx' : ''}" title="${esc(e.speed !== s.speed ? 'alap: ' + s.speed : '')}"><b>${esc(e.speed.replace(/\s*ft\.?$/, ''))}</b><small>Speed${e.speed !== s.speed ? ' ✨' : ''}</small></div>
       <div class="chip"><b>${esc(sgn(H.pb(s)))}</b><small>Prof. bónusz</small></div>
@@ -389,7 +396,6 @@ function tabHarc(s, ed) {
       <optgroup label="Állapot">${H.CONDITIONS.filter(c => !s.conditions.includes(c)).map(c => `<option>${c}</option>`).join('')}</optgroup></select>
       <label class="hint">Exhaustion <select id="exh">${[0, 1, 2, 3, 4, 5, 6].map(n => `<option ${n === s.exhaustion ? 'selected' : ''}>${n}</option>`).join('')}</select></label>${s.exhaustion ? offBtn('Exhaustion') : ''}</div>` : ''}
     ${s.exhaustion ? `<p class="hint">Exhaustion ${esc(s.exhaustion)}: ${esc(['', 'hátrány a próbákra', '+ fél speed', '+ hátrány a támadásra és a mentőre', '+ fél max HP', '+ a speed 0', 'halál'][s.exhaustion])}${s.effOff.includes('Exhaustion') ? ' (automatikus hatás kikapcsolva)' : ''}</p>` : ''}
-    ${profsHtml(s)}
     <h3>HP</h3>${hpBox(s, ed)}`;
 }
 function tabKep(s, ed) {
@@ -402,9 +408,10 @@ function tabKep(s, ed) {
     <h3>Skillek</h3><div class="list">${sk}</div>
     <p class="hint">● jártas · ◆ expertise${s.jack ? ' · ½ Jack of All Trades' : ''}</p>
     <h3>Passzív értékek</h3><p>Perception <b>${H.passive(s, 'perception')}</b> · Investigation <b>${H.passive(s, 'investigation')}</b> · Insight <b>${H.passive(s, 'insight')}</b></p>
+    ${profsHtml(s)}
     ${tabJell(s, ed)}`;
 }
-// a Harc fülön, a HP-kezelés fölött
+// a Képességek fülön, a passzív értékek alatt
 function profsHtml(s) {
   const pr = s.profs, er = H.effects(s, RB()).resist;
   return `<h3>Jártasságok, nyelvek</h3>

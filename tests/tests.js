@@ -4318,7 +4318,7 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     eq(kqa('nav.tabs button').map(b => b.dataset.tab), ['harc', 'kep', 'var', 'fel', 'adat', 'jegyz'], 'a Jegyzet az utolsó, nincs külön Jellemzők fül');
     ok(!kq('#rollbar').hidden, 'a dobássáv látszik');
   });
-  ktest('elrendezés: fent csak vékony HP-sáv; HP-kezelés a Harc fül alján; AC-sor az Alapadatokon; jellemzők a Képességek alján', () => {
+  ktest('elrendezés: fent csak vékony HP-sáv és az AC a név mellett; HP-kezelés a Harc fül alján; AC-sor az Alapadatokon; jártasságok és jellemzők a Képességeken', () => {
     openSheet({hp: {max: 24, cur: 20, temp: 3}});
     const nav = kq('nav.tabs');
     ok(kq('.hpline .bar.slim') && nav.compareDocumentPosition(kq('.hpline')) & K.Node.DOCUMENT_POSITION_PRECEDING, 'a HP-sáv a fülsáv fölött');
@@ -4333,11 +4333,19 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     eq(K.getComputedStyle(kq('.chips button.chip')).justifyContent, 'flex-start', 'az Initiative is felülre igazítva');
     kclick('[data-tab="kep"]');
     has(ktext(), 'Jellemzők'); has(ktext(), 'Sneak Attack'); ok(kq('#featNew'), 'jellemző felvétele is itt');
-    hasNot(ktext(), 'Jártasságok', 'a jártasságok a Harc fülön vannak');
-    kclick('[data-tab="harc"]');
-    const h3 = kqa('main h3').map(h => h.textContent);
-    eq(h3.slice(-2), ['Jártasságok, nyelvek', 'HP'], 'a jártasságok közvetlenül a HP-kezelés fölött');
+    // a jártasságok a Képességek fülön, a passzív értékek alatt (a jellemzők előtt)
+    const k3 = kqa('main h3').map(h => h.textContent), pi = k3.indexOf('Passzív értékek');
+    eq(k3.slice(pi, pi + 2), ['Passzív értékek', 'Jártasságok, nyelvek']);
     has(ktext(), "thieves' tools");
+    kclick('[data-tab="harc"]');
+    hasNot(ktext(), 'Jártasságok', 'a Harc fülről átkerült');
+    // az AC a fejlécben, a név mellett jobbra, a HP-sáv fölött (minden fülön)
+    const ac = kq('.hero .chip.ac');
+    ok(ac, 'van AC a fejlécben'); eq(ac.querySelector('b').textContent, '14');
+    ok(ac.getBoundingClientRect().left > kq('.hero .name').getBoundingClientRect().right, 'a név mellett jobbra');
+    ok(ac.compareDocumentPosition(kq('.hpline')) & K.Node.DOCUMENT_POSITION_FOLLOWING, 'a HP-sáv fölött');
+    openSheet({hp: {max: 24, cur: 20, temp: 0}, conditions: ['Shield of Faith']});
+    eq([kq('.hero .chip.ac b').textContent, kq('.hero .chip.ac').classList.contains('fx')], ['16', true], 'a hatással együtt, jelölve');
   });
   ktest('pihenő gombok a felső sorban; a HD gomb a Hit Dice panelt nyitja, onnan elkölthető', () => {
     openSheet({classes: [{name: 'Fighter', level: 3}, {name: 'Rogue', level: 2}], hp: {max: 30, cur: 10, temp: 0}});
@@ -4356,7 +4364,8 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     const fr = document.getElementById('karakter'), w0 = fr.width;
     fr.width = 320; await wait(50);
     try {
-      openSheet({classes: [{name: 'Fighter', level: 3}, {name: 'Rogue', subclass: 'Thief', level: 2}]});
+      // hosszú, szóköz nélküli név és faj, portréval: a fejléc (név, AC) se lógjon ki
+      openSheet({name: 'Hosszúnevűkarakterszóközeknélkülkiírva', race: 'Nagyonhosszúsajátfajnévszóköznélkül', portrait: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', classes: [{name: 'Fighter', level: 3}, {name: 'Rogue', subclass: 'Thief', level: 2}]});
       const W = K.document.documentElement.clientWidth;
       for (const t of ['harc', 'kep', 'var', 'fel', 'adat', 'jegyz']) {
         kclick(`[data-tab="${t}"]`);
