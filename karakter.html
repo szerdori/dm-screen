@@ -193,7 +193,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 <div id="infoPop" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=14"></script>
+<script src="sheet.js?v=15"></script>
 <script src="szerzodes.js?v=4"></script>
 <script>
 'use strict';
@@ -202,7 +202,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 14, szerzodes: 4};
+const VART_MODULOK = {kozos: 3, sheet: 15, szerzodes: 4};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();

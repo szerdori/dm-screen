@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 14;
+  const VERSION = 15;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -1153,6 +1153,17 @@ window.Sheet = (() => {
     for (const k of OV_PLUS) { const van = new Set(szet(uj[k]).map(tetel)), tobb = szet(regi[k]).map(x => x.trim()).filter(x => !van.has(tetel(x))); if (tobb.length) ov['plus:' + k] = tobb.join(', '); }
     return {auto: true, build: b, ov: normOv(ov), todoDone: []};
   }
+  // átállítható-e: a szabálykönyv ismeri a lap minden osztályát (különben a szintek elvesznének a felépítésből)
+  const atallithato = (s, rb) => !!rb?.classes?.length && s.classes.length > 0 && s.classes.every(c => rb.classes.some(x => x.n === (findClass(c.name) || c.name)));
+  // kézi lapból szabálymotoros, mint a telefonos Átállítás: felépítés és felülírások, a varázslatok besorolása, a számolt mezők kiírása.
+  // Ha nem átállítható (vagy a szint eltérne), null: a lap kézi marad.
+  function autoLap(s, rb) {
+    if (!atallithato(s, rb)) return null;
+    let n = norm({...s, ...toAuto(s, rb)});
+    if (rb.spells?.length) n = norm({...n, build: adoptSpells(n, rb)});
+    n = norm({...n, ...materialize(n, calc(n, rb))});
+    return n.build.levels.length === level(s) ? n : null;
+  }
   // a szabálymotoros lap meglévő varázslatainak besorolása a felépítésbe (build.spells): ami egyértelműen egy helyre való, az oda kerül (a bekészítés és a jegyzet marad),
   // a többi saját varázslat marad (pl. kétosztályos lapon a mindkét listán szereplő); a hiányzó helyek teendők lesznek. Csak egyszer fut: utána a build.spells nem null.
   function adoptSpells(s, rb) {
@@ -1723,5 +1734,5 @@ window.Sheet = (() => {
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,
-    RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine, ddbSablon, ddbSablonLap, ddbSkala, regiSorrend};
+    RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine, ddbSablon, ddbSablonLap, ddbSkala, regiSorrend, atallithato, autoLap};
 })();

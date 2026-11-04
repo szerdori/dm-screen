@@ -149,7 +149,7 @@ const AKCIOK = {
     const lib = konyvtari(el);
     if (SHEETS[lib.id]) window.open('karakter.html#lap/' + lib.id, '_blank');
     else if (confirm(`Telefonos karakterlapot hozol létre ${lib.name} számára a könyvtári adatokból?\nEzután a lap a játékosé: amit a telefonján átír, az ide is átjön. Az osztályt, spell slotokat érdemes a lapon ellenőrizni.`)) {
-      createSheet(lib.id, creatureToSheet(lib)); filterLib(); log(`📱 ${esc(lib.name)}: karakterlap létrehozva`);
+      lapKonyvtarbol(lib).then(auto => { if (auto == null) return; filterLib(); log(`📱 ${esc(lib.name)}: karakterlap létrehozva${auto === true ? ', szabálymotorosan (⚙ átállítva; a kézi változat backupként az Előzményekben)' : auto === 'hiba' ? ' kézi lapként (✋): az átállítás hibát dobott – a lapon az Alapadatok fülön próbálható újra' : ' kézi lapként (✋): a szabálykönyv nem ismeri minden osztályát, vagy nincs feltöltve – a lapon az Alapadatok fülön állítható át'}`); });
     }
   },
 

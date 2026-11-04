@@ -3388,7 +3388,7 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     $('#edForm').elements.ac.value = '17'; click('[data-act="edSave"]'); await wait(500);
     eq([f.store['sheets/p1'].ac, lib().ac], [15, 17], 'a lapon 15 (+2 Shield of Faith = 17)');
   });
-  test('karakterlap létrehozása meglévő (D&D Beyond-os) játékosból: osztály, mentők, skillek, támadás, spellek', () => {
+  test('karakterlap létrehozása meglévő (D&D Beyond-os) játékosból: osztály, mentők, skillek, támadás, spellek', async () => {
     const c = W.normCreature(pc('Rella', 5, {id: 'p9', owner: 'a@x.hu', type: 'Half-Elf — Bard 5 (College of Lore)', abilities: {dex: 14, cha: 18, con: 12}, saves: {dex: 4, cha: 7},
       skillMods: {performance: {b: 10, p: 2}, perception: {b: 1, p: 0.5}, stealth: {b: 5, p: 1}}, hp: {max: 38, cur: 30},
       actions: [{name: 'Rapier', text: 'Melee Weapon Attack: +5 to hit, reach 5 ft. Hit: 1d8+2 piercing damage.'}, {name: 'Dagger', text: 'Melee Weapon Attack: +5 to hit. Hit: 4 (1d4 + 2) piercing damage.'}],
@@ -3406,12 +3406,60 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     const m = W.creatureToSheet(W.normCreature(pc('Kézi', 5, {abilities: {dex: 16, wis: 12, str: 10}, skills: 'Stealth +9, Perception +4, Athletics +0, Arcana +1, Nemlétező +5'})));
     eq(m.skillProf, {perception: 1, stealth: 2},'Stealth: 3 + 2×3, Perception: 1 + 3');
     A(`S.library = [normCreature(${JSON.stringify(c)})]`); W.openLib('lib');
-    click('[data-act="libSheet"]');
-    ok(A('SHEETS.p9'), 'létrejött'); eq([A('S.library[0].owner'), A('SHEETS.p9.owner')], ['a@x.hu', 'a@x.hu']);
+    click('[data-act="libSheet"]'); await until(() => A('SHEETS.p9'), 2000, 'a lap létrejön');
+    eq(A('SHEETS.p9.auto'), false, 'szabálykönyv nélkül kézi lap'); has(lastLog(), 'kézi lapként'); eq([A('S.library[0].owner'), A('SHEETS.p9.owner')], ['a@x.hu', 'a@x.hu']);
     ok($('[data-act="libSheet"]').classList.contains('on'));
     const calls = []; const o = W.open; W.open = (...a) => calls.push(a);
     try { click('[data-act="libSheet"]'); } finally { W.open = o; }
     eq(calls, [['karakter.html#lap/p9', '_blank']], 'meglévő lapnál megnyitja');
+  });
+  test('📱 a szabálykönyvvel: ha ismeri az osztályokat, a lap rögtön szabálymotoros (mint az Átállítás); ismeretlen osztálynál és osztály nélkül kézi', async () => {
+    A(`rulebook = ${JSON.stringify({version: 't', counts: {}, rb: rb3()})}`);
+    try {
+      const c = W.normCreature(pc('Thorin', 3, {id: 'p7', owner: 'a@x.hu', type: 'Hill Dwarf — Fighter 3 (Champion)', abilities: {str: 16, dex: 12, con: 16, int: 10, wis: 12, cha: 8},
+        saves: {str: 5, con: 5}, skillMods: {athletics: {b: 5, p: 1}}, ac: 18, hp: {max: 31, cur: 25}, inventory: [{name: 'Rope', qty: 1}]}));
+      const n = W.normCreature(pc('Volt NPC', 2, {id: 'p8', owner: 'b@x.hu', type: 'humanoid (elf)'}));
+      const x = W.normCreature(pc('Furcsa', 4, {id: 'p6', type: 'Elf — Artificer 4'}));
+      A(`S.library = ${JSON.stringify([c, n, x])}.map(normCreature)`); W.openLib('lib');
+      const gomb = id => $(`.lrow[data-lib="${id}"] [data-act="libSheet"]`);
+      click(gomb('p7')); await until(() => A('SHEETS.p7'), 2000, 'a lap létrejön');
+      const s = A('SHEETS.p7');
+      eq([s.auto, s.build.levels.length, s.build.race, s.build.subrace, s.build.sub, s.owner], [true, 3, 'Dwarf|PHB', 'Hill|PHB', {Fighter: 'Champion|PHB'}, 'a@x.hu'], 'átállítva');
+      eq([s.ac, s.hp.max, s.hp.cur, s.abilities.con], [18, 31, 25, 16], 'a látható értékek nem változnak (az eltérés felülírásként marad)');
+      ok(s.features.some(f => f.name === 'Second Wind' && f.auto), 'a szabálykönyvből számolt jellemzők');
+      ok(s.inventory.some(i => i.name === 'Rope'));
+      has(lastLog(), 'szabálymotorosan');
+      // osztály nélküli (NPC-ből lett) és a szabálykönyvben nem szereplő osztály: kézi lap
+      click(gomb('p8')); await until(() => A('SHEETS.p8'), 2000);
+      click(gomb('p6')); await until(() => A('SHEETS.p6'), 2000);
+      eq([A('SHEETS.p8.auto'), A('SHEETS.p6.auto')], [false, false]);
+      has(lastLog(), 'kézi lapként');
+      // nem átállítható lap: a segéd null-t ad
+      eq(W.Sheet.autoLap(W.Sheet.norm({classes: [{name: 'Artificer', level: 4}]}), rb3()), null);
+    } finally { A('rulebook = null'); }
+  });
+  test('📱 a felhős szabálykönyvvel: onnan tölti, átállít, és a kézi változat backupként az Előzményekbe kerül; a tükörből letöltött szabálykönyv nem számít', async () => {
+    const rb = {...Object.fromEntries(W.Sheet.RB_KINDS.map(k => [k, []])), ...rb3()};
+    const c = pc('Thorin', 3, {id: 'p7', owner: 'a@x.hu', type: 'Hill Dwarf — Fighter 3 (Champion)', abilities: {str: 16, dex: 12, con: 16, int: 10, wis: 12, cha: 8}, ac: 18, hp: {max: 31, cur: 25}});
+    const f = makeFakeDb({...emptyState(), 'dmscreen_library/p7': c});
+    A('rulebook = null');
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(300);
+    try {
+      await W.uploadRulebook(rb); A('rulebook = null');
+      W.openLib('lib'); click('[data-act="libSheet"]');
+      await until(() => A('SHEETS.p7'), 3000, 'a lap létrejön');
+      eq(A('SHEETS.p7.auto'), true, 'a felhős szabálykönyvvel átállítva');
+      ok(A('rulebook?.version'), 'a betöltött szabálykönyv megmarad a következőhöz');
+      await until(() => Object.keys(f.store).some(k => k.startsWith('sheets/p7/hist/')), 2000, 'backup');
+      const h = Object.entries(f.store).find(([k]) => k.startsWith('sheets/p7/hist/'))[1];
+      eq([h.reason, h.from, h.to, h.by, h.sheet.auto, h.sheet.owner, h.sheet.ac], ['manual', 3, 3, 'dm@x.hu', false, 'a@x.hu', 18], 'a kézi változat');
+      has(lastLog(), 'a kézi változat backupként');
+      // a tükörből épített (version: '') szabálykönyv: abból a telefonok nem számolnak, ezért kézi lap
+      A(`rulebook = ${JSON.stringify({version: '', counts: {}, rb})}`); A('Tar.kapcsol(null)');
+      A(`S.library.push(normCreature(${JSON.stringify(pc('Balin', 2, {id: 'p5', type: 'Hill Dwarf — Fighter 2'}))}))`); W.openLib('lib');
+      click('.lrow[data-lib="p5"] [data-act="libSheet"]'); await until(() => A('SHEETS.p5'), 2000);
+      eq(A('SHEETS.p5.auto'), false);
+    } finally { A('rulebook = null'); }
   });
   test('JSON-import: karakterlap-sablon → játékos + lap a felhőben; azonos névnél rákérdez', async () => {
     const f = makeFakeDb(emptyState());

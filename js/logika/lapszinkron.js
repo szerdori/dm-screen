@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 7);
+modul('lapszinkron', 8);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -136,6 +136,27 @@ function onSheets(docs) {
   }
   for (const id of Object.keys(SHEETS)) if (!ids.has(id) && !sheetOps.set.has(id)) { delete SHEETS[id]; delete shadow[id]; changed = true; }
   if (changed) { save(); Ertesito.lapokValtoztak(); }
+}
+const lapKeszul = new Set();  // dupla kattintás ellen: amíg a szabálykönyv töltődik
+// új lap a könyvtári lényből (📱): ha a szabálykönyv ismeri az osztályait, rögtön szabálymotoros (mint a telefonos Átállítás), különben kézi.
+// Visszatér: true = átállítva, false = kézi lap (a szabálykönyv nem ismeri az osztályait, vagy nincs feltöltve), 'hiba' = kézi lap, mert az átállítás hibát dobott, null = nem készült (már van lapja, vagy épp készül)
+async function lapKonyvtarbol(lib) {
+  if (SHEETS[lib.id] || lapKeszul.has(lib.id)) return null;
+  lapKeszul.add(lib.id);
+  const kezi = creatureToSheet(lib);
+  let auto = null, hiba = false;
+  if (!rulebook?.version && Tar.kapcsolva()) Ertesito.naplo(`📖 ${esc(lib.name)}: a szabálykönyv betöltése a lap átállításához…`);
+  try { auto = Sheet.autoLap(kezi, await felhoSzabalyok()); } catch (e) { console.error(e); hiba = true; }
+  finally { lapKeszul.delete(lib.id); }
+  if (SHEETS[lib.id] || !S.library.some(c => c.id === lib.id)) return null;  // közben máshonnan létrejött, vagy a lényt törölték
+  createSheet(lib.id, auto || kezi);
+  // mint a telefonos Átállításnál: a kézi változat backupként (Előzmények), a DM vissza tudja állítani
+  if (auto && Tar.kapcsolva()) {
+    const at = new Date().toISOString(), L = Sheet.level(kezi);
+    const h = Sheet.normHist({at, by: authInfo.email || 'DM', reason: 'manual', from: L, to: L, sheet: {...kezi, owner: SHEETS[lib.id].owner}});
+    Tar.lapok.elozmenyIr(lib.id, at.replace(/[:.]/g, '-'), JSON.parse(JSON.stringify(h))).catch(e => Ertesito.naplo(`⚠ ${esc(lib.name)}: a kézi lap mentése (backup) nem sikerült (${esc(e.code || e.message)}).`, 'warn'));
+  }
+  return auto ? true : hiba ? 'hiba' : false;
 }
 function createSheet(id, s) {
   const lib = S.library.find(c => c.id === id);

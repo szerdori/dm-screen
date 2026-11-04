@@ -1,7 +1,7 @@
 // Szabálykönyv a játékos appnak (logika, DOM nélkül): az 5e.tools adatainak letöltése, átalakítása (fx hatáslisták), feltöltése, és a tárgykeresés.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('szabalykonyv', N) és az index.html-ben a szabalykonyv.js?v=N és a VART_MODULOK.
 'use strict';
-modul('szabalykonyv', 2);
+modul('szabalykonyv', 3);
 
 // ---------- szabálykönyv a játékos appnak (rules/*) ----------
 // Az 5e.tools-tükörből letölti a PHB / XGE / TCE varázslatait és featjeit, a PHB / DMG / XGE / TCE tárgyait (2024-es könyvek nélkül),
@@ -298,6 +298,13 @@ async function getRulebook() {
   let r = null;
   if (Tar.kapcsolva()) try { r = await Tar.szabalyok.betolt(); } catch {}
   return (rulebook = r || {version: '', counts: {}, rb: await buildRulebook()});
+}
+// a lapok átállításához: a felhőben lévő szabálykönyv (a tükörből nem töltünk le: lassú, és a telefonok is a felhőset használják); nincs vagy hiba: null
+async function felhoSzabalyok() {
+  // a tükörből épített példány (version: '') nem számít: abból a telefonok nem számolnak
+  if (rulebook?.version && rulebook.rb?.classes?.length) return rulebook.rb;
+  if (!Tar.kapcsolva()) return null;
+  try { const r = await Tar.szabalyok.betolt(); if (r?.rb) rulebook = r; return r?.rb || null; } catch { return null; }
 }
 const rbCounts = c => `${c.spells || 0} varázslat, ${(c.items || 0) + (c.baseItems || 0)} tárgy + ${c.variants || 0} variáns, ${c.feats || 0} feat, ${c.classes || 0} osztály ${c.subclasses || 0} alosztállyal, ${c.races || 0} faj, ${c.backgrounds || 0} háttér`;
 // a felhőben lévő szabálykönyv adatai (Menü → Szabálykönyv); felhő nélkül null

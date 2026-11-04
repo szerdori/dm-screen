@@ -26,7 +26,7 @@ window.Tar = (() => {
     });
   }
 
-  if (typeof modul === 'function') modul('tar', 3);
+  if (typeof modul === 'function') modul('tar', 4);
   return {
     kapcsol: port => { db = port || null; },
     kapcsolva: () => !!db,
@@ -43,8 +43,9 @@ window.Tar = (() => {
       mezok: (id, patch) => db.update(UT.lap(id), patch),
       torol: id => db.del(UT.lap(id)),
       figyel: (cb, hiba) => db.watch?.(UT.lapok, cb, hiba) || null,
-      // egy lap előzményei (sheets/{id}/hist): a telefon írja, a DM Screen csak takarít
+      // egy lap előzményei (sheets/{id}/hist): a telefon írja, a DM Screen takarít, és a 📱-vel átállítva létrehozott lap kézi változatát menti
       elozmenyek: id => db.list(UT.elozmenyek(id)),
+      elozmenyIr: (id, h, doc) => db.set(UT.elozmeny(id, h), doc),
       elozmenyTorol: (id, h) => db.del(UT.elozmeny(id, h)),
     },
     // napi felhős mentések: tartalomjegyzék (dmscreen/backups) + pillanatképek (dmscreen_backup/{nap})
