@@ -73,7 +73,7 @@
 - Méretezés egy szorzóval: `[data-meret="nagy"]{--meret:1.3}`, `[data-meret="extra"]{--meret:1.55}`, a felülírások `font-size:calc(13px * var(--meret))` alakúak.
 - **Elvetett megoldás: a CSS `zoom`.** Gyors volna, de az egész elrendezést nagyítja, és 320–375 px-en kilógna (3 oszlopos képességrács, 2 oszlopos űrlap). Elemenként kell felülírni.
 - Minimum: a legkisebb szöveg sem lehet kisebb 18 px-nél (Nagy), illetve 21 px-nél (Extra).
-- Betűtípus: **Atkinson Hyperlegible Next** (Google Fonts; gyengénlátóknak tervezték, jól megkülönböztethető 1/l/I, 0/O). Csak nagy betűnél töltődik be; ha nem jön le, a mostani Segoe UI / Roboto marad. *Ellenőrizni: ő, ű jól jelenik-e meg.* A számok is talpatlan betűt kapnak (most Georgia), félkövéren. Betűvastagság 500–700, sortáv 1,45.
+- Betűtípus: **Atkinson Hyperlegible Next** (gyengénlátóknak tervezték, jól megkülönböztethető 1/l/I, 0/O), a tárolóból (`betutipus/`, `docs/dontesek/0007`; eredetileg Google Fonts volt). Csak nagy betűnél töltődik le; az ő és az ű a latin-ext részhalmaz tartományában van (a teszt a tartományt és a betöltést nézi; a megjelenést képernyőképen néztem). A számok is talpatlan betűt kapnak (most Georgia), félkövéren. Betűvastagság 500–700, sortáv 1,45.
 
 ### 6. Elrendezés nagy betűnél, fülenként
 - **Fejléc és felső sor (`.top`, `.hero`):** a név, az AC és a HP-sáv nagyobb; a HP-szám jól olvasható a sávban (a sáv magasabb). A Short/Long/HD gombok nagyobbak, szükség esetén két sorba törnek.
@@ -97,7 +97,8 @@
   - a betűméret-blokk minden szabálya előtagos
   - **320 px-en Nagy és Extra nagy betűvel** semmi nem lóg ki, a saját dobozából sem (a világos mód csak színt állít, méretet nem; a normál betűt a régi 320 px-es teszt nézi)
   - a kontraszt mérése minden fülön a világos és a nagy betűs változatokban
-  - nyitott kérdés a felhasználónak: a betűtípus maradjon-e a Google Fonts-on, vagy kerüljön a tárolóba (OFL licenc, nincs külső kérés); a döntés után `docs/dontesek/0007`
+  - a betűtípus a tárolóból jön, külső kérés nincs (a felhasználó döntése, 2026-11-05: `docs/dontesek/0007`)
+- Javítva mellékesen (2026-11-05): az új karakter varázslóban a kiválasztott módszer gombja (pl. Point buy) eddig nem látszott kijelöltnek.
 - `.\teszt.ps1`, majd az `ellenorzo` ügynök.
 - **Élő próba:** a két érintett játékos szemüveg nélkül, a saját telefonján, sötétben és világosban is; néhány kérdés („mennyi a Stealth-ed?”, „dobj támadást”). Ha a méret túl kicsi vagy túl nagy, a szorzó állítható.
 

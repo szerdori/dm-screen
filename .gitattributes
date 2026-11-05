@@ -1,0 +1,3 @@
+# bináris fájlok: a git ne nyúljon a sorvégekhez
+*.woff2 binary
+*.ico binary

@@ -12,3 +12,4 @@ Nem magától értetődő **technikai** döntések, egy fájl = egy döntés: h�
 | [0004](0004-mezonkenti-iras-shadow.md) | Mezőnkénti írás és „shadow” szinkron | elfogadva |
 | [0005](0005-sheet-js-verzioor.md) | A `sheet.js` változatának őre | elfogadva |
 | [0006](0006-retegek-es-szerzodes.md) | Rétegek és szerződés | elfogadva |
+| [0007](0007-betutipus-a-taroloban.md) | A nagy betű betűtípusa a tárolóban (nem Google Fonts) | elfogadva |

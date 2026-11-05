@@ -4078,6 +4078,9 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     eq(lap().classes[0].name, 'Wizard');
     tovabb(); eq(lepes(), 'Képességek'); ok(kq('[data-act="ncNext"]').disabled, 'módszer kell');
     kclick('[data-act="ncMethod"][data-m="array"]');
+    // a kiválasztott módszer gombja kijelöltnek látszik (kiemelő színnel), a többi nem
+    const hatterSzin = m => K.getComputedStyle(kq(`[data-act="ncMethod"][data-m="${m}"]`)).backgroundColor;
+    eq([hatterSzin('array'), hatterSzin('buy')], ['rgb(226, 166, 59)', 'rgb(26, 29, 35)'], 'a választott kiemelő színű, a másik a sima gombé');
     H.ABIL.forEach((a, i) => { if (i < 5) kset(`[data-nc-pick="${a}"]`, String(i)); });
     ok(kq('[data-act="ncNext"]').disabled, 'egy még hiányzik');
     ok(kq('[data-nc-pick="cha"] option[value="0"]').disabled, 'a kiosztott érték nem választható újra');
@@ -4484,23 +4487,26 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     for (const k of ['betumeret', 'tema']) K.localStorage.removeItem(K.Szerzodes.HELYI[k]);
     K.document.querySelector('meta[name="theme-color"]').content = K.getComputedStyle(d).getPropertyValue('--bg').trim();
   };
-  // a <head> szkriptje: oldalbetöltéskor fut; a betűtípus-betöltő (megjBetutipus) a tesztben csonk marad, hálózati kérés nélkül
-  const megjInditoFut = () => K.eval(kq('#megjIndito').textContent.replace('function megjBetutipus(', 'function megjBetutipusEredeti('));
-  ktest('Megjelenítés: a betűtípus csak nagy betűnél töltődik (a <head> és a Fiók menü is), egyszer, hivatkozó cím nélkül; a nagy betűs szabályok mind :root[data-meret] alattiak', () => {
-    const hivas = () => K.__betuHivas || 0;
-    megjTorol(); K.__betuHivas = 0;
+  const megjInditoFut = () => K.eval(kq('#megjIndito').textContent);  // a <head> szkriptje: oldalbetöltéskor fut
+  ktest('Megjelenítés: a betűtípus a tárolóból jön (latin + latin-ext, licenccel), külső betűtípus-kérés nincs, normál betűnél nem is töltődik; a nagy betűs szabályok mind :root[data-meret] alattiak', async () => {
+    const lapSzoveg = [...K.document.querySelectorAll('style, script')].map(s => s.textContent).join('\n') + K.document.head.innerHTML;
+    hasNot(lapSzoveg, 'fonts.googleapis', 'nincs Google Fonts'); hasNot(lapSzoveg, 'fonts.gstatic', 'nincs Google Fonts');
+    const arcok = [...K.document.fonts].filter(f => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible Next');
+    eq(arcok.length, 2, 'két részhalmaz (latin, latin-ext)');
+    ok(arcok.some(f => /U\+100-2BA/i.test(f.unicodeRange)), 'az ő (U+151) és az ű (U+171) a latin-ext tartományában');
+    for (const f of ['atkinson-hyperlegible-next-latin.woff2', 'atkinson-hyperlegible-next-latin-ext.woff2', 'OFL.txt']) {
+      const r = await fetch('../betutipus/' + f); ok(r.ok, f + ' megvan');
+      if (f.endsWith('.woff2')) eq(new TextDecoder().decode((await r.arrayBuffer()).slice(0, 4)), 'wOF2', f + ' woff2 fájl');
+    }
+    // normál betűnél a böngésző nem tölti le (a betűtípust semmi nem használja). Ennek a tesztnek a nagy betűt bekapcsoló tesztek ELŐTT kell maradnia: egy betöltött betűtípus nem lesz újra „unloaded”
+    megjTorol(); await wait(30);
+    ok(arcok.every(f => f.status === 'unloaded'), 'normál betűnél nem töltődik le: ' + arcok.map(f => f.status));
     try {
-      megjInditoFut(); eq(hivas(), 0, 'normál betűnél nem');
-      K.megjAllit('tema', 'vilagos'); K.megjAllit('betumeret', ''); eq(hivas(), 0, 'normál betű, világos: nem');
-      K.megjAllit('betumeret', 'nagy'); eq(hivas(), 1, 'nagy betű választásakor');
-      delete K.document.documentElement.dataset.meret; megjInditoFut(); eq(hivas(), 2, 'mentett nagy betűvel a <head> is');
-      // az igazi betöltő (a hálózat nélkül: a link nem kerül az oldalra)
-      const linkek = [], fej = K.document.head, app = fej.appendChild;
-      fej.appendChild = el => { linkek.push(el); return el; };
-      try { ORIG.megjBetutipus(); } finally { fej.appendChild = app; }
-      eq(linkek.map(l => [l.id, l.rel, l.referrerPolicy, l.href.startsWith('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next')]), [['megjBetu', 'stylesheet', 'no-referrer', true]]);
-      ok(/getElementById\('megjBetu'\)\) return/.test(String(ORIG.megjBetutipus)), 'csak egyszer kerül be');
-    } finally { megjTorol(); K.megjAllit('betumeret', ''); K.megjAllit('tema', ''); }
+      K.megjAllit('betumeret', 'nagy'); await K.document.fonts.ready; await wait(50);
+      ok(K.getComputedStyle(K.document.body).fontFamily.startsWith('"Atkinson Hyperlegible Next"'), 'nagy betűnél ez a betű');
+      const betoltott = await K.document.fonts.load('16px "Atkinson Hyperlegible Next"', 'Aőű');
+      eq([betoltott.length, betoltott.every(f => f.status === 'loaded')], [2, true], 'mindkét részhalmaz betöltődik (az ő, ű a latin-extben)');
+    } finally { megjTorol(); K.megjAllit('betumeret', ''); }
     // a nagy betűs blokk (a --meret szorzótól a <style> végéig) minden szabálya :root[data-meret] alatt van: normál betűnél egyik sem érvényes
     const css = kq('style').textContent.replace(/\/\*[\s\S]*?\*\//g, ''), blokk = css.slice(css.indexOf(':root[data-meret="nagy"]{--meret'));
     ok(blokk.length > 1000, 'megvan a blokk');
@@ -5484,8 +5490,6 @@ async function run() {
   const kF = frame('karakter', '../karakter.html?test=1', 420, 700);
   await new Promise(r => kF.onload = r);
   K = kF.contentWindow;
-  // a nagy betű betűtípusa a Google Fonts-ról jönne: a tesztben csonk (hálózat nélkül, és a mérések nem függnek attól, megjött-e)
-  ORIG.megjBetutipus = K.megjBetutipus; K.megjBetutipus = () => { K.__betuHivas = (K.__betuHivas || 0) + 1; };
   K.addEventListener('error', e => appErrors.push('karakter.html: ' + e.message));
   for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'loadLoot', 'confirm', 'alert', 'download', 'buildRulebook']) ORIG[k] = W[k];
   K.addEventListener('unhandledrejection', e => appErrors.push('karakter.html promise: ' + (e.reason?.message || e.reason)));

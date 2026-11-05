@@ -7,6 +7,11 @@
 <title>Karakterlap</title>
 <link rel="icon" href="favicon.ico">
 <style>
+/* a nagy betű betűtípusa a tárolóból (betutipus/, SIL OFL 1.1; docs/dontesek/0007): a böngésző csak akkor tölti le, ha használja, vagyis nagy betűnél */
+@font-face{font-family:"Atkinson Hyperlegible Next";font-style:normal;font-weight:400 800;font-display:swap;src:url(betutipus/atkinson-hyperlegible-next-latin-ext.woff2) format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Atkinson Hyperlegible Next";font-style:normal;font-weight:400 800;font-display:swap;src:url(betutipus/atkinson-hyperlegible-next-latin.woff2) format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 :root{--bg:#0e1013;--panel:#1a1d23;--panel2:#22262e;--line:#2f3440;--text:#eceae4;--muted:#8e95a1;--accent:#e2a63b;--red:#d9534f;--orange:#e08a2e;--green:#4caf6a;--blue:#4a8fe0;--pc:#4a8fe0;--npc:#4caf6a;
   --on-accent:#1a1405;--on-red:#fff;--on-green:#08130b;--on-st:#fff;--backdrop:rgba(0,0,0,.6);--field:#0b0d10;--av-bg:#252a33;--bar-bg:#08090b;--bar-shadow:#000;--hurt:#e8d34a;--bloodied:#8a2a1c;--down:#6b2a8a;--conc-bg:rgba(80,140,255,.12);--rb-bg:#2a2414;--rb-line:#5a4a20;--text2:#d6d3cb;--rollbar-bg:#14171cee;--shadow:#0008;--bar-ok:var(--green);--bar-mid:var(--orange);--bar-low:var(--red)}
 /* világos téma (Fiók → Megjelenítés → Világos): csak a színváltozókat írja át; szövegként minden szín legalább 4,5:1 a háttéren */
@@ -175,7 +180,7 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:var(--text2
 .chopts label{display:flex;align-items:center;gap:6px;font-size:14px}
 .chopts label[hidden]{display:none}
 .lubar{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--accent);border-radius:8px;padding:8px 10px;margin:8px 0}
-button[data-act^="lu"].on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
+button[data-act^="lu"].on,button[data-act="ncMethod"].on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
 .lusteps{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 12px}
 .lusteps span{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--panel);color:var(--muted)}
 .lusteps span.on{background:var(--accent);color:var(--on-accent);font-weight:700}
@@ -303,15 +308,7 @@ button[data-act^="lu"].on{background:var(--accent);color:var(--on-accent);border
     if (t === 'vilagos') d.dataset.tema = t;
   } catch {}
   document.querySelector('meta[name="theme-color"]').content = getComputedStyle(d).getPropertyValue('--bg').trim() || '#0e1013';
-  if (d.dataset.meret) megjBetutipus();
 })();
-// a nagy betűhöz jól olvasható betűtípus (Google Fonts); csak akkor töltődik, ha kell; ha nem jön le, a rendszer betűje marad
-function megjBetutipus() {
-  if (document.getElementById('megjBetu')) return;
-  const l = document.createElement('link');
-  l.id = 'megjBetu'; l.rel = 'stylesheet'; l.referrerPolicy = 'no-referrer'; l.href = 'https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400..800&display=swap';
-  document.head.appendChild(l);
-}
 </script>
 </head>
 <body>
@@ -1271,7 +1268,6 @@ function megjAllit(k, v) {
   if (!Object.hasOwn(MEGJ_ATTR, k) || !ertekek.includes(v)) return;
   const d = document.documentElement, kulcs = SZ?.HELYI?.[k];
   if (v) d.dataset[MEGJ_ATTR[k]] = v; else delete d.dataset[MEGJ_ATTR[k]];
-  if (k === 'betumeret' && v) megjBetutipus();
   if (kulcs) try { if (v) localStorage.setItem(kulcs, v); else localStorage.removeItem(kulcs); } catch {}
   $('meta[name="theme-color"]').content = getComputedStyle(d).getPropertyValue('--bg').trim() || '#0e1013';
 }
