@@ -4518,6 +4518,13 @@ describe('Telefonos karakterlap (karakter.html)', () => {
       kclick('#infoPop [data-act="infoClose"]'); ok(kq('#infoPop').hidden);
     } finally { megjTorol(); delete K.KAuth; }
   });
+  ktest('Megjelenítés: színt csak a :root kezdetű (téma-) szabályok adnak meg, a többi szabály változót használ – így minden téma mindent átszínez', () => {
+    const css = [...K.document.querySelectorAll('style')].map(s => s.textContent).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+    const rossz = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, sel, body]) => !sel.trim().startsWith(':root') && /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i.test(body)).map(([, sel]) => sel.trim());
+    eq(rossz, []);
+    // a szkript által írt inline stílusok is csak változót használnak
+    hasNot(kqa('script').map(s => s.textContent).join('\n').match(/style="[^"]*"/g)?.join(' ') || '', '#', 'inline stílus beégetett színnel');
+  });
   ktest('Megjelenítés: a <head> szkriptje a szerződés kulcsait és értékeit ismeri; a böngésző sávjának színe a háttéré', () => {
     const {HELYI, MEGJELENITES} = K.Szerzodes, src = kq('#megjIndito').textContent;
     has(src, `'${HELYI.betumeret}'`); has(src, `'${HELYI.tema}'`);

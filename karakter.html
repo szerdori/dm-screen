@@ -7,7 +7,8 @@
 <title>Karakterlap</title>
 <link rel="icon" href="favicon.ico">
 <style>
-:root{--bg:#0e1013;--panel:#1a1d23;--panel2:#22262e;--line:#2f3440;--text:#eceae4;--muted:#8e95a1;--accent:#e2a63b;--red:#d9534f;--orange:#e08a2e;--green:#4caf6a;--blue:#4a8fe0;--pc:#4a8fe0;--npc:#4caf6a}
+:root{--bg:#0e1013;--panel:#1a1d23;--panel2:#22262e;--line:#2f3440;--text:#eceae4;--muted:#8e95a1;--accent:#e2a63b;--red:#d9534f;--orange:#e08a2e;--green:#4caf6a;--blue:#4a8fe0;--pc:#4a8fe0;--npc:#4caf6a;
+  --on-accent:#1a1405;--on-red:#fff;--on-green:#08130b;--on-st:#fff;--backdrop:rgba(0,0,0,.6);--field:#0b0d10;--av-bg:#252a33;--bar-bg:#08090b;--bar-shadow:#000;--hurt:#e8d34a;--bloodied:#8a2a1c;--down:#6b2a8a;--conc-bg:rgba(80,140,255,.12);--rb-bg:#2a2414;--rb-line:#5a4a20;--text2:#d6d3cb;--rollbar-bg:#14171cee;--shadow:#0008}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 "Segoe UI",Roboto,sans-serif}
 header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
@@ -16,9 +17,9 @@ header h1 a{color:inherit;text-decoration:none}
 header small{color:var(--muted);font-size:12px;text-align:right;overflow-wrap:anywhere}
 button,select,input,textarea{font:inherit;color:var(--text)}
 button{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
-button.primary{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:700}
+button.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
 .ibtn{width:26px;height:26px;min-width:26px;padding:0;border-radius:50%;font:italic 700 13px Georgia,serif;line-height:1;margin-left:4px;flex:none;vertical-align:middle}
-#infoPop{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
+#infoPop{position:fixed;inset:0;background:var(--backdrop);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
 #infoPop[hidden]{display:none}
 #infoPop .ibox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;max-width:440px;width:100%;max-height:85vh;overflow:auto}
 #infoPop h3{margin:0 0 8px}
@@ -27,12 +28,12 @@ button.primary{background:var(--accent);color:#1a1405;border-color:var(--accent)
 #infoPop .hol.dm,#infoPop .hol.vegyes{border-color:var(--orange);color:var(--orange)}
 #infoPop .hol.homebrew{border-color:var(--blue);color:var(--blue)}
 #infoPop .hol.app{border-color:var(--green);color:var(--green)}
-button.danger{background:var(--red);color:#fff;border-color:var(--red);font-weight:700}
+button.danger{background:var(--red);color:var(--on-red);border-color:var(--red);font-weight:700}
 .lapdel{margin:18px 0 6px}
 .ncbody>label{display:block;margin-bottom:10px} .ncbody>label input,.ncbody>label select{width:100%;box-sizing:border-box;margin-top:3px}
 button.small{padding:4px 9px;font-size:14px}
 button:disabled{opacity:.5}
-input,select,textarea{background:#0b0d10;border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
+input,select,textarea{background:var(--field);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
 input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);vertical-align:middle}
 textarea{width:100%;resize:vertical}
 main{padding:12px 16px 130px;max-width:720px;margin:0 auto}
@@ -43,22 +44,22 @@ h3.sub2{color:var(--muted);font-weight:600}
 .card.npc{border-left-color:var(--npc)}
 .card.own{padding:14px}
 .go{color:var(--accent);font-weight:700;white-space:nowrap}
-.av{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;background:#252a33;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:24px;border:2px solid var(--line)}
+.av{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;background:var(--av-bg);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:24px;border:2px solid var(--line)}
 .own .av{width:72px;height:72px}
 .main{flex:1;min-width:0}
 .name{font:700 18px Georgia,serif;overflow-wrap:anywhere}
 .sub{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
 .stats{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
 .ac{border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-weight:700}
-.bar{flex:1;min-width:120px;height:22px;background:#08090b;border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative}
+.bar{flex:1;min-width:120px;height:22px;background:var(--bar-bg);border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative}
 .bar .fill{position:absolute;inset:0 auto 0 0;background:var(--green)}
 .bar.mid .fill{background:var(--orange)} .bar.low .fill{background:var(--red)}
-.bar span{position:relative;display:block;text-align:center;font:700 14px/20px "Segoe UI",sans-serif;text-shadow:0 1px 2px #000}
+.bar span{position:relative;display:block;text-align:center;font:700 14px/20px "Segoe UI",sans-serif;text-shadow:0 1px 2px var(--bar-shadow)}
 .st{font-weight:600;font-size:13px;padding:2px 10px;border-radius:12px}
 .st.healthy{color:var(--green);border:1px solid var(--green)}
-.st.hurt{color:#e8d34a;border:1px solid #e8d34a}
-.st.bloodied{color:#fff;background:#8a2a1c}
-.st.down{color:#fff;background:#6b2a8a}
+.st.hurt{color:var(--hurt);border:1px solid var(--hurt)}
+.st.bloodied{color:var(--on-st);background:var(--bloodied)}
+.st.down{color:var(--on-st);background:var(--down)}
 .muted{color:var(--muted)} .hint{color:var(--muted);font-size:13px}
 .warn{color:var(--orange)}
 #gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;z-index:30}
@@ -69,15 +70,15 @@ h3.sub2{color:var(--muted);font-weight:600}
 /* a felső sor (vissza + pihenő gombok) görgetéskor is fent marad */
 .top{display:flex;align-items:center;gap:6px;margin:-12px 0 8px;padding:8px 0;position:sticky;top:0;z-index:15;background:var(--bg);border-bottom:1px solid var(--line)}
 .top button.small{padding:4px 8px;font-size:13px}
-.top button.on{background:var(--accent);color:#1a1405;border-color:var(--accent)}
+.top button.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .hdbox{margin:0 0 10px;padding:8px 10px}
 .hdbox .row+.row{margin-top:6px}
-.concbar{display:flex;align-items:center;gap:8px;margin:6px 0;padding:6px 10px;border:2px solid var(--blue);border-radius:10px;background:rgba(80,140,255,.12);font-size:14px}
+.concbar{display:flex;align-items:center;gap:8px;margin:6px 0;padding:6px 10px;border:2px solid var(--blue);border-radius:10px;background:var(--conc-bg);font-size:14px}
 .fxbar{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px}
 .fxchip{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--green);color:var(--green)}
 .fxchip.neg{border-color:var(--red);color:var(--red)} .fxchip.off{opacity:.5;text-decoration:line-through}
 .chip.fx{border-color:var(--green)}
-button.cast.on{background:var(--accent);color:#1a1405;border-color:var(--accent)}
+button.cast.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 .castpick{gap:6px;padding:6px 0 10px}
 .top a{color:var(--muted);text-decoration:none}
 .hero{display:flex;gap:12px;align-items:center}
@@ -108,7 +109,7 @@ button.cast.on{background:var(--accent);color:#1a1405;border-color:var(--accent)
 .pip.ok{border-color:var(--green);background:transparent} .pip.ok.on{background:var(--green)}
 nav.tabs{display:flex;gap:4px;overflow-x:auto;margin:14px -16px 4px;padding:0 16px;scrollbar-width:none}
 nav.tabs button{white-space:nowrap;padding:7px 11px;font-size:14px}
-nav.tabs button.on{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:700}
+nav.tabs button.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
 .abils{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .abil{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px;text-align:center;cursor:pointer}
 .abil small{display:block;color:var(--muted);font-size:11px;letter-spacing:1px}
@@ -122,12 +123,12 @@ nav.tabs button.on{background:var(--accent);color:#1a1405;border-color:var(--acc
 .li.dragging{opacity:.7;border-color:var(--accent)}
 .nm{flex:1;min-width:0;overflow-wrap:anywhere}
 .nm small{display:block;color:var(--muted);font-size:12px}
-.rb{background:#2a2414;border:1px solid #5a4a20;color:var(--accent);border-radius:8px;padding:5px 10px;font-weight:700;cursor:pointer;white-space:nowrap}
+.rb{background:var(--rb-bg);border:1px solid var(--rb-line);color:var(--accent);border-radius:8px;padding:5px 10px;font-weight:700;cursor:pointer;white-space:nowrap}
 .mark{display:inline-block;width:18px;color:var(--accent);text-align:center}
 details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
 details>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
 details>summary::-webkit-details-marker{display:none}
-details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
+details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:var(--text2)}
 /* minmax(0,…) és width:100%: a mezők ne a saját alapszélességüket kérjék, különben keskeny telefonon kilóg az űrlap */
 .form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .form input:not([type=checkbox]),.form select,.form textarea{width:100%;min-width:0}
@@ -141,18 +142,18 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 .sk3{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px}
 .sk3 label{flex-direction:row !important;align-items:center;justify-content:space-between;gap:6px}
 .form .sk3 select{width:auto;flex:none}
-#rollbar{position:fixed;left:0;right:0;bottom:0;background:#14171cee;border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom));z-index:20}
+#rollbar{position:fixed;left:0;right:0;bottom:0;background:var(--rollbar-bg);border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom));z-index:20}
 #rollbar[hidden]{display:none}
 #rollbar>div{max-width:720px;margin:0 auto}
 #rollbar .modes{display:flex;gap:4px}
 #rollbar .modes button{flex:1;padding:6px 4px;font-size:13px}
-#rollbar .modes button.on{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:700}
+#rollbar .modes button.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
 #lastRoll{display:flex;align-items:baseline;gap:10px;margin-top:6px;min-height:28px}
 #lastRoll b{font:700 26px Georgia,serif;color:var(--accent)}
 #lastRoll.crit b{color:var(--green)} #lastRoll.fumble b{color:var(--red)}
 #lastRoll span{color:var(--muted);font-size:13px;flex:1;overflow-wrap:anywhere}
 /* rövid visszajelzés (pl. mentés után), magától eltűnik */
-#toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:40;background:var(--green);color:#08130b;font-weight:700;padding:8px 16px;border-radius:999px;box-shadow:0 4px 14px #0008;max-width:calc(100% - 32px);text-align:center}
+#toast{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:40;background:var(--green);color:var(--on-green);font-weight:700;padding:8px 16px;border-radius:999px;box-shadow:0 4px 14px var(--shadow);max-width:calc(100% - 32px);text-align:center}
 #toast.info{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
 #toast[hidden]{display:none}
 /* szabálymotoros lap: teendők, választási helyek, számolt értékek */
@@ -165,24 +166,24 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:#d6d3cb}
 .chopts label{display:flex;align-items:center;gap:6px;font-size:14px}
 .chopts label[hidden]{display:none}
 .lubar{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--accent);border-radius:8px;padding:8px 10px;margin:8px 0}
-button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:700}
+button[data-act^="lu"].on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
 .lusteps{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 12px}
 .lusteps span{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--panel);color:var(--muted)}
-.lusteps span.on{background:var(--accent);color:#1a1405;font-weight:700}
+.lusteps span.on{background:var(--accent);color:var(--on-accent);font-weight:700}
 .lunav{margin:16px 0;position:sticky;bottom:0;background:var(--bg);padding:8px 0}
 .lutab{width:100%;border-collapse:collapse;table-layout:fixed}
 .lutab td{padding:4px 6px;border-bottom:1px solid var(--line);overflow-wrap:break-word}
 .lutab td:first-child{width:38%}
 .lutab td:last-child{text-align:right}
 .okk{color:var(--green);font-weight:700}
-.parts{margin:6px 0 0;padding-left:18px;font-size:13px;color:#d6d3cb}
+.parts{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--text2)}
 .lvrow{display:flex;gap:8px;align-items:center}
 .lvrow input{width:90px}
 /* Fiók menü: megjelenítés (betűméret, sötét / világos) és kilépés */
 #infoPop .fiok h4{margin:14px 0 6px;font-size:14px;font-weight:600;color:var(--muted)}
 .megj{display:flex;gap:6px}
 .megj button{flex:1;min-width:0;padding:8px 4px}
-.megj button.on{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:700}
+.megj button.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
 .megj [data-v="nagy"]{font-size:19px} .megj [data-v="extra"]{font-size:22px;line-height:1.1}
 .fiokalj{margin-top:18px}
 </style>
