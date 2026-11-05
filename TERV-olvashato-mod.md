@@ -70,7 +70,7 @@
 
 ### 5. Betűméret (csak `data-meret` mellett)
 - Külön blokk a `<style>` végén; **minden szabálya `:root[data-meret]` (illetve `[data-meret="extra"]`) előtaggal** kezdődik. Egy szöveges teszt ellenőrzi, hogy nincs előtag nélküli szabály a blokkban.
-- Méretezés egy szorzóval: `[data-meret="nagy"]{--meret:1.35}`, `[data-meret="extra"]{--meret:1.6}`, a felülírások `font-size:calc(13px * var(--meret))` alakúak.
+- Méretezés egy szorzóval: `[data-meret="nagy"]{--meret:1.3}`, `[data-meret="extra"]{--meret:1.55}`, a felülírások `font-size:calc(13px * var(--meret))` alakúak.
 - **Elvetett megoldás: a CSS `zoom`.** Gyors volna, de az egész elrendezést nagyítja, és 320–375 px-en kilógna (3 oszlopos képességrács, 2 oszlopos űrlap). Elemenként kell felülírni.
 - Minimum: a legkisebb szöveg sem lehet kisebb 18 px-nél (Nagy), illetve 21 px-nél (Extra).
 - Betűtípus: **Atkinson Hyperlegible Next** (Google Fonts; gyengénlátóknak tervezték, jól megkülönböztethető 1/l/I, 0/O). Csak nagy betűnél töltődik be; ha nem jön le, a mostani Segoe UI / Roboto marad. *Ellenőrizni: ő, ű jól jelenik-e meg.* A számok is talpatlan betűt kapnak (most Georgia), félkövéren. Betűvastagság 500–700, sortáv 1,45.

@@ -4484,7 +4484,29 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     for (const k of ['betumeret', 'tema']) K.localStorage.removeItem(K.Szerzodes.HELYI[k]);
     K.document.querySelector('meta[name="theme-color"]').content = K.getComputedStyle(d).getPropertyValue('--bg').trim();
   };
-  const megjInditoFut = () => K.eval(kq('#megjIndito').textContent);  // a <head> szkriptje: oldalbetöltéskor fut
+  // a <head> szkriptje: oldalbetöltéskor fut; a betűtípus-betöltő (megjBetutipus) a tesztben csonk marad, hálózati kérés nélkül
+  const megjInditoFut = () => K.eval(kq('#megjIndito').textContent.replace('function megjBetutipus(', 'function megjBetutipusEredeti('));
+  ktest('Megjelenítés: a betűtípus csak nagy betűnél töltődik (a <head> és a Fiók menü is), egyszer, hivatkozó cím nélkül; a nagy betűs szabályok mind :root[data-meret] alattiak', () => {
+    const hivas = () => K.__betuHivas || 0;
+    megjTorol(); K.__betuHivas = 0;
+    try {
+      megjInditoFut(); eq(hivas(), 0, 'normál betűnél nem');
+      K.megjAllit('tema', 'vilagos'); K.megjAllit('betumeret', ''); eq(hivas(), 0, 'normál betű, világos: nem');
+      K.megjAllit('betumeret', 'nagy'); eq(hivas(), 1, 'nagy betű választásakor');
+      delete K.document.documentElement.dataset.meret; megjInditoFut(); eq(hivas(), 2, 'mentett nagy betűvel a <head> is');
+      // az igazi betöltő (a hálózat nélkül: a link nem kerül az oldalra)
+      const linkek = [], fej = K.document.head, app = fej.appendChild;
+      fej.appendChild = el => { linkek.push(el); return el; };
+      try { ORIG.megjBetutipus(); } finally { fej.appendChild = app; }
+      eq(linkek.map(l => [l.id, l.rel, l.referrerPolicy, l.href.startsWith('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next')]), [['megjBetu', 'stylesheet', 'no-referrer', true]]);
+      ok(/getElementById\('megjBetu'\)\) return/.test(String(ORIG.megjBetutipus)), 'csak egyszer kerül be');
+    } finally { megjTorol(); K.megjAllit('betumeret', ''); K.megjAllit('tema', ''); }
+    // a nagy betűs blokk (a --meret szorzótól a <style> végéig) minden szabálya :root[data-meret] alatt van: normál betűnél egyik sem érvényes
+    const css = kq('style').textContent.replace(/\/\*[\s\S]*?\*\//g, ''), blokk = css.slice(css.indexOf(':root[data-meret="nagy"]{--meret'));
+    ok(blokk.length > 1000, 'megvan a blokk');
+    const elotagNelkul = [...blokk.matchAll(/([^{}]+)\{[^{}]*\}/g)].flatMap(([, sel]) => sel.split(',').map(s => s.trim())).filter(s => !s.startsWith(':root[data-meret'));
+    eq(elotagNelkul, []);
+  });
   ktest('Fiók menü: a fejlécben a kilépés helyett 👤 Fiók; Megjelenítés (betűméret, mód) eszközönként, azonnal; Kilépés', () => {
     const {HELYI} = K.Szerzodes, d = K.document.documentElement, ki = [];
     megjTorol();
@@ -4569,6 +4591,36 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('#who [data-act="fiok"]'); fn('Fiók menü'); kclick('#infoPop [data-act="infoClose"]');
     K.location.hash = ''; K.route(); fn('karakterlista');
   };
+  for (const meret of ['nagy', 'extra']) ktest(`${meret} betű, keskeny (320 px) telefon: semmi nem lóg ki (fejléc, minden fül, dobássáv, Fiók menü), a HP-sáv felirata elfér, a dobássáv nem takarja a lap alját`, async () => {
+    const fr = document.getElementById('karakter'), w0 = fr.width;
+    megjTorol(); K.megjAllit('betumeret', meret);
+    fr.width = 320; await wait(50);
+    try {
+      const W = K.document.documentElement.clientWidth, hibak = [];
+      const nez = hol => {
+        hibak.push(...kqa('header *, main *, #rollbar *, #infoPop:not([hidden]) *').filter(e => e.getClientRects().length && !e.closest('nav.tabs') && (e.getBoundingClientRect().right > W + 1 || e.getBoundingClientRect().left < -1))
+          .map(e => `${hol}: ${e.tagName.toLowerCase()}.${e.className} „${e.textContent.trim().slice(0, 15)}” ${Math.round(e.getBoundingClientRect().left)}–${Math.round(e.getBoundingClientRect().right)}/${W}`));
+        // a tartalom a saját dobozából se lógjon ki (pl. egy hosszú felirat a keskeny értékdobozból)
+        hibak.push(...kqa('header *, main *, #rollbar *, #infoPop:not([hidden]) *').filter(e => e.clientWidth > 0 && e.scrollWidth > e.clientWidth + 1 && !e.closest('nav.tabs') && !['INPUT', 'SELECT', 'TEXTAREA'].includes(e.tagName) && !['auto', 'scroll'].includes(K.getComputedStyle(e).overflowX))
+          .map(e => `${hol}: kilóg a dobozából: ${e.tagName.toLowerCase()}.${e.className} „${e.textContent.trim().slice(0, 15)}” ${e.scrollWidth}/${e.clientWidth}`));
+        for (const b of kqa('.bar')) { const s = b.querySelector('span'); if (s && s.getBoundingClientRect().height > b.clientHeight + 1) hibak.push(`${hol}: a HP-sáv felirata nem fér el (${Math.round(s.getBoundingClientRect().height)} > ${b.clientHeight})`); }
+        if (K.document.documentElement.scrollWidth > W + 1) hibak.push(`${hol}: vízszintes görgetés (${K.document.documentElement.scrollWidth}/${W})`);
+      };
+      K.KApp.setRulebook({version: 'v1', rb: await fakeRb()});
+      openSheet({name: 'Hosszúnevűkarakterszóközeknélkülkiírva', race: 'Nagyonhosszúsajátfajnévszóköznélkül', portrait: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=',
+        classes: [{name: 'Fighter', level: 3}, {name: 'Rogue', subclass: 'Thief', level: 2}, {name: 'Wizard', level: 1}], hp: {max: 24, cur: 5, temp: 3}, conditions: ['Poisoned', 'Bless'], concentration: 'Bless',
+        spellcasting: {ability: 'int', slots: [4, 3, 0, 0, 0, 0, 0, 0, 0], used: [1]}, spells: [{name: 'Fire Bolt', level: 0}, {name: 'Shield', level: 1, prepared: true}],
+        resources: [{name: 'Hosszú nevű erőforrás', max: 6, used: 1, reset: 'short'}], attacks: [{name: 'Nagyonhosszúfegyvernévszóköznélkül', hit: '+12', dmg: '2d10+12 slashing', note: 'finesse, light, thrown'}]});
+      for (const t of ['harc', 'kep', 'var', 'fel', 'adat', 'jegyz']) { kclick(`[data-tab="${t}"]`); kqa('main details').forEach(d => d.open = true); nez(t); }
+      kclick('[data-act="hdToggle"]'); nez('Hit Dice panel'); kclick('[data-act="hdToggle"]');
+      kclick('[data-tab="kep"]'); kclick('[data-mode="adv"]'); kclick(kq('main .rb')); nez('dobás után');
+      const rb = kq('#rollbar').getBoundingClientRect().height, pb = parseFloat(K.getComputedStyle(kq('main')).paddingBottom);
+      ok(pb >= rb, `a lap alján elég hely a dobássávnak: ${pb} >= ${Math.round(rb)}`);
+      kclick('#who [data-act="fiok"]'); nez('Fiók menü'); kclick('#infoPop [data-act="infoClose"]');
+      K.location.hash = ''; K.route(); nez('karakterlista');
+      eq([...new Set(hibak)].slice(0, 10), []);
+    } finally { fr.width = w0; megjTorol(); K.megjAllit('betumeret', ''); }
+  });
   // [betűméret, mód, a minimális kontraszt, a várt háttér]: a világos téma legalább 4,5:1, a nagy betűs (kontrasztos) készletek legalább 7:1
   for (const [meret, tema, min, hatterSzin] of [['', 'vilagos', 4.5, '#f4f1ea'], ['nagy', '', 7, '#050607'], ['nagy', 'vilagos', 7, '#fff'], ['extra', '', 7, '#050607']]) {
     ktest(`${meret || 'normál'} betű, ${tema || 'sötét'} mód: minden fülön, a dobássávban, az üzenetekben és a Fiók menüben a szöveg legalább ${min}:1 kontrasztú`, async () => {
@@ -5432,6 +5484,8 @@ async function run() {
   const kF = frame('karakter', '../karakter.html?test=1', 420, 700);
   await new Promise(r => kF.onload = r);
   K = kF.contentWindow;
+  // a nagy betű betűtípusa a Google Fonts-ról jönne: a tesztben csonk (hálózat nélkül, és a mérések nem függnek attól, megjött-e)
+  ORIG.megjBetutipus = K.megjBetutipus; K.megjBetutipus = () => { K.__betuHivas = (K.__betuHivas || 0) + 1; };
   K.addEventListener('error', e => appErrors.push('karakter.html: ' + e.message));
   for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'loadLoot', 'confirm', 'alert', 'download', 'buildRulebook']) ORIG[k] = W[k];
   K.addEventListener('unhandledrejection', e => appErrors.push('karakter.html promise: ' + (e.reason?.message || e.reason)));
