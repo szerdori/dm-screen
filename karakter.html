@@ -8,7 +8,10 @@
 <link rel="icon" href="favicon.ico">
 <style>
 :root{--bg:#0e1013;--panel:#1a1d23;--panel2:#22262e;--line:#2f3440;--text:#eceae4;--muted:#8e95a1;--accent:#e2a63b;--red:#d9534f;--orange:#e08a2e;--green:#4caf6a;--blue:#4a8fe0;--pc:#4a8fe0;--npc:#4caf6a;
-  --on-accent:#1a1405;--on-red:#fff;--on-green:#08130b;--on-st:#fff;--backdrop:rgba(0,0,0,.6);--field:#0b0d10;--av-bg:#252a33;--bar-bg:#08090b;--bar-shadow:#000;--hurt:#e8d34a;--bloodied:#8a2a1c;--down:#6b2a8a;--conc-bg:rgba(80,140,255,.12);--rb-bg:#2a2414;--rb-line:#5a4a20;--text2:#d6d3cb;--rollbar-bg:#14171cee;--shadow:#0008}
+  --on-accent:#1a1405;--on-red:#fff;--on-green:#08130b;--on-st:#fff;--backdrop:rgba(0,0,0,.6);--field:#0b0d10;--av-bg:#252a33;--bar-bg:#08090b;--bar-shadow:#000;--hurt:#e8d34a;--bloodied:#8a2a1c;--down:#6b2a8a;--conc-bg:rgba(80,140,255,.12);--rb-bg:#2a2414;--rb-line:#5a4a20;--text2:#d6d3cb;--rollbar-bg:#14171cee;--shadow:#0008;--bar-ok:var(--green);--bar-mid:var(--orange);--bar-low:var(--red)}
+/* világos téma (Fiók → Megjelenítés → Világos): csak a színváltozókat írja át; szövegként minden szín legalább 4,5:1 a háttéren */
+:root[data-tema="vilagos"]{--bg:#f4f1ea;--panel:#fff;--panel2:#ece8df;--line:#c9c1b1;--text:#1d1b17;--muted:#5f5a50;--accent:#8a5a00;--red:#b3261e;--orange:#a14f00;--green:#2e7d32;--blue:#1f5fbf;--pc:#1f5fbf;--npc:#2e7d32;
+  --on-accent:#fff;--on-red:#fff;--on-green:#fff;--on-st:#fff;--backdrop:rgba(0,0,0,.4);--field:#fff;--av-bg:#e6e1d6;--bar-bg:#e6e1d6;--bar-shadow:rgba(255,255,255,.7);--hurt:#7a6000;--bloodied:#a33a26;--down:#6b2a8a;--conc-bg:rgba(31,95,191,.1);--rb-bg:#fbf1dc;--rb-line:#d9b56a;--text2:#3a362f;--rollbar-bg:#f4f1eaee;--shadow:#0003;--bar-ok:#8fd18f;--bar-mid:#f3b866;--bar-low:#ef9a90;color-scheme:light}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 "Segoe UI",Roboto,sans-serif}
 header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
@@ -52,8 +55,8 @@ h3.sub2{color:var(--muted);font-weight:600}
 .stats{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
 .ac{border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-weight:700}
 .bar{flex:1;min-width:120px;height:22px;background:var(--bar-bg);border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative}
-.bar .fill{position:absolute;inset:0 auto 0 0;background:var(--green)}
-.bar.mid .fill{background:var(--orange)} .bar.low .fill{background:var(--red)}
+.bar .fill{position:absolute;inset:0 auto 0 0;background:var(--bar-ok)}
+.bar.mid .fill{background:var(--bar-mid)} .bar.low .fill{background:var(--bar-low)}
 .bar span{position:relative;display:block;text-align:center;font:700 14px/20px "Segoe UI",sans-serif;text-shadow:0 1px 2px var(--bar-shadow)}
 .st{font-weight:600;font-size:13px;padding:2px 10px;border-radius:12px}
 .st.healthy{color:var(--green);border:1px solid var(--green)}

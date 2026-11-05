@@ -4520,10 +4520,55 @@ describe('Telefonos karakterlap (karakter.html)', () => {
   });
   ktest('Megjelenítés: színt csak a :root kezdetű (téma-) szabályok adnak meg, a többi szabály változót használ – így minden téma mindent átszínez', () => {
     const css = [...K.document.querySelectorAll('style')].map(s => s.textContent).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
-    const rossz = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, sel, body]) => !sel.trim().startsWith(':root') && /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i.test(body)).map(([, sel]) => sel.trim());
+    const szin = /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|(^|[\s:,])(white|black)\b/i;
+    // :root kezdetű szabály (téma) is csak változót adhat meg színnel: a téma így nem írhat felül egy-egy elemet
+    const rossz = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap(([, sel, body]) => body.split(';').filter(d => szin.test(d.slice(d.indexOf(':') + 1)) &&!(sel.trim().startsWith(':root') && /^\s*--[\w-]+\s*:/.test(d))).map(d => sel.trim() + ' { ' + d.trim() + ' }'));
     eq(rossz, []);
-    // a szkript által írt inline stílusok is csak változót használnak
-    hasNot(kqa('script').map(s => s.textContent).join('\n').match(/style="[^"]*"/g)?.join(' ') || '', '#', 'inline stílus beégetett színnel');
+    // a szkript által írt inline stílusok (style="…", style='…', el.style.x =) is csak változót használnak
+    const js = kqa('script').map(s => s.textContent).join('\n');
+    eq([...js.matchAll(/style=(["'])(.*?)\1|\.style\.[\w-]+\s*=\s*([^;]+)/g)].map(m => m[2] ?? m[3]).filter(v => szin.test(v)), [], 'inline stílus beégetett színnel');
+  });
+  // a látható szövegek kontrasztja a mögöttük lévő háttéren (WCAG); az átlátszó hátteret a szülőkén keverjük ki
+  const rgb = s => { const m = s.match(/[\d.]+/g)?.map(Number) || [0, 0, 0, 0]; return [m[0], m[1], m[2], m[3] ?? 1]; };
+  const fenyesseg = ([r, g, b]) => [r, g, b].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const kever = (f, a) => [0, 1, 2].map(i => f[i] * f[3] + a[i] * (1 - f[3])).concat(1);
+  const hatter = el => {
+    const reteg = [];
+    for (let e = el; e; e = e.parentElement) { const c = rgb(K.getComputedStyle(e).backgroundColor); if (c[3] > 0) { reteg.push(c); if (c[3] === 1) break; } }
+    return reteg.reverse().reduce((alap, c) => kever(c, alap), [255, 255, 255, 1]);
+  };
+  const kontrasztHibak = (min, gyoker = 'body') => {
+    const hibak = [];
+    for (const el of K.document.querySelectorAll(gyoker + ' *')) {
+      if (![...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) || !el.getClientRects().length || el.closest('[hidden]')) continue;
+      let atl = false; for (let e = el; e; e = e.parentElement) if (+K.getComputedStyle(e).opacity < 1) atl = true;
+      if (atl) continue;  // a letiltott (halványított) gomb szándékosan halvány
+      const cs = K.getComputedStyle(el), bg = hatter(el), fg = kever(rgb(cs.color), bg);
+      const [a, b] = [fenyesseg(fg), fenyesseg(bg)].sort((x, y) => y - x), k = (a + 0.05) / (b + 0.05);
+      if (k < min) hibak.push(`${el.tagName.toLowerCase()}.${el.className} „${el.textContent.trim().slice(0, 20)}” ${k.toFixed(2)}`);
+    }
+    return [...new Set(hibak)];
+  };
+  const mindenFul = async (fn) => {
+    K.KApp.setRulebook({version: 'v1', rb: await fakeRb()});
+    openSheet({hp: {max: 24, cur: 12, temp: 3}, conditions: ['Poisoned', 'Bless'], concentration: 'Bless', classes: [{name: 'Rogue', level: 3}, {name: 'Wizard', level: 1}],
+      spellcasting: {ability: 'int', slots: [2, 0, 0, 0, 0, 0, 0, 0, 0], used: [1]}, spells: [{name: 'Fire Bolt', level: 0}, {name: 'Shield', level: 1, prepared: true}],
+      resources: [{name: 'Ki', max: 3, used: 1, reset: 'short'}], notes: 'Jegyzet'});
+    for (const t of ['harc', 'kep', 'var', 'fel', 'adat', 'jegyz']) { kclick(`[data-tab="${t}"]`); kqa('main details').forEach(d => d.open = true); fn(t); }
+    K.rnd = () => 20; kclick('[data-tab="kep"]'); kclick(kq('main .rb')); fn('dobás (20)');
+    K.rnd = () => 1; kclick(kq('main .rb')); fn('dobás (1)');
+    K.toast('✓ Elmentve'); fn('üzenet'); K.toast('Info', true); fn('info-üzenet');
+    kclick('#who [data-act="fiok"]'); fn('Fiók menü'); kclick('#infoPop [data-act="infoClose"]');
+    K.location.hash = ''; K.route(); fn('karakterlista');
+  };
+  ktest('világos téma: minden fülön, a dobássávban, az üzenetekben és a Fiók menüben a szöveg legalább 4,5:1 kontrasztú', async () => {
+    megjTorol(); K.megjAllit('tema', 'vilagos');
+    try {
+      eq(K.getComputedStyle(K.document.body).backgroundColor, 'rgb(244, 241, 234)', 'világos háttér');
+      const hibak = []; await mindenFul(hol => hibak.push(...kontrasztHibak(4.5).map(h => hol + ': ' + h)));
+      eq(hibak.slice(0, 8), []);
+      eq(kq('meta[name="theme-color"]').content, '#f4f1ea', 'a böngésző sávja is világos');
+    } finally { megjTorol(); K.megjAllit('tema', ''); }
   });
   ktest('Megjelenítés: a <head> szkriptje a szerződés kulcsait és értékeit ismeri; a böngésző sávjának színe a háttéré', () => {
     const {HELYI, MEGJELENITES} = K.Szerzodes, src = kq('#megjIndito').textContent;

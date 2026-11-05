@@ -57,7 +57,7 @@
 - Ha a `localStorage` nem elérhető (privát mód), a mostani nézet marad, a menüben választott beállítás csak az oldal újratöltéséig él.
 
 ### 3. Színek: a beégetett színek változóba kerülnek
-- Ez az egyetlen lépés, ami a **meglévő** stílusokhoz nyúl: a kb. 20 beégetett színből változó lesz (pl. `--on-accent:#1a1405`, `--text2:#d6d3cb`, `--field:#0b0d10`, `--rollbar:#14171cee`, `--rb-bg:#2a2414`, `--rb-line:#5a4a20`, `--hurt:#e8d34a`, `--shadow:#0008`…), **pontosan a mostani értékekkel**. A sötét normál nézet így bitre ugyanaz marad.
+- Ez az egyetlen lépés, ami a **meglévő** stílusokhoz nyúl: a kb. 20 beégetett színből változó lesz (pl. `--on-accent:#1a1405`, `--text2:#d6d3cb`, `--field:#0b0d10`, `--rollbar-bg:#14171cee`, `--rb-bg:#2a2414`, `--rb-line:#5a4a20`, `--hurt:#e8d34a`, `--shadow:#0008`…), **pontosan a mostani értékekkel**. A sötét normál nézet így bitre ugyanaz marad.
 - Ezt a lépést önmagában kell lezárni és ellenőrizni (képernyőképek előtte–utána, lásd Ellenőrzés), mielőtt bármilyen új szín jön.
 - Alternatíva lett volna az új témákban egyenként felülírni ezeket a szabályokat a meglévők érintése nélkül; ez kb. 20 ismétlődő szabály lenne témánként, és minden új stílusnál könnyű elfelejteni. A változós megoldás tisztább, és egy szöveges teszt figyelheti, hogy a `:root`-on kívül ne legyen beégetett szín.
 
