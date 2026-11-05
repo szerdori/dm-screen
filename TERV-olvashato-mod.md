@@ -1,6 +1,6 @@
 # Terv: megjelenítési beállítások a telefonos karakterlapon (betűméret, sötét / világos)
 
-Állapot: **elfogadva, fejlesztés alatt** (2026-11-05), ág: `olvashato-mod`.
+Állapot: **kész az `olvashato-mod` ágon** (2026-11-05; az 1–7. lépés commitolva, a tesztek sikeresek), még nincs a `main`-en. Hátra: élesítés, majd a 8. lépés (próba a játékosokkal).
 
 ## Cél
 - Olvasószemüveg nélkül (+1–1,5 dioptria, közelre nehéz élesre látni) is lehessen játszani a telefonos lappal (`karakter.html`): a játékos 2–3 másodperc alatt megtalálja és elolvassa, amit keres („mennyi a Stealth-ed?”, „hány HP-d van?”), és tud vele dobni.
@@ -42,7 +42,7 @@
 ## Megoldás
 
 ### 1. Fiók menü a fejlécben
-- A „kilépés” link helyére egy **„👤 Fiók”** gomb kerül (a fiók e-mailje fölötte marad, ahogy most). Koppintásra a meglévő `#infoPop` ablak nyílik:
+- A „kilépés” link helyére egy **„👤 Fiók”** gomb kerül (a fiók e-mailje fölötte marad, ahogy most; nagy betűnél az e-mail csak a menüben látszik, hogy a fejléc elférjen). Koppintásra a meglévő `#infoPop` ablak nyílik:
   - **Megjelenítés**
     - Betűméret: Normál / Nagy / Extra nagy – mindegyik gomb a saját méretében írja ki a feliratot, hogy választás előtt látszódjon
     - Mód: 🌙 Sötét / ☀ Világos
@@ -85,7 +85,7 @@
 - **Szintlépés és új karakter varázsló:** a globális méretezés lefedi; külön finomítás csak ha kell.
 
 ### 7. Dobássáv (`#rollbar`) nagy betűnél
-- A dobott szám 44 px (Nagy) / 56 px (Extra), a leírás 18 / 21 px, a kontrasztos szövegszínnel.
+- A dobott szám 34 px × szorzó: 44 px (Nagy) / 53 px (Extra), a leírás 18 / 21 px, a kontrasztos szövegszínnel.
 - Az Előny / Hátrány / Krit gombok magasabbak.
 - A `main` alsó helye a nagyobb sávhoz igazodik, hogy ne takarja el a lap alját.
 
@@ -95,7 +95,9 @@
   - a Fiók menü megnyílik; a betűméret és a mód gombja beállítja az attribútumot és elmenti a kulcsot; újratöltés után is érvényes; a Kilépés továbbra is működik
   - a `:root`-on és a téma-blokkokon kívül nincs beégetett szín
   - a betűméret-blokk minden szabálya előtagos
-  - **320 px-en mind a hat változatban** nincs vízszintes kilógás (a meglévő 320 px-es teszt kiterjesztése)
+  - **320 px-en Nagy és Extra nagy betűvel** semmi nem lóg ki, a saját dobozából sem (a világos mód csak színt állít, méretet nem; a normál betűt a régi 320 px-es teszt nézi)
+  - a kontraszt mérése minden fülön a világos és a nagy betűs változatokban
+  - nyitott kérdés a felhasználónak: a betűtípus maradjon-e a Google Fonts-on, vagy kerüljön a tárolóba (OFL licenc, nincs külső kérés); a döntés után `docs/dontesek/0007`
 - `.\teszt.ps1`, majd az `ellenorzo` ügynök.
 - **Élő próba:** a két érintett játékos szemüveg nélkül, a saját telefonján, sötétben és világosban is; néhány kérdés („mennyi a Stealth-ed?”, „dobj támadást”). Ha a méret túl kicsi vagy túl nagy, a szorzó állítható.
 

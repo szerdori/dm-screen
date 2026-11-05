@@ -51,6 +51,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 
 ## Állapot
 - **Játékos app:** a 0–3. fázis a `main`-en (a 3.: szintlépés-varázsló, előzmények; feltöltve 2026-10-30; a felhasználó teendői: `firestore.rules` a konzolba, szabálykönyv újratöltése, próba telefonon) – `TERV-jatekos-app.md`. Következik a 4. fázis (multiclass). Szintén a `main`-en (feltöltve 2026-10-31): átállítás-jelvény, backup (3 mentés, teljes visszaállítás, letöltés), karakter törlése, üres játékos és az 5. fázis szűkített kezdő varázslója (`docs/mukodes.md`); a felhasználó teendői: `firestore.rules` a konzolba, karakterek átállítása, próba telefonon.
+- **Megjelenítés a telefonos lapon** (Fiók menü: betűméret, sötét/világos): kész az `olvashato-mod` ágon (2026-11-05), még nincs a `main`-en – `TERV-olvashato-mod.md`, `docs/mukodes.md`. Élesítés: összefésülés a `main`-re (jóváhagyással), feltöltés, majd próba a játékosok telefonján szemüveg nélkül.
 - **Refaktor:** `TERV-refaktor.md` (elfogadva 2026-10-29), ág: `refaktor-retegek`. Kész és élesben: 0–7. lépés (a 7.: `Sheet.calc` → `CALC_LEPESEK`, 2026-10-30). A 8. lépés (opcionális, a `karakter.html` rétegei) a 3. fázis élesítése után.
 
 ## Nyitott / félretett ügyek (2026-10-29)
