@@ -1,6 +1,6 @@
 # Terv: megjelenítési beállítások a telefonos karakterlapon (betűméret, sötét / világos)
 
-Állapot: **kész az `olvashato-mod` ágon** (2026-11-05; az 1–7. lépés commitolva, a tesztek sikeresek), még nincs a `main`-en. Hátra: élesítés, majd a 8. lépés (próba a játékosokkal).
+Állapot: **élesben** (az 1–7. lépés a `main`-en, feltöltve 2026-11-05). Hátra: a 8. lépés (próba a játékosokkal).
 
 ## Cél
 - Olvasószemüveg nélkül (+1–1,5 dioptria, közelre nehéz élesre látni) is lehessen játszani a telefonos lappal (`karakter.html`): a játékos 2–3 másodperc alatt megtalálja és elolvassa, amit keres („mennyi a Stealth-ed?”, „hány HP-d van?”), és tud vele dobni.
