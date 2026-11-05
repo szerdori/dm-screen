@@ -48,7 +48,7 @@
     - Mód: 🌙 Sötét / ☀ Világos
     - A választás azonnal érvényes (a lap a háttérben látszik), nincs külön Mentés gomb
   - **Kilépés** (a menü alján, külön, hogy ne lehessen véletlenül megnyomni)
-- Új gombok: `data-act` (`fiok`, `megjMeret`, `megjTema`), a meglévő `signOut` marad.
+- Új gombok: `data-act="fiok"` (a menü) és `data-act="megj"` (`data-k`: `betumeret` | `tema`, `data-v`: az érték); a meglévő `signOut` marad.
 - A menü maga is az aktuális beállítás szerint jelenik meg (nagy betűnél nagy).
 
 ### 2. Tárolás

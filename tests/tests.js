@@ -4478,6 +4478,69 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kset('[data-act="csakBek"]', false);
     has(ktext(), 'Sleep'); eq(K.localStorage.getItem(kulcs), null);
   });
+  // ---------- megjelenítés (betűméret, sötét / világos) ----------
+  const megjTorol = () => { const d = K.document.documentElement; delete d.dataset.meret; delete d.dataset.tema; for (const k of ['betumeret', 'tema']) K.localStorage.removeItem(K.Szerzodes.HELYI[k]); };
+  const megjInditoFut = () => K.eval(kq('#megjIndito').textContent);  // a <head> szkriptje: oldalbetöltéskor fut
+  ktest('Fiók menü: a fejlécben a kilépés helyett 👤 Fiók; Megjelenítés (betűméret, mód) eszközönként, azonnal; Kilépés', () => {
+    const {HELYI} = K.Szerzodes, d = K.document.documentElement, ki = [];
+    megjTorol();
+    try {
+      openSheet();
+      ok(!kq('#who [data-act="signOut"]'), 'a fejlécben nincs külön kilépés');
+      kclick('#who [data-act="fiok"]');
+      const pop = kq('#infoPop');
+      ok(!pop.hidden, 'megnyílt'); has(pop.textContent, 'Betűméret'); has(pop.textContent, 'Mód'); has(pop.textContent, 'a@x.hu');
+      const gomb = (k, v) => kq(`#infoPop [data-act="megj"][data-k="${k}"][data-v="${v}"]`);
+      ok(gomb('betumeret', '').classList.contains('on') && gomb('tema', '').classList.contains('on'), 'alapból Normál és Sötét');
+      kclick(gomb('betumeret', 'nagy'));
+      eq([d.dataset.meret, K.localStorage.getItem(HELYI.betumeret)], ['nagy', 'nagy']);
+      ok(!kq('#infoPop').hidden && gomb('betumeret', 'nagy').classList.contains('on') && gomb('betumeret', 'nagy').getAttribute('aria-pressed') === 'true', 'nyitva marad, jelölve');
+      kclick(gomb('betumeret', 'extra')); eq(d.dataset.meret, 'extra');
+      kclick(gomb('tema', 'vilagos'));
+      eq([d.dataset.tema, K.localStorage.getItem(HELYI.tema)], ['vilagos', 'vilagos']);
+      // újratöltéskor a <head> visszaállítja (a lap rajzolása előtt)
+      delete d.dataset.meret; delete d.dataset.tema; megjInditoFut();
+      eq([d.dataset.meret, d.dataset.tema], ['extra', 'vilagos'], 'újratöltés után is');
+      // vissza az alapra: az attribútum és a kulcs is eltűnik
+      kclick(gomb('betumeret', '')); kclick(gomb('tema', ''));
+      eq([d.dataset.meret, d.dataset.tema, K.localStorage.getItem(HELYI.betumeret), K.localStorage.getItem(HELYI.tema)], [undefined, undefined, null, null]);
+      // rossz érték se a gombról, se a tárolóból nem érvényes
+      K.megjAllit('betumeret', 'oriasi'); K.megjAllit('x', 'nagy'); eq(d.dataset.meret, undefined);
+      K.localStorage.setItem(HELYI.betumeret, '"><b>'); K.localStorage.setItem(HELYI.tema, 'piros'); megjInditoFut();
+      eq([d.dataset.meret, d.dataset.tema], [undefined, undefined], 'a tárolt rossz érték nem kerül az oldalra');
+      // Kilépés a menüből: bezárja az ablakot
+      K.KAuth = {signOut: () => ki.push('ki')};
+      kclick('#who [data-act="fiok"]'); kclick('#infoPop [data-act="signOut"]');
+      eq(ki, ['ki']); ok(kq('#infoPop').hidden, 'bezárult');
+      // a karakterlista oldalán (lap nélkül) is működik
+      K.location.hash = ''; K.route();
+      kclick('#who [data-act="fiok"]'); kclick(gomb('tema', 'vilagos')); eq(d.dataset.tema, 'vilagos');
+      kclick('#infoPop [data-act="infoClose"]'); ok(kq('#infoPop').hidden);
+    } finally { megjTorol(); delete K.KAuth; }
+  });
+  ktest('Megjelenítés: a <head> szkriptje a szerződés kulcsait és értékeit ismeri; a böngésző sávjának színe a háttéré', () => {
+    const {HELYI, MEGJELENITES} = K.Szerzodes, src = kq('#megjIndito').textContent;
+    has(src, `'${HELYI.betumeret}'`); has(src, `'${HELYI.tema}'`);
+    for (const v of MEGJELENITES.betumeret.filter(Boolean)) has(src, `m === '${v}'`);
+    for (const v of MEGJELENITES.tema.filter(Boolean)) has(src, `t === '${v}'`);
+    eq([MEGJELENITES.betumeret[0], MEGJELENITES.tema[0]], ['', ''], 'az alapértelmezett a mostani nézet');
+    // a localStorage elérhetetlen (privát mód): az oldal nem akad el, a mostani nézet marad
+    const orig = Object.getOwnPropertyDescriptor(K, 'localStorage');
+    megjTorol();
+    try {
+      Object.defineProperty(K, 'localStorage', {configurable: true, get() { throw new Error('tiltva'); }});
+      megjInditoFut(); eq(K.document.documentElement.dataset.meret, undefined);
+      K.megjAllit('betumeret', 'nagy'); eq(K.document.documentElement.dataset.meret, 'nagy', 'tároló nélkül is érvényes, amíg nyitva van');
+    } finally { if (orig) Object.defineProperty(K, 'localStorage', orig); else delete K.localStorage; megjTorol(); }
+    // régi (gyorsítótárazott) szerzodes.js, MEGJELENITES és új kulcsok nélkül: a gomb működik, csak nem tárol
+    const sz = K.Szerzodes;
+    try {
+      K.Szerzodes = {HELYI: {}};
+      K.megjAllit('betumeret', 'extra'); K.megjAllit('constructor', 'nagy');
+      eq([K.document.documentElement.dataset.meret, K.localStorage.getItem(sz.HELYI.betumeret)], ['extra', null]);
+    } finally { K.Szerzodes = sz; megjTorol(); }
+    eq(kq('meta[name="theme-color"]').content, K.getComputedStyle(K.document.documentElement).getPropertyValue('--bg').trim());
+  });
   ktest('Jellemzők: a régebben importált D&D Beyond sablon ({{scalevalue}}) a lap adataiból látszik, a tárolt szöveg nem változik', () => {
     openSheet({classes: [{name: 'Rogue', level: 5, hitDie: 8}], features: [{name: 'Sneak Attack', text: 'Extra {{scalevalue}} damage.', src: ''}]});
     kclick('[data-tab="kep"]');

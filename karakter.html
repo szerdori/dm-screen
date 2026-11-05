@@ -178,7 +178,27 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 .parts{margin:6px 0 0;padding-left:18px;font-size:13px;color:#d6d3cb}
 .lvrow{display:flex;gap:8px;align-items:center}
 .lvrow input{width:90px}
+/* Fiók menü: megjelenítés (betűméret, sötét / világos) és kilépés */
+#infoPop .fiok h4{margin:14px 0 6px;font-size:14px;font-weight:600;color:var(--muted)}
+.megj{display:flex;gap:6px}
+.megj button{flex:1;min-width:0;padding:8px 4px}
+.megj button.on{background:var(--accent);color:#1a1405;border-color:var(--accent);font-weight:700}
+.megj [data-v="nagy"]{font-size:19px} .megj [data-v="extra"]{font-size:22px;line-height:1.1}
+.fiokalj{margin-top:18px}
 </style>
+<script id="megjIndito">
+// megjelenítés (betűméret, sötét / világos) még az első rajzolás előtt, hogy ne villanjon fel a normál nézet;
+// a kulcsok és az értékek = Szerzodes.HELYI.betumeret / .tema és Szerzodes.MEGJELENITES (a szerzodes.js itt még nincs betöltve; teszt nézi)
+(() => {
+  const d = document.documentElement;
+  try {
+    const m = localStorage.getItem('dmscreen-betumeret'), t = localStorage.getItem('dmscreen-tema');
+    if (m === 'nagy' || m === 'extra') d.dataset.meret = m;
+    if (t === 'vilagos') d.dataset.tema = t;
+  } catch {}
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(d).getPropertyValue('--bg').trim() || '#0e1013';
+})();
+</script>
 </head>
 <body>
 <header><h1><a href="#">⚔ Karakterlap</a></h1><small id="who"></small></header>
@@ -194,7 +214,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
 <script src="sheet.js?v=15"></script>
-<script src="szerzodes.js?v=4"></script>
+<script src="szerzodes.js?v=5"></script>
 <script>
 'use strict';
 // Játékos app: belépés Google-fiókkal; a saját karakter teljes telefonos lapja (sheets/{id}) és a csapat nyilvános lapjai (characters/{id}).
@@ -202,7 +222,7 @@ button[data-act^="lu"].on{background:var(--accent);color:#1a1405;border-color:va
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 15, szerzodes: 4};
+const VART_MODULOK = {kozos: 3, sheet: 15, szerzodes: 5};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -1126,6 +1146,30 @@ function iGomb(info) {
   infoReg.set(info.cim, info);
   return `<button type="button" class="ibtn" data-act="info" data-info="${esc(info.cim)}" title="Mit kell tenni?" aria-label="Leírás: ${esc(info.cim)}">i</button>`;
 }
+// ---------- Fiók menü: megjelenítés (betűméret, sötét / világos; eszközönként) és kilépés ----------
+// az állapot a <html data-meret / data-tema> attribútuma (a <head> állítja be a tárolóból); választáskor azonnal érvényes
+const MEGJ_CIMKE = {betumeret: [['', 'Normál'], ['nagy', 'Nagy'], ['extra', 'Extra nagy']], tema: [['', '🌙 Sötét'], ['vilagos', '☀ Világos']]};
+const MEGJ_ATTR = {betumeret: 'meret', tema: 'tema'};
+const megjAll = k => document.documentElement.dataset[MEGJ_ATTR[k]] || '';
+function megjAllit(k, v) {
+  // a választható értékek: a szerződésből; egy régi (gyorsítótárazott) szerzodes.js mellett a beépített lista, és nincs tárolás
+  const SZ = window.Szerzodes, ertekek = SZ?.MEGJELENITES?.[k] || {betumeret: ['', 'nagy', 'extra'], tema: ['', 'vilagos']}[k];
+  if (!Object.hasOwn(MEGJ_ATTR, k) || !ertekek.includes(v)) return;
+  const d = document.documentElement, kulcs = SZ?.HELYI?.[k];
+  if (v) d.dataset[MEGJ_ATTR[k]] = v; else delete d.dataset[MEGJ_ATTR[k]];
+  if (kulcs) try { if (v) localStorage.setItem(kulcs, v); else localStorage.removeItem(kulcs); } catch {}
+  $('meta[name="theme-color"]').content = getComputedStyle(d).getPropertyValue('--bg').trim() || '#0e1013';
+}
+function fiokMutat() {
+  const sor = k => `<div class="megj" role="group" aria-labelledby="megj-${k}">${MEGJ_CIMKE[k].map(([v, l]) => `<button type="button" class="${megjAll(k) === v ? 'on' : ''}" data-act="megj" data-k="${k}" data-v="${v}" aria-pressed="${megjAll(k) === v}">${l}</button>`).join('')}</div>`;
+  const p = $('#infoPop');
+  p.innerHTML = `<div class="ibox fiok" role="dialog" aria-modal="true" aria-label="Fiók"><h3>👤 Fiók</h3><div class="hint">${esc(me)}${isDM ? ' · DM' : ''}</div>
+    <h4 id="megj-betumeret">Betűméret</h4>${sor('betumeret')}
+    <h4 id="megj-tema">Mód</h4>${sor('tema')}
+    <p class="hint">Csak ezen az eszközön; a választás azonnal érvényes.</p>
+    <div class="row spread fiokalj"><button type="button" data-act="signOut">Kilépés</button><button type="button" class="primary" data-act="infoClose">Kész</button></div></div>`;
+  p.hidden = false;
+}
 function infoMutat(info) {
   const p = $('#infoPop');
   p.innerHTML = `<div class="ibox" role="dialog" aria-modal="true"><h3>${esc(info.cim)}</h3>
@@ -1333,7 +1377,7 @@ function render(force = false) {
   pendingRender = false;
   // kívülről jött újrarajzolásnál az űrlapba gépelt, még nem mentett értékek megmaradnak
   if (view.tab === 'adat' && !force) readForm();
-  $('#who').innerHTML = me ? `${esc(me)}${isDM ? ' · DM' : ''}<br><a href="#" data-act="signOut" style="color:var(--muted)">kilépés</a>` : '';
+  $('#who').innerHTML = me ? `${esc(me)}${isDM ? ' · DM' : ''}<br><a href="#" data-act="fiok" style="color:var(--muted)">👤 Fiók</a>` : '';
   const s = view.id && sheets.get(view.id);
   $('#rollbar').hidden = !s;
   if (!s) { renderList(); return; }
@@ -1440,8 +1484,10 @@ document.addEventListener('click', e => {
   if (!el || el.tagName === 'INPUT' || el.tagName === 'SELECT') return;
   const act = el.dataset.act, s = cur(), i = +el.dataset.i;
   if (el.tagName === 'A' || el.closest('summary')) e.preventDefault();
-  if (!s && !['signIn', 'signOut', 'reload', 'infoClose'].includes(act)) return;
+  if (!s && !['signIn', 'signOut', 'reload', 'infoClose', 'fiok', 'megj'].includes(act)) return;
   switch (act) {
+    case 'fiok': fiokMutat(); break;
+    case 'megj': megjAllit(el.dataset.k, el.dataset.v); fiokMutat(); break;
     case 'luStart': if (canEdit(s) && luEnabled(s) && luReady(s) && !sheetStale) { luLoad(view.id, s); window.scrollTo(0, 0); render(true); } break;
     case 'info': { const info = infoReg.get(el.dataset.info); if (info) infoMutat(info); break; }
     case 'infoClose': $('#infoPop').hidden = true; break;
@@ -1459,7 +1505,7 @@ document.addEventListener('click', e => {
     case 'lapTorol': if (canEdit(s) && !s.deleted) lapTorol(s); break;
     case 'lapDl': download(H.exportNev(s.name, new Date().toISOString()), H.exportLap(s)); break;
     case 'signIn': window.KAuth?.signIn(); break;
-    case 'signOut': window.KAuth?.signOut(); break;
+    case 'signOut': $('#infoPop').hidden = true; window.KAuth?.signOut(); break;
     case 'reload': location.reload(); break;
     case 'd20': rollD20(+el.dataset.bonus || 0, el.dataset.label, el.dataset.kind || ''); break;
     case 'dmg': rollDamage(el.dataset.expr, el.dataset.label, el.dataset.kind || ''); break;
