@@ -33,7 +33,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 | `docs/mukodes.md` | mit tud az app: a funkciók elfogadott viselkedése |
 | `docs/kulso-forrasok.md` | 5e.tools, D&D Beyond: elérés és buktatók – olvasd el, mielőtt az importhoz vagy a szabálykönyvhöz nyúlsz |
 | `docs/dontesek/NNNN-*.md` | technikai döntések (háttér, döntés, következmény); számozott, nem törlődik |
-| `TERV-*.md` | tervek: `TERV-jatekos-app.md` (0–5. fázis), `TERV-2-fazis.md`, `TERV-3-4-fazis.md`, `TERV-refaktor.md` |
+| `TERV-*.md` | tervek: `TERV-jatekos-app.md` (0–5. fázis), `TERV-2-fazis.md`, `TERV-3-4-fazis.md`, `TERV-refaktor.md`, `TERV-olvashato-mod.md` |
 | `README.md` | a felhasználónak: mi ez, hogyan indul |
 
 ## Felépítés
@@ -58,6 +58,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 - **Későbbre (a felhasználó kérésére elhalasztva, 2026-10-28):** a régi `dmscreen`, `dmscreen_library`, `dmscreen_saved`, `dmscreen_backup` gyűjtemények törlése a `hazi-naplo` projektből. A 0. fázis élesben van (új projekt `dm-screen-afc89`, az adatok átköltöztek, ellenőrizve). A törlést a felhasználó végzi a konzolban, kattintásonkénti leírással; előtte érdemes friss fájlmentést kérni.
 - **ToDo (a 3. fázis után, opcionális):** a refaktor 8. lépése: a `karakter.html` rétegekre bontása és a `Sheet` névterekre bontása (`Sheet.formatum`, `Sheet.motor`, `Sheet.konyv`) – `TERV-refaktor.md`, 8. lépés.
 - **ToDo (a felhasználó kérése, 2026-11-01):** azonos forrású ✋ teendők: ha egy forrásnak két ✋ teendője van (pl. egy fajnak), csak az első látszik, mert a kulcs (`'✋ ' + src`) azonos, és a `calcTeendok` szűri a `sheet.js`-ben. Régebbi hiba; a valódi szabálykönyvben még nincs megnézve, hol jön elő. A javításnál figyelni kell a már kipipált teendőkre (`todoDone` a kulcsot tárolja).
+- **Wishlist (a felhasználó kérése, 2026-11-05):** olvasható mód – egy érték kinagyítása teljes képernyőre dobás nélkül (javasolt gesztus: hosszú nyomás; a koppintás a dobásé marad). Csak akkor, ha az olvasható mód kipróbálása után kell – `TERV-olvashato-mod.md`.
 - Kilépéskor a helyi másolat törlése – nem kérte.
 - Kampánnyal kapcsolatos függő ügyek: `CLAUDE.local.md`.
 - Feltöltés után a felhasználónak újra kell importálnia a játékosokat a könyvjelzővel, ha az import új mezőt kap.
