@@ -11,7 +11,13 @@
   --on-accent:#1a1405;--on-red:#fff;--on-green:#08130b;--on-st:#fff;--backdrop:rgba(0,0,0,.6);--field:#0b0d10;--av-bg:#252a33;--bar-bg:#08090b;--bar-shadow:#000;--hurt:#e8d34a;--bloodied:#8a2a1c;--down:#6b2a8a;--conc-bg:rgba(80,140,255,.12);--rb-bg:#2a2414;--rb-line:#5a4a20;--text2:#d6d3cb;--rollbar-bg:#14171cee;--shadow:#0008;--bar-ok:var(--green);--bar-mid:var(--orange);--bar-low:var(--red)}
 /* világos téma (Fiók → Megjelenítés → Világos): csak a színváltozókat írja át; szövegként minden szín legalább 4,5:1 a háttéren */
 :root[data-tema="vilagos"]{--bg:#f4f1ea;--panel:#fff;--panel2:#ece8df;--line:#c9c1b1;--text:#1d1b17;--muted:#5f5a50;--accent:#8a5a00;--red:#b3261e;--orange:#a14f00;--green:#2e7d32;--blue:#1f5fbf;--pc:#1f5fbf;--npc:#2e7d32;
-  --on-accent:#fff;--on-red:#fff;--on-green:#fff;--on-st:#fff;--backdrop:rgba(0,0,0,.4);--field:#fff;--av-bg:#e6e1d6;--bar-bg:#e6e1d6;--bar-shadow:rgba(255,255,255,.7);--hurt:#7a6000;--bloodied:#a33a26;--down:#6b2a8a;--conc-bg:rgba(31,95,191,.1);--rb-bg:#fbf1dc;--rb-line:#d9b56a;--text2:#3a362f;--rollbar-bg:#f4f1eaee;--shadow:#0003;--bar-ok:#8fd18f;--bar-mid:#f3b866;--bar-low:#ef9a90;color-scheme:light}
+  --on-accent:#fff;--on-red:#fff;--on-green:#fff;--on-st:#fff;--backdrop:rgba(0,0,0,.4);--field:#fff;--av-bg:#e6e1d6;--bar-bg:#fbfaf7;--bar-shadow:rgba(255,255,255,.7);--hurt:#7a6000;--bloodied:#a33a26;--down:#6b2a8a;--conc-bg:rgba(31,95,191,.1);--rb-bg:#fbf1dc;--rb-line:#d9b56a;--text2:#3a362f;--rollbar-bg:#f4f1eaee;--shadow:#0003;--bar-ok:#5cb85c;--bar-mid:#e9a23b;--bar-low:#e8776d;color-scheme:light}
+/* kontrasztos sötét (Nagy / Extra nagy betű, sötét mód): szövegként minden szín legalább 7:1 a háttéren */
+:root[data-meret]{--bg:#050607;--panel:#14161a;--panel2:#1d2026;--line:#6b7280;--text:#f5f3ee;--muted:#c9ced6;--accent:#ffbf47;--red:#ff8f89;--orange:#ffa04a;--green:#62d67e;--blue:#7fb2ff;--pc:#7fb2ff;--npc:#62d67e;
+  --on-accent:#1a1405;--on-red:#000;--on-green:#08130b;--on-st:#fff;--backdrop:rgba(0,0,0,.75);--field:#000;--av-bg:#2a2e36;--bar-bg:#000;--bar-shadow:#000;--hurt:#ffe066;--bloodied:#a32f1f;--down:#6b2a8a;--conc-bg:rgba(127,178,255,.14);--rb-bg:#2e2512;--rb-line:#b08a35;--text2:#ece9e1;--rollbar-bg:#0b0c0e;--shadow:#000a;--bar-ok:#145526;--bar-mid:#7a4508;--bar-low:#8f2418}
+/* kontrasztos világos (Nagy / Extra nagy betű, világos mód): szövegként minden szín legalább 7:1 a háttéren */
+:root[data-meret][data-tema="vilagos"]{--bg:#fff;--panel:#fff;--panel2:#efebe3;--line:#6b6458;--text:#000;--muted:#3d3930;--accent:#6b4400;--red:#8f1a12;--orange:#743700;--green:#1a5220;--blue:#174a96;--pc:#174a96;--npc:#1a5220;
+  --on-accent:#fff;--on-red:#fff;--on-green:#fff;--on-st:#fff;--backdrop:rgba(0,0,0,.5);--field:#fff;--av-bg:#e6e1d6;--bar-bg:#fff;--bar-shadow:rgba(255,255,255,.8);--hurt:#5e4a00;--bloodied:#8a2a1c;--down:#6b2a8a;--conc-bg:rgba(23,74,150,.08);--rb-bg:#fbf1dc;--rb-line:#8a5a00;--text2:#1d1b17;--rollbar-bg:#fff;--shadow:#0004;--bar-ok:#5cb85c;--bar-mid:#e9a23b;--bar-low:#e8776d}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 "Segoe UI",Roboto,sans-serif}
 header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
@@ -189,6 +195,57 @@ button[data-act^="lu"].on{background:var(--accent);color:var(--on-accent);border
 .megj button.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
 .megj [data-v="nagy"]{font-size:19px} .megj [data-v="extra"]{font-size:22px;line-height:1.1}
 .fiokalj{margin-top:18px}
+/* ---------- nagy betű (Fiók → Megjelenítés → Betűméret: Nagy / Extra nagy) ----------
+   minden szabály a :root[data-meret] alatt van: normál betűnél egyik sem érvényes. A méret egy szorzóból (--meret) jön,
+   a legkisebb szöveg --betu-min; az alábbi sorok a fenti szabályok betűméretét írják át ugyanazzal a szelektorral. */
+:root[data-meret="nagy"]{--meret:1.3;--betu-min:18px}
+:root[data-meret="extra"]{--meret:1.55;--betu-min:21px}
+:root[data-meret]{--betu:"Atkinson Hyperlegible Next","Atkinson Hyperlegible","Segoe UI",Roboto,sans-serif}
+:root[data-meret] body{font-family:var(--betu);font-size:calc(16px * var(--meret));line-height:1.45;font-weight:500}
+:root[data-meret] header h1{font-size:max(var(--betu-min),calc(22px * var(--meret)));font-family:var(--betu)}
+:root[data-meret] header small{font-size:max(var(--betu-min),calc(12px * var(--meret)))}
+:root[data-meret] #infoPop .hol{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] button.small{font-size:max(var(--betu-min),calc(14px * var(--meret)))}
+:root[data-meret] h2{font-size:max(var(--betu-min),calc(15px * var(--meret)));font-family:var(--betu)}
+:root[data-meret] h3{font-size:max(var(--betu-min),calc(14px * var(--meret)));font-family:var(--betu)}
+:root[data-meret] .name{font-size:max(var(--betu-min),calc(18px * var(--meret)));font-family:var(--betu)}
+:root[data-meret] .sub{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] .bar span{font-size:max(var(--betu-min),calc(14px * var(--meret)));font-family:var(--betu);line-height:1.25}
+:root[data-meret] .st{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] .hint{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] #gate b.logo{font-size:max(var(--betu-min),calc(44px * var(--meret)))}
+:root[data-meret] .top button.small{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] .concbar{font-size:max(var(--betu-min),calc(14px * var(--meret)))}
+:root[data-meret] .fxchip{font-size:max(var(--betu-min),calc(12px * var(--meret)))}
+:root[data-meret] .hero .name{font-size:max(var(--betu-min),calc(17px * var(--meret)))}
+:root[data-meret] .bar.slim span{font-size:max(var(--betu-min),calc(12px * var(--meret)))}
+:root[data-meret] .tmp{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] .chip b{font-size:max(var(--betu-min),calc(18px * var(--meret)))}
+:root[data-meret] .chip small{font-size:max(var(--betu-min),calc(11px * var(--meret)))}
+:root[data-meret] .hpnum{font-size:max(var(--betu-min),calc(34px * var(--meret)));font-family:var(--betu)}
+:root[data-meret] .hpnum small{font-size:max(var(--betu-min),calc(18px * var(--meret)))}
+:root[data-meret] .hprow input{font-size:max(var(--betu-min),calc(18px * var(--meret)))}
+:root[data-meret] nav.tabs button{font-size:max(var(--betu-min),calc(14px * var(--meret)))}
+:root[data-meret] .abil small{font-size:max(var(--betu-min),calc(11px * var(--meret)))}
+:root[data-meret] .abil b{font-size:max(var(--betu-min),calc(24px * var(--meret)))}
+:root[data-meret] .abil .sc{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] .abil .sv{font-size:max(var(--betu-min),calc(12px * var(--meret)))}
+:root[data-meret] .nm small{font-size:max(var(--betu-min),calc(12px * var(--meret)))}
+:root[data-meret] details .tx{font-size:max(var(--betu-min),calc(14px * var(--meret)))}
+:root[data-meret] .form label{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] #rollbar .modes button{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] #lastRoll span{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] .chopts label{font-size:max(var(--betu-min),calc(14px * var(--meret)))}
+:root[data-meret] .lusteps span{font-size:max(var(--betu-min),calc(12px * var(--meret)))}
+:root[data-meret] .parts{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] .ibtn{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
+:root[data-meret] #infoPop .fiok h4{font-size:max(var(--betu-min),calc(14px * var(--meret)))}
+:root[data-meret] .av{width:calc(56px * var(--meret));height:calc(56px * var(--meret));font-size:max(var(--betu-min),calc(24px * var(--meret)))}
+:root[data-meret] .hero .av{width:calc(44px * var(--meret));height:calc(44px * var(--meret));font-size:max(var(--betu-min),calc(18px * var(--meret)))}
+:root[data-meret] .own .av{width:calc(72px * var(--meret));height:calc(72px * var(--meret))}
+/* a letiltott gomb nagy betűnél kevésbé halvány (a felirata így is olvasható marad) */
+:root[data-meret] button:disabled{opacity:.7}
+:root[data-meret] .megj [data-v="nagy"]{font-size:max(var(--betu-min),19px)}
 </style>
 <script id="megjIndito">
 // megjelenítés (betűméret, sötét / világos) még az első rajzolás előtt, hogy ne villanjon fel a normál nézet;
@@ -201,7 +258,15 @@ button[data-act^="lu"].on{background:var(--accent);color:var(--on-accent);border
     if (t === 'vilagos') d.dataset.tema = t;
   } catch {}
   document.querySelector('meta[name="theme-color"]').content = getComputedStyle(d).getPropertyValue('--bg').trim() || '#0e1013';
+  if (d.dataset.meret) megjBetutipus();
 })();
+// a nagy betűhöz jól olvasható betűtípus (Google Fonts); csak akkor töltődik, ha kell; ha nem jön le, a rendszer betűje marad
+function megjBetutipus() {
+  if (document.getElementById('megjBetu')) return;
+  const l = document.createElement('link');
+  l.id = 'megjBetu'; l.rel = 'stylesheet'; l.href = 'https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400..800&display=swap';
+  document.head.appendChild(l);
+}
 </script>
 </head>
 <body>
@@ -1161,6 +1226,7 @@ function megjAllit(k, v) {
   if (!Object.hasOwn(MEGJ_ATTR, k) || !ertekek.includes(v)) return;
   const d = document.documentElement, kulcs = SZ?.HELYI?.[k];
   if (v) d.dataset[MEGJ_ATTR[k]] = v; else delete d.dataset[MEGJ_ATTR[k]];
+  if (k === 'betumeret' && v) megjBetutipus();
   if (kulcs) try { if (v) localStorage.setItem(kulcs, v); else localStorage.removeItem(kulcs); } catch {}
   $('meta[name="theme-color"]').content = getComputedStyle(d).getPropertyValue('--bg').trim() || '#0e1013';
 }

@@ -4479,7 +4479,11 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     has(ktext(), 'Sleep'); eq(K.localStorage.getItem(kulcs), null);
   });
   // ---------- megjelenítés (betűméret, sötét / világos) ----------
-  const megjTorol = () => { const d = K.document.documentElement; delete d.dataset.meret; delete d.dataset.tema; for (const k of ['betumeret', 'tema']) K.localStorage.removeItem(K.Szerzodes.HELYI[k]); };
+  const megjTorol = () => {
+    const d = K.document.documentElement; delete d.dataset.meret; delete d.dataset.tema;
+    for (const k of ['betumeret', 'tema']) K.localStorage.removeItem(K.Szerzodes.HELYI[k]);
+    K.document.querySelector('meta[name="theme-color"]').content = K.getComputedStyle(d).getPropertyValue('--bg').trim();
+  };
   const megjInditoFut = () => K.eval(kq('#megjIndito').textContent);  // a <head> szkriptje: oldalbetöltéskor fut
   ktest('Fiók menü: a fejlécben a kilépés helyett 👤 Fiók; Megjelenítés (betűméret, mód) eszközönként, azonnal; Kilépés', () => {
     const {HELYI} = K.Szerzodes, d = K.document.documentElement, ki = [];
@@ -4543,15 +4547,19 @@ describe('Telefonos karakterlap (karakter.html)', () => {
       if (![...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) || !el.getClientRects().length || el.closest('[hidden]')) continue;
       let atl = false; for (let e = el; e; e = e.parentElement) if (+K.getComputedStyle(e).opacity < 1) atl = true;
       if (atl) continue;  // a letiltott (halványított) gomb szándékosan halvány
-      const cs = K.getComputedStyle(el), bg = hatter(el), fg = kever(rgb(cs.color), bg);
-      const [a, b] = [fenyesseg(fg), fenyesseg(bg)].sort((x, y) => y - x), k = (a + 0.05) / (b + 0.05);
-      if (k < min) hibak.push(`${el.tagName.toLowerCase()}.${el.className} „${el.textContent.trim().slice(0, 20)}” ${k.toFixed(2)}`);
+      // a HP-sáv felirata a kitöltésen (testvérelem, nem ős) és az üres részen is olvasható legyen
+      const fill = el.closest('.bar')?.querySelector('.fill');
+      for (const bg of [hatter(el), ...(fill ? [hatter(fill)] : [])]) {
+        const fg = kever(rgb(K.getComputedStyle(el).color), bg);
+        const [a, b] = [fenyesseg(fg), fenyesseg(bg)].sort((x, y) => y - x), k = (a + 0.05) / (b + 0.05);
+        if (k < min) hibak.push(`${el.tagName.toLowerCase()}.${el.className} „${el.textContent.trim().slice(0, 20)}” ${k.toFixed(2)}`);
+      }
     }
     return [...new Set(hibak)];
   };
   const mindenFul = async (fn) => {
     K.KApp.setRulebook({version: 'v1', rb: await fakeRb()});
-    openSheet({hp: {max: 24, cur: 12, temp: 3}, conditions: ['Poisoned', 'Bless'], concentration: 'Bless', classes: [{name: 'Rogue', level: 3}, {name: 'Wizard', level: 1}],
+    openSheet({hp: {max: 24, cur: 5, temp: 3}, conditions: ['Poisoned', 'Bless'], concentration: 'Bless', classes: [{name: 'Rogue', level: 3}, {name: 'Wizard', level: 1}],
       spellcasting: {ability: 'int', slots: [2, 0, 0, 0, 0, 0, 0, 0, 0], used: [1]}, spells: [{name: 'Fire Bolt', level: 0}, {name: 'Shield', level: 1, prepared: true}],
       resources: [{name: 'Ki', max: 3, used: 1, reset: 'short'}], notes: 'Jegyzet'});
     for (const t of ['harc', 'kep', 'var', 'fel', 'adat', 'jegyz']) { kclick(`[data-tab="${t}"]`); kqa('main details').forEach(d => d.open = true); fn(t); }
@@ -4561,15 +4569,25 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('#who [data-act="fiok"]'); fn('Fiók menü'); kclick('#infoPop [data-act="infoClose"]');
     K.location.hash = ''; K.route(); fn('karakterlista');
   };
-  ktest('világos téma: minden fülön, a dobássávban, az üzenetekben és a Fiók menüben a szöveg legalább 4,5:1 kontrasztú', async () => {
-    megjTorol(); K.megjAllit('tema', 'vilagos');
-    try {
-      eq(K.getComputedStyle(K.document.body).backgroundColor, 'rgb(244, 241, 234)', 'világos háttér');
-      const hibak = []; await mindenFul(hol => hibak.push(...kontrasztHibak(4.5).map(h => hol + ': ' + h)));
-      eq(hibak.slice(0, 8), []);
-      eq(kq('meta[name="theme-color"]').content, '#f4f1ea', 'a böngésző sávja is világos');
-    } finally { megjTorol(); K.megjAllit('tema', ''); }
-  });
+  // [betűméret, mód, a minimális kontraszt, a várt háttér]: a világos téma legalább 4,5:1, a nagy betűs (kontrasztos) készletek legalább 7:1
+  for (const [meret, tema, min, hatterSzin] of [['', 'vilagos', 4.5, '#f4f1ea'], ['nagy', '', 7, '#050607'], ['nagy', 'vilagos', 7, '#fff'], ['extra', '', 7, '#050607']]) {
+    ktest(`${meret || 'normál'} betű, ${tema || 'sötét'} mód: minden fülön, a dobássávban, az üzenetekben és a Fiók menüben a szöveg legalább ${min}:1 kontrasztú`, async () => {
+      megjTorol(); K.megjAllit('betumeret', meret); K.megjAllit('tema', tema);
+      try {
+        const legkisebb = {nagy: 18, extra: 21}[meret] || 0, kicsik = [];
+        const hibak = []; await mindenFul(hol => {
+          hibak.push(...kontrasztHibak(min).map(h => hol + ': ' + h));
+          // nagy betűnél egyetlen látható szöveg sem kisebb a legkisebb méretnél (a letiltott gombok sem)
+          if (legkisebb) for (const el of K.document.querySelectorAll('body *'))
+            if ([...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) && el.getClientRects().length && !el.closest('[hidden]') && parseFloat(K.getComputedStyle(el).fontSize) < legkisebb - 0.01)
+              kicsik.push(`${hol}: ${el.tagName.toLowerCase()}.${el.className} „${el.textContent.trim().slice(0, 15)}” ${K.getComputedStyle(el).fontSize}`);
+        });
+        eq(hibak.slice(0, 8), []);
+        eq([...new Set(kicsik)].slice(0, 8), [], 'túl kicsi szöveg');
+        eq(kq('meta[name="theme-color"]').content, hatterSzin, 'a böngésző sávja a háttér színe');
+      } finally { megjTorol(); K.megjAllit('betumeret', ''); K.megjAllit('tema', ''); }
+    });
+  }
   ktest('Megjelenítés: a <head> szkriptje a szerződés kulcsait és értékeit ismeri; a böngésző sávjának színe a háttéré', () => {
     const {HELYI, MEGJELENITES} = K.Szerzodes, src = kq('#megjIndito').textContent;
     has(src, `'${HELYI.betumeret}'`); has(src, `'${HELYI.tema}'`);

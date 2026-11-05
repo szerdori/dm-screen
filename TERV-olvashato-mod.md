@@ -63,7 +63,7 @@
 
 ### 4. A négy színkészlet
 - Mind csak változókat állít át, attribútum alatt: `:root[data-tema="vilagos"]{…}`, `:root[data-meret]{…}` (kontrasztos sötét), `:root[data-meret][data-tema="vilagos"]{…}` (kontrasztos világos).
-- **Világos (normál):** törtfehér háttér, fehér panelek, sötétszürke vonalak, majdnem fekete szöveg. Az arany kiemelés (`--accent`) világos háttéren rosszul olvasható (≈2:1), ezért szövegként sötétebb arany/barna kell; kitöltött gombként (sötét szöveggel) maradhat a mostani arany. A zöld/narancs/piros/kék is sötétebb árnyalatot kap, hogy szövegként olvasható legyen.
+- **Világos (normál):** törtfehér háttér, fehér panelek, sötétszürke vonalak, majdnem fekete szöveg. Az arany kiemelés (`--accent`) világos háttéren rosszul olvasható (≈2:1), ezért szövegként sötétebb arany/barna kell; kitöltött gombként is ez a sötét arany kell, fehér szöveggel (5,9:1). A zöld/narancs/piros/kék is sötétebb árnyalatot kap, hogy szövegként olvasható legyen.
 - **Kontrasztos sötét:** majdnem fekete háttér, majdnem fehér szöveg; a `--muted` világosszürke (legalább 7:1 a panelen); erősebb, világosabb vonalak a panelek körül.
 - **Kontrasztos világos:** fehér háttér, fekete szöveg, sötétszürke `--muted` (legalább 7:1), vastagabb, sötét vonalak.
 - Minden szöveg/háttér párnál a kontrasztot meg kell mérni (normál: legalább 4,5:1, kontrasztos: legalább 7:1).
