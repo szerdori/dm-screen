@@ -324,7 +324,7 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on{background:var(--accent
 <div id="infoPop" hidden></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=15"></script>
+<script src="sheet.js?v=16"></script>
 <script src="szerzodes.js?v=5"></script>
 <script>
 'use strict';
@@ -333,7 +333,7 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on{background:var(--accent
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 15, szerzodes: 5};
+const VART_MODULOK = {kozos: 3, sheet: 16, szerzodes: 5};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -396,11 +396,20 @@ function rollExpr(expr, crit = false) {
   }
   return {total, detail: parts.join(' ')};
 }
-function showRoll(r) {
+// kuld = false: csak üzenet (cast, koncentráció-DC), nem dobás – a DM Screenre nem megy
+function showRoll(r, kuld = true) {
   rolls.unshift(r); rolls = rolls.slice(0, 20);
   const el = $('#lastRoll');
   el.className = r.nat === 20 ? 'crit' : r.nat === 1 ? 'fumble' : '';
   el.innerHTML = `<b>${esc(r.total)}</b><span>${esc(r.label)} · ${esc(r.detail)}${r.nat === 20 ? ' · természetes 20!' : r.nat === 1 ? ' · természetes 1' : ''}</span>`;
+  if (kuld) dobasKuld(r);
+}
+// a dobás a lapra is felkerül (rolls, legújabb elöl, legfeljebb H.ROLLS_MAX): a DM Screen naplójában a karakter nevével látszik
+function dobasKuld(r) {
+  const s = cur();
+  if (!s || !canEdit(s) || sheetStale) return;
+  const uj = H.normRoll({...r, at: new Date().toISOString()});
+  write(view.id, {rolls: [uj, ...(s.rolls || [])].slice(0, H.ROLLS_MAX)});
 }
 function setMode(m) { rollMode = m; document.querySelectorAll('#rollbar [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m)); }
 // előny / hátrány / krit: egy dobásra szól, utána visszaáll normálra
@@ -1462,7 +1471,7 @@ function takeDamage(s, n) {
   patch(H.damage(s, n));
   const now = cur();
   if (now?.concentration) showRoll({label: 'Koncentráció: ' + now.concentration, total: 'DC ' + Math.max(10, Math.floor(n / 2)),
-    detail: `CON mentő (${sgn(H.saveBonus(now, 'con'))}) – Képességek fül → CON mentő`});
+    detail: `CON mentő (${sgn(H.saveBonus(now, 'con'))}) – Képességek fül → CON mentő`}, false);
 }
 // 0 HP-n vagy cselekvésképtelen állapotban a koncentráció megszakad
 const concBroken = s => !!s.concentration && (s.hp.cur === 0 || s.conditions.some(c => H.INCAP.includes(c)));
@@ -1672,7 +1681,7 @@ document.addEventListener('click', e => {
       const conds = p.conditions || s.conditions;
       if (H.effectOf(sp.name) && !conds.some(c => c.toLowerCase() === sp.name.toLowerCase()) && confirm(`${sp.name}: rád is hat? (bekerül az aktív hatások közé, és a bónusza magától érvényesül)`))
         p.conditions = [...conds, sp.name];
-      showRoll({label: sp.name, total: '✨', detail: how === '0' ? 'cantrip' : how === 'ritual' ? 'rituáléként, slot nélkül' : how === 'pact' ? `Pact slotból (${sc.pact.level}. szint)` : `${how}. szintű slotból` + (+how > sp.level ? ' (upcast)' : '')});
+      showRoll({label: sp.name, total: '✨', detail: how === '0' ? 'cantrip' : how === 'ritual' ? 'rituáléként, slot nélkül' : how === 'pact' ? `Pact slotból (${sc.pact.level}. szint)` : `${how}. szintű slotból` + (+how > sp.level ? ' (upcast)' : '')}, false);
       if (Object.keys(p).length) patch(p); else render(true);
       break;
     }

@@ -51,7 +51,7 @@ function fresh() {
      selected = null; logLines = []; libTab = 'lib'; lastSaved = emptySaved();
      fiveIndex = null; fiveData = {}; fiveResults = []; backupWarn = ''; lootData = null; lootResult = null;
      partySort = {p: {col: null, dir: 1}, s: {col: null, dir: 1}};
-     SHEETS = {}; shadow = {}; cshadow = {}; sheetOps = {set: new Set(), del: new Set()}; sheetUnsub = null; sheetsWarn = ''; rulebook = null; itemResults = [];
+     SHEETS = {}; shadow = {}; cshadow = {}; sheetOps = {set: new Set(), del: new Set()}; sheetUnsub = null; sheetsWarn = ''; rulebook = null; itemResults = []; latottDobas = {}; dobasokElso = true;
      closeModal(); renderGate(null); render();`);
   W.document.getElementById('log').innerHTML = '';
 }
@@ -1988,6 +1988,19 @@ describe('Karakterlap: formátum és számolás (sheet.js)', () => {
     eq([e.conditions, e.exhaustion], [['Prone'], 6]);
     eq(H.norm({owner: ' A@X.hu '}).owner, 'a@x.hu');
   });
+  test('dobások a lapon (rolls): tisztítva, legfeljebb 15, idő nélküli kimarad; a backup és a letöltés nem viszi', () => {
+    const H = W.Sheet, at = '2026-11-06T18:00:00.000Z';
+    eq(H.norm({}).rolls, []);
+    const s = H.norm({rolls: [{at, label: XSS, total: 17, detail: '[12] +5', nat: 12, extra: 1}, {label: 'idő nélkül'}, 'x', null,
+      ...Array.from({length: 20}, (_, i) => ({at, label: 'L' + i, total: '✗', nat: 99}))]});
+    eq(s.rolls.length, 12, 'az első 15-ből a rossz elemek kiesnek');
+    eq(s.rolls[0], {at, label: XSS, total: '17', detail: '[12] +5', nat: 12});
+    eq([s.rolls[1].total, s.rolls[1].nat, s.rolls[1].detail], ['✗', 20, '']);
+    eq(H.norm(s), s, 'kétszer tisztítva sem változik');
+    eq(H.ROLLS_MAX, 15);
+    eq(H.exportLap(s).rolls, [], 'letöltésben nincs');
+    ok(!('rolls' in H.backupPatch(H.norm({}), {sheet: s}, null)), 'visszaállításnál a mostani dobások maradnak');
+  });
   test('számolt értékek: Rogue 3 (sablon) és Bard 5 Jack of All Trades-szel', () => {
     const H = W.Sheet, s = H.norm(H.TEMPLATE);
     eq([H.level(s), H.pb(s), H.initiative(s), H.saveBonus(s, 'dex'), H.saveBonus(s, 'str'), H.skillBonus(s, 'stealth'), H.skillBonus(s, 'acrobatics'), H.skillBonus(s, 'athletics'), H.passive(s, 'perception')],
@@ -3499,6 +3512,43 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
   });
 });
 
+describe('Játékosok dobásai a DM naplójában', () => {
+  const t = (perc, mp = 0) => `2026-11-06T18:${String(perc).padStart(2, '0')}:${String(mp).padStart(2, '0')}.000Z`;
+  const lap = (id, name, rolls, extra = {}) => ({...W.Sheet.norm({name, classes: [{name: 'Rogue', level: 3}], rolls, ...extra}), id});
+  test('betöltéskor az összes lapról a legutóbbi 15, időrendben (legújabb felül), a karakter nevével; utána csak az újak', () => {
+    const a = Array.from({length: 10}, (_, i) => ({at: t(10 + i), label: 'A' + i, total: i, detail: 'x', nat: i === 9 ? 20 : 5}));
+    const b = Array.from({length: 10}, (_, i) => ({at: t(10 + i, 30), label: 'B' + i, total: i, nat: i === 0 ? 1 : 0}));
+    A(`onSheets(${JSON.stringify([lap('p1', 'Aranka', a.slice().reverse()), lap('p2', XSS, b.slice().reverse())])})`);
+    const sorok = A('logLines').map(l => l.html);
+    eq(sorok.length, 15);
+    has(sorok[0], 'B9'); has(sorok[1], 'A9'); has(sorok[14], 'B2');
+    has(sorok[1], '📱 Aranka'); has(sorok[1], 'KRITIKUS'); eq(A('logLines[1].cls'), 'crit');
+    assertNoXss();
+    // élőben: új dobás az egyik lapon; a régiek nem jönnek újra
+    A(`onSheets(${JSON.stringify([lap('p1', 'Aranka', [{at: t(30), label: 'Perception', total: 14, detail: '[9] +5', nat: 9}, ...a.slice().reverse()]), lap('p2', XSS, b.slice().reverse())])})`);
+    eq(A('logLines').length, 16);
+    has(lastLog(), '📱 Aranka'); has(lastLog(), 'Perception'); has(lastLog(), '<b>14</b>'); has(lastLog(), '[9] +5');
+    A(`onSheets(${JSON.stringify([lap('p1', 'Aranka', [{at: t(30), label: 'Perception', total: 14, detail: '[9] +5', nat: 9}]), lap('p2', XSS, [])])})`);
+    eq(A('logLines').length, 16, 'változatlan dobásokra nincs új sor');
+  });
+  test('törölt lap dobása nem látszik; új dobás nélküli lapváltozásra nincs sor', () => {
+    A(`onSheets(${JSON.stringify([lap('p1', 'Törölt', [{at: t(1), label: 'X', total: 1}], {deleted: {at: t(0), by: 'a@x.hu', owner: 'a@x.hu', vis: 'party'}}), lap('p2', 'Béla', [])])})`);
+    eq(A('logLines').length, 0);
+    A(`onSheets(${JSON.stringify([lap('p2', 'Béla', [], {hp: {max: 20, cur: 5}})])})`);
+    hasNot(allLog(), '📱');
+  });
+  test('késő órájú második eszköz dobása is látszik (a tartalom azonosít, nem az időhatár); a mentés visszaállítása a mostani dobásokat megtartja', () => {
+    A(`S.library.push(normCreature(${JSON.stringify({...pc('Aranka', 3), id: 'p1'})}))`);
+    const most = {at: t(50), label: 'Stealth', total: 20, nat: 13};
+    A(`onSheets(${JSON.stringify([lap('p1', 'Aranka', [most])])})`);
+    eq(A('logLines').length, 1);
+    A(`onSheets(${JSON.stringify([lap('p1', 'Aranka', [{at: t(40), label: 'Insight', total: 9, nat: 4}, most])])})`);
+    eq(A('logLines').length, 2); has(lastLog(), 'Insight');
+    A(`restoreSheets(${JSON.stringify([lap('p1', 'Aranka', [{at: t(1), label: 'Régi', total: 1}])])})`);
+    eq(A('SHEETS.p1.rolls').map(r => r.label), ['Insight', 'Stealth'], 'a mentésből a régi dobások nem jönnek vissza');
+  });
+});
+
 describe('Szintlépés-engedély a DM Screenben', () => {
   const lapos = (id, nev, extra = {}) => { A(`S.library.push(normCreature(${JSON.stringify({...pc(nev, 5), id, owner: 'a@x.hu'})}))`); W.createSheet(id, {name: nev, classes: [{name: 'Rogue', level: 5}], ...extra}); };
   test('Könyvtár: ⬆ +1 szint (többször is), ✕ vissza; csak lappal rendelkezőnél; felhőbe a levelUp megy; 20. szinten nincs', async () => {
@@ -4708,6 +4758,23 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick(kqa('[data-act="dmg"]').find(b => b.dataset.expr === '1d6+3'));
     eq(kq('#lastRoll b').textContent, '11', '2×d6 + 3');
   });
+  ktest('dobás a lapra is felkerül (rolls, legújabb elöl, legfeljebb 15) a DM Screen naplójához; idegen lapnál nem ír', () => {
+    openSheet();
+    kclick('[data-tab="kep"]');
+    K.rnd = () => 15;
+    const stealth = kqa('.li').find(r => r.textContent.includes('Stealth'));
+    kclick(stealth.querySelector('[data-act="d20"]'));
+    const u = lastUpdate();
+    eq(Object.keys(u).sort(), ['rolls', 'updatedAt', 'updatedBy'], 'csak a dobások');
+    eq([u.rolls.length, u.rolls[0].total, u.rolls[0].nat], [1, '22', 15]); has(u.rolls[0].label, 'Stealth'); ok(u.rolls[0].at, 'időponttal');
+    kclick('[data-tab="harc"]');
+    for (let i = 0; i < 16; i++) kclick(kqa('[data-act="dmg"]').find(b => b.dataset.expr === '1d6+3'));
+    eq([lastUpdate().rolls.length, lastUpdate().rolls[0].total, lastUpdate().rolls[0].nat, lastUpdate().rolls.at(-1).total], [15, '18', 0, '18'], 'legfeljebb 15, a régi d20 kiesett');
+    klog.length = 0;
+    openSheet({owner: 'b@x.hu'}, 'a@x.hu');
+    for (const b of kqa('[data-act="d20"]').slice(0, 1)) kclick(b);
+    eq(klog.filter(l => l[0] === 'update').length, 0, 'más lapjára nem ír');
+  });
   ktest('erőforrások és spell slotok pöttyei; short és long rest', () => {
     openSheet({resources: [{name: 'Ki', max: 3, used: 0, reset: 'short'}], spellcasting: {ability: 'int', slots: [2], used: [0]}});
     kclick(kq('[data-act="res"][data-j="1"]')); eq(lastUpdate().resources[0].used, 2);
@@ -4975,6 +5042,7 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     has(ktext(), 'Nincs szabad slot');
     const n = klog.length; kclick('[data-act="castOpen"][data-i="0"]'); kclick('[data-act="cast"][data-how="ritual"]');
     eq(klog.length, n, 'rituáléként nem fogy slot');
+    ok(!klog.some(l => l[0] === 'update' && 'rolls' in l[2]), 'a cast nem dobás: a DM Screenre nem megy');
   });
   ktest('felszerelés a kézi lapon: a felszerelt fegyver támadás lesz a Harc fülön, a pajzs növeli az AC-t; levéve visszaáll', () => {
     K.KApp.setRulebook({version: 'v1', rb: rb3()});

@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 8);
+modul('lapszinkron', 9);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -136,7 +136,33 @@ function onSheets(docs) {
   }
   for (const id of Object.keys(SHEETS)) if (!ids.has(id) && !sheetOps.set.has(id)) { delete SHEETS[id]; delete shadow[id]; changed = true; }
   if (changed) { save(); Ertesito.lapokValtoztak(); }
+  jatekosDobasok();
 }
+// a játékosok telefonon dobott dobásai (a lap `rolls` mezője) a DM naplójába, a karakter nevével:
+// az első figyelés után az összes lapról együtt a legutóbbi Sheet.ROLLS_MAX, utána csak az újak – a dobást a tartalma azonosítja, nem az időhatár
+// (így egy késő órájú második eszköz, pl. a DM a karakter.html-ben, vagy egy jövőbeli időbélyeg sem nyel el dobást)
+let latottDobas = {};  // lap-id → a lapon legutóbb látott dobások kulcsai (Set)
+let dobasokElso = true;
+const dobasKulcs = r => [r.at, r.label, r.total, r.detail].join('|');
+function jatekosDobasok() {
+  const uj = [];
+  for (const [id, s] of Object.entries(SHEETS)) {
+    const latott = latottDobas[id] || new Set(), rolls = (s.rolls || []).filter(r => !latott.has(dobasKulcs(r)));
+    latottDobas[id] = new Set((s.rolls || []).map(dobasKulcs));
+    if (!s.deleted) uj.push(...rolls.map(r => ({...r, who: s.name})));
+  }
+  uj.sort((a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
+  const lista = dobasokElso ? uj.slice(-Sheet.ROLLS_MAX) : uj;
+  dobasokElso = false;
+  for (const r of lista) Ertesito.naplo(dobasSor(r), r.nat === 20 ? 'crit' : r.nat === 1 ? 'fumble' : '');
+}
+// óra:perc; ha nem mai, elé a dátum is (a betöltéskor megjelenő régebbi dobásokhoz)
+const dobasIdo = at => {
+  const d = new Date(at); if (isNaN(d)) return '';
+  const ido = d.toLocaleTimeString('hu-HU', {hour: '2-digit', minute: '2-digit'});
+  return d.toDateString() === new Date().toDateString() ? ido : d.toLocaleDateString('hu-HU', {month: '2-digit', day: '2-digit'}) + ' ' + ido;
+};
+const dobasSor = r => `<span class="who">📱 ${esc(r.who || 'Névtelen')}</span> ${esc(r.label)}: <b>${esc(r.total)}</b> <small>${esc(r.detail)}${r.nat === 20 ? ' — KRITIKUS!' : r.nat === 1 ? ' — elvétve' : ''} · ${esc(dobasIdo(r.at))}</small>`;
 const lapKeszul = new Set();  // dupla kattintás ellen: amíg a szabálykönyv töltődik
 // új lap a könyvtári lényből (📱): ha a szabálykönyv ismeri az osztályait, rögtön szabálymotoros (mint a telefonos Átállítás), különben kézi.
 // Visszatér: true = átállítva, false = kézi lap (a szabálykönyv nem ismeri az osztályait, vagy nincs feltöltve), 'hiba' = kézi lap, mert az átállítás hibát dobott, null = nem készült (már van lapja, vagy épp készül)
@@ -160,7 +186,7 @@ async function lapKonyvtarbol(lib) {
 }
 function createSheet(id, s) {
   const lib = S.library.find(c => c.id === id);
-  SHEETS[id] = Sheet.norm({...s, owner: lib?.owner || s.owner, deleted: null});
+  SHEETS[id] = Sheet.norm({...s, owner: lib?.owner || s.owner, deleted: null, rolls: SHEETS[id]?.rolls || []});  // importált lap dobásai nem kerülnek át
   sheetOps.set.add(id); sheetOps.del.delete(id);
   applySheet(id); save();
 }
@@ -229,7 +255,8 @@ function szintlepesVissza(id) {
 function restoreSheets(list) {
   if (!Array.isArray(list)) return;
   const next = {};
-  for (const d of list) if (isObj(d) && /^[A-Za-z0-9_-]{1,64}$/.test(d.id) && S.library.some(c => c.id === d.id)) next[d.id] = Sheet.norm(d);
+  // a dobások (rolls) a mostaniak maradnak: a mentésből a régiek nem írják felül a játékosok frissebb dobásait
+  for (const d of list) if (isObj(d) && /^[A-Za-z0-9_-]{1,64}$/.test(d.id) && S.library.some(c => c.id === d.id)) next[d.id] = Sheet.norm({...d, rolls: SHEETS[d.id]?.rolls || []});
   Object.keys(SHEETS).forEach(id => { if (!next[id]) sheetOps.del.add(id); });
   SHEETS = next; shadow = {}; cshadow = {};
   Object.keys(next).forEach(id => { sheetOps.set.add(id); applySheet(id); });
