@@ -4602,6 +4602,64 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     // egy támadásnál nincs mit rendezni: nincs fogantyú
     openSheet({attacks: [at('Shortsword')]}); eq(fog().length, 0);
   });
+  ktest('fülváltás vízszintes húzással (swipe): balra a következő, jobbra az előző fül; nem indul mezőben, a fogantyún, a képernyő szélén, két ujjal, függőleges vagy lassú húzásnál', () => {
+    const at = n => ({name: n, hit: '+5', dmg: '1d6', note: ''});
+    openSheet({attacks: [at('Shortsword'), at('Dagger')]});
+    const fül = () => kq('nav.tabs .on').dataset.tab;
+    const te = (el, type, x, y, ujjak = 1) => {
+      const t = new K.Touch({identifier: 1, target: el, clientX: x, clientY: y});
+      const lista = type === 'touchend' ? [] : Array(ujjak).fill(t);
+      el.dispatchEvent(new K.TouchEvent(type, {bubbles: true, cancelable: true, touches: lista, targetTouches: lista, changedTouches: [t]}));
+    };
+    const huz = (el, x1, x2, dy = 0, ujjak = 1) => { if (typeof el === 'string') el = kq(el); ok(el, 'nincs ilyen elem'); te(el, 'touchstart', x1, 300, ujjak); te(el, 'touchmove', x2, 300 + dy, ujjak); te(el, 'touchend', x2, 300 + dy); };
+    const w = K.innerWidth, J = w - 80, B = w - 230, E = w - 10;  // jobb oldali és bal oldali pont, és a képernyő széle (24 px-en belül)
+    eq(fül(), 'harc');
+    huz('.hero', J, B); eq(fül(), 'kep', 'balra: következő');
+    huz('main h3', J, B); eq(fül(), 'var');
+    huz('.hero', B, J); eq(fül(), 'kep', 'jobbra: előző');
+    huz('.hero', B, J); huz('.hero', B, J); eq(fül(), 'harc', 'az elsőnél nem jár körbe');
+    huz('.hero', J, J - 50); eq(fül(), 'harc', 'túl rövid');
+    huz('.hero', J, J - 120, 80); eq(fül(), 'harc', 'inkább függőleges (görgetés)');
+    huz('.hero', E, B); eq(fül(), 'harc', 'a képernyő széléről (rendszer-gesztus)');
+    huz('.hero', J, B, 0, 2); eq(fül(), 'harc', 'két ujjal (nagyítás)');
+    huz('[data-drag="atk"]', J, B); eq(fül(), 'harc', 'a ⠿ fogantyún');
+    const ido = K.Date.now; let most = 1e12;
+    K.Date.now = () => most;
+    try { te(kq('.hero'), 'touchstart', J, 300); most += 2000; te(kq('.hero'), 'touchend', B, 300); eq(fül(), 'harc', 'lassú húzás'); }
+    finally { K.Date.now = ido; }
+    for (const k of ['kep', 'var', 'fel', 'adat', 'jegyz']) { huz('.hero', J, B); eq(fül(), k); }
+    huz('.hero', J, B); eq(fül(), 'jegyz', 'az utolsónál nem jár körbe');
+    // mezőben (pl. kijelölés, kurzormozgatás) nem vált; az Alapadatokba gépelt érték a húzással váltva is megmarad
+    huz('.hero', B, J); eq(fül(), 'adat');
+    const nev = kqa('main input').find(x => x.value === 'Minta Tolvaj');
+    ok(nev, 'névmező');
+    huz(nev, J, B); eq(fül(), 'adat', 'mezőben');
+    nev.value = 'Átírt Név';
+    huz('.hero', B, J); eq(fül(), 'fel');
+    huz('.hero', J, B); eq(kqa('main input').some(x => x.value === 'Átírt Név'), true, 'a piszkozat megmaradt');
+    // vízszintesen görgethető elemben (a fülsáv keskeny kijelzőn) nem vált
+    K.frameElement.width = 320; K.render(true);  // keskeny kijelzőn a fülsáv görgethető
+    const nav = kq('nav.tabs');
+    ok(nav.scrollWidth > nav.clientWidth, 'a fülsáv 320 px-en görgethető');
+    huz(nav, J, B); eq(fül(), 'adat', 'a fülsávon');
+    // húzás után az új fül gombja a fülsáv látható részén van (előre és vissza is)
+    const latszik = l => { const n = kq('nav.tabs').getBoundingClientRect(), g = kq('nav.tabs .on').getBoundingClientRect(); ok(g.left >= n.left - 1 && g.right <= n.right + 1, `${l}: a(z) ${fül()} gombja kilóg (${g.left}–${g.right} / ${n.left}–${n.right})`); };
+    huz('.hero', J, B); latszik('előre');
+    for (const k of ['adat', 'fel', 'var', 'kep', 'harc']) { huz('.hero', B, J); eq(fül(), k); latszik('vissza'); }
+    for (let k = 0; k < 5; k++) { huz('.hero', J, B); latszik('előre ' + k); }
+    // a fókuszban lévő mező elengedődik (így a change lefut, a beírt érték nem vész el)
+    huz('.hero', B, J); eq(fül(), 'adat');
+    huz('.hero', B, J); eq(fül(), 'fel');
+    const mezo = kq('main input:not([type=checkbox])');
+    ok(mezo, 'mező a Felszerelés fülön');
+    let elengedve = false;
+    mezo.addEventListener('blur', () => { elengedve = true; });
+    mezo.focus(); eq(K.document.activeElement, mezo);
+    huz('.hero', J, B); eq([fül(), elengedve], ['adat', true]);
+    // a lap listáján (nincs fülsáv) nem csinál semmit
+    K.location.hash = ''; K.route();
+    huz('main', J, B); ok(!kq('nav.tabs'));
+  });
   ktest('Varázslat fül: „csak a bekészítettek” szűrő (a cantrip mindig látszik), eszközönként megmarad; a szöveg „bekészítve”', async () => {
     K.KApp.setRulebook({version: 'v1', rb: await fakeRb()});
     const kulcs = K.Szerzodes.HELYI.csakBekeszitett;
