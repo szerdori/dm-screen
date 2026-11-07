@@ -1,7 +1,7 @@
 // Ablakok és menük (felület): modális ablak, Menü, Initiative-menü, biztonsági mentések, szabálykönyv, fájlletöltés.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('modal', N) és az index.html-ben a modal.js?v=N és a VART_MODULOK.
 'use strict';
-modul('modal', 1);
+modul('modal', 2);
 
 // ---------- biztonsági mentések ablaka ----------
 async function openBackups() {
@@ -37,6 +37,7 @@ function openInitMenu() {
     <div class="lrow"><span class="nm">Ellenfelek és NPC-k dobása (a játékosokét te írod be)</span><button class="primary" data-act="init" data-mode="monsters">Dobás</button></div>
     <div class="lrow"><span class="nm">Csak akinek még nincs</span><button data-act="init" data-mode="missing">Dobás</button></div>
     <div class="lrow"><span class="nm">Mindenki, a játékosok is</span><button data-act="init" data-mode="all">Dobás</button></div>
+    <div class="lrow"><span class="nm">📱 Ellenfelek és NPC-k dobása, a játékosok a telefonjukon dobnak – az eredmény magától beíródik (akinek nincs telefonos lapja, annak te írod be)</span><button data-act="initTelefon">Dobás és kérés</button></div>
   </div>
   <p><label><input type="checkbox" data-setting="groupInit" ${S.settings.groupInit ? 'checked' : ''}> Az egyszerre hozzáadott azonos lények közös initiative-et kapnak</label></p>`);
 }

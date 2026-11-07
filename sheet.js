@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 16;
+  const VERSION = 17;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -132,7 +132,21 @@ window.Sheet = (() => {
   }
   // egy dobás a lapon: mikor, mire, mennyi (a total szöveg is lehet, pl. „✗” automatikus kudarcnál), részletek, a d20 természetes értéke (0 = nem d20)
   const ROLLS_MAX = 15;
-  const normRoll = x => ({at: isoTime(x.at), label: str(x.label, 120), total: str(x.total, 20), detail: str(x.detail, 400), nat: int(x.nat, 0, 0, 20)});
+  const normRoll = x => { const req = str(x.req, 40); return {at: isoTime(x.at), label: str(x.label, 120), total: str(x.total, 20), detail: str(x.detail, 400), nat: int(x.nat, 0, 0, 20), ...(/^[A-Za-z0-9_-]+$/.test(req) ? {req} : {})}; };
+  // dobáskérés (a DM írja, a játékos dobáskor vagy ✕-re törli): kind = check:<ab>:<skill> | check:<ab> | save:<ab> | init; 10 perc után lejár
+  const REQ_TTL_MS = 10 * 60 * 1000;
+  function reqKindOk(k) {
+    if (k === 'init') return true;
+    const m = typeof k === 'string' && k.match(/^(check|save):(str|dex|con|int|wis|cha)(?::([a-z-]+))?$/);
+    return !!m && (!m[3] || (m[1] === 'check' && SKILLS[m[3]] === m[2]));
+  }
+  function normRollReq(v) {
+    if (!isObj(v) || !reqKindOk(v.kind)) return null;
+    const id = str(v.id, 40), at = isoTime(v.at);
+    if (!/^[A-Za-z0-9_-]+$/.test(id) || !at) return null;
+    return {id, kind: v.kind, label: str(v.label, 120), mode: ['adv', 'dis'].includes(v.mode) ? v.mode : '', by: str(v.by, 200), at};
+  }
+  const reqAktiv = (q, most = Date.now()) => !!q && most - Date.parse(q.at) < REQ_TTL_MS;
   function norm(d) {
     d = isObj(d) ? d : {};
     const hp = isObj(d.hp) ? d.hp : {};
@@ -190,7 +204,10 @@ window.Sheet = (() => {
       deleted: normDeleted(d.deleted),
       newChar: normNewChar(d.newChar),
       // a telefonon dobott utolsó dobások (legújabb elöl), a DM Screen naplója ebből mutatja a játékosok dobásait
-      rolls: arr(d.rolls, ROLLS_MAX).filter(isObj).map(normRoll).filter(r => r.at)
+      rolls: arr(d.rolls, ROLLS_MAX).filter(isObj).map(normRoll).filter(r => r.at),
+      rollReq: normRollReq(d.rollReq),
+      // a játékos ✕-e egy kérésre (a kérés azonosítója); a telefon a DM kérését sosem írja, így egy közben jött új kérést sem törölhet
+      rollSkip: typeof d.rollSkip === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(d.rollSkip) ? d.rollSkip : ''
     };
     if (!s.classes.length) s.classes = [{name: '', subclass: '', level: 1, hitDie: 8}];
     // szabálymotor (2. fázis): a régi, kézi lapon nincs build, és az auto is ki van kapcsolva
@@ -218,6 +235,14 @@ window.Sheet = (() => {
   const skillBonus = (s, k) => { const c = cached(s, 'skills', k); if (c != null) return c; const p = skillProfOf(s, k); return mod(s.abilities[SKILLS[k]]) + (p === 0.5 ? Math.floor(pb(s) / 2) : p * pb(s)); };
   const passive = (s, k) => cached(s, 'passive', k) ?? 10 + skillBonus(s, k);
   const initiative = s => s.initBonus ?? mod(s.abilities.dex) + (s.jack ? Math.floor(pb(s) / 2) : 0);
+  // a kért dobás bónusza és címkéje a lapról (a telefon dobja, a hatások a rollFx-ből jönnek hozzá)
+  function reqRoll(s, kind) {
+    if (kind === 'init') return {bonus: initiative(s), label: 'Initiative'};
+    const [t, a, sk] = String(kind).split(':');
+    if (t === 'save') return {bonus: saveBonus(s, a), label: ABIL_FULL[a] + ' mentő'};
+    if (sk) return {bonus: skillBonus(s, sk), label: skillLabel(sk)};
+    return {bonus: mod(s.abilities[a]), label: ABIL_FULL[a] + ' próba'};
+  }
   const spellAbility = s => s.spellcasting.ability || CLASSES[findClass(s.classes.find(c => CLASSES[findClass(c.name)]?.ab)?.name)]?.ab || '';
   const spellDc = s => { if (s.auto && s.cache?.spell) return s.cache.spell.dc; const a = spellAbility(s); return a ? 8 + pb(s) + mod(s.abilities[a]) : null; };
   const spellAtk = s => { if (s.auto && s.cache?.spell) return s.cache.spell.atk; const a = spellAbility(s); return a ? pb(s) + mod(s.abilities[a]) : null; };
@@ -1254,7 +1279,7 @@ window.Sheet = (() => {
   const buildLevels = s => s.build?.levels?.length || 0;
   // a teljes lap visszajön (felszerelés, pénz, jegyzet, HP is); a gazda marad. Ha a visszaállítás szintet csökkent, a szintlépés-engedély visszajön a mostani szintig.
   function backupPatch(cur, h, rb, {by = '', at = ''} = {}) {
-    const {format, owner, updatedAt, updatedBy, levelUp: _regi, deleted, newChar, rolls, ...snap} = h.sheet;
+    const {format, owner, updatedAt, updatedBy, levelUp: _regi, deleted, newChar, rolls, rollReq, rollSkip, ...snap} = h.sheet;
     const lv = buildLevels(snap) || level(snap), most = buildLevels(cur);
     const levelUp = cur.levelUp && cur.levelUp.to > lv ? cur.levelUp : most > lv ? {to: most, by, at, mc: false} : null;
     const p = {...snap, levelUp}, next = norm({...cur, ...p});
@@ -1266,7 +1291,7 @@ window.Sheet = (() => {
     return a === 0 ? !cur.auto || b <= 1 : b > 0 && (b <= a || (!!cur.levelUp && b <= cur.levelUp.to));
   }
   // letöltéshez: a Könyvtár → JSON fülön visszatölthető lap, a gazda e-mailjével (a pillanatnyi engedély és a szerkesztő e-mailje nélkül)
-  const exportLap = s => ({...norm(s), owner: s.owner || s.deleted?.owner || '', levelUp: null, deleted: null, newChar: null, rolls: [], updatedBy: ''});
+  const exportLap = s => ({...norm(s), owner: s.owner || s.deleted?.owner || '', levelUp: null, deleted: null, newChar: null, rolls: [], rollReq: null, rollSkip: '', updatedBy: ''});
   // törlés: a játékos a piros gombbal; a gazda üres lesz, a DM a deleted-ből tudja visszahozni (a nyilvános részből a telefon is leveszi: owner '', visibility 'dm')
   const torlesPatch = (s, {by = '', at = '', vis = 'dm'} = {}) => ({owner: '', deleted: {at, by, owner: s.owner, vis: vis === 'party' ? 'party' : 'dm'}});
   const exportNev = (name, at = '') => `${String(name).replace(/[^\p{L}\p{N} _-]/gu, '').trim() || 'karakter'}-backup${at ? '-' + at.slice(0, 10) : ''}.json`;
@@ -1735,7 +1760,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
+    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,

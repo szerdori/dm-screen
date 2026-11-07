@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 9);
+modul('lapszinkron', 10);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -135,8 +135,8 @@ function onSheets(docs) {
     SHEETS[d.id] = s; applySheet(d.id); changed = true;
   }
   for (const id of Object.keys(SHEETS)) if (!ids.has(id) && !sheetOps.set.has(id)) { delete SHEETS[id]; delete shadow[id]; changed = true; }
+  jatekosDobasok();  // előbb: a kérésre jött Initiative a harcba kerül, és a rajzolás már ezzel megy
   if (changed) { save(); Ertesito.lapokValtoztak(); }
-  jatekosDobasok();
 }
 // a játékosok telefonon dobott dobásai (a lap `rolls` mezője) a DM naplójába, a karakter nevével:
 // az első figyelés után az összes lapról együtt a legutóbbi Sheet.ROLLS_MAX, utána csak az újak – a dobást a tartalma azonosítja, nem az időhatár
@@ -149,12 +149,13 @@ function jatekosDobasok() {
   for (const [id, s] of Object.entries(SHEETS)) {
     const latott = latottDobas[id] || new Set(), rolls = (s.rolls || []).filter(r => !latott.has(dobasKulcs(r)));
     latottDobas[id] = new Set((s.rolls || []).map(dobasKulcs));
-    if (!s.deleted) uj.push(...rolls.map(r => ({...r, who: s.name})));
+    if (!s.deleted) uj.push(...rolls.map(r => ({...r, who: s.name, lap: id})));
   }
   uj.sort((a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
   const lista = dobasokElso ? uj.slice(-Sheet.ROLLS_MAX) : uj;
   dobasokElso = false;
-  for (const r of lista) Ertesito.naplo(dobasSor(r), r.nat === 20 ? 'crit' : r.nat === 1 ? 'fumble' : '');
+  // kérésre jött dobás (req): a dobaskeres.js dönti el, mi lesz vele (Initiative a harcba, DC-nél ✔ / ✖)
+  for (const r of lista) Ertesito.naplo(dobasSor(r) + (r.req ? esc(keresValasz(r.lap, r)) : ''), r.nat === 20 ? 'crit' : r.nat === 1 ? 'fumble' : '');
 }
 // óra:perc; ha nem mai, elé a dátum is (a betöltéskor megjelenő régebbi dobásokhoz)
 const dobasIdo = at => {
@@ -186,7 +187,7 @@ async function lapKonyvtarbol(lib) {
 }
 function createSheet(id, s) {
   const lib = S.library.find(c => c.id === id);
-  SHEETS[id] = Sheet.norm({...s, owner: lib?.owner || s.owner, deleted: null, rolls: SHEETS[id]?.rolls || []});  // importált lap dobásai nem kerülnek át
+  SHEETS[id] = Sheet.norm({...s, owner: lib?.owner || s.owner, deleted: null, rolls: SHEETS[id]?.rolls || [], rollReq: SHEETS[id]?.rollReq ?? null, rollSkip: SHEETS[id]?.rollSkip || ''});  // importált lap dobásai és dobáskérése nem kerülnek át
   sheetOps.set.add(id); sheetOps.del.delete(id);
   applySheet(id); save();
 }
@@ -255,8 +256,8 @@ function szintlepesVissza(id) {
 function restoreSheets(list) {
   if (!Array.isArray(list)) return;
   const next = {};
-  // a dobások (rolls) a mostaniak maradnak: a mentésből a régiek nem írják felül a játékosok frissebb dobásait
-  for (const d of list) if (isObj(d) && /^[A-Za-z0-9_-]{1,64}$/.test(d.id) && S.library.some(c => c.id === d.id)) next[d.id] = Sheet.norm({...d, rolls: SHEETS[d.id]?.rolls || []});
+  // a dobások és a dobáskérés a mostaniak maradnak: a mentésből a régiek nem írják felül (és egy megválaszolt kérés sem ugrik fel újra)
+  for (const d of list) if (isObj(d) && /^[A-Za-z0-9_-]{1,64}$/.test(d.id) && S.library.some(c => c.id === d.id)) next[d.id] = Sheet.norm({...d, rolls: SHEETS[d.id]?.rolls || [], rollReq: SHEETS[d.id]?.rollReq ?? null, rollSkip: SHEETS[d.id]?.rollSkip || ''});
   Object.keys(SHEETS).forEach(id => { if (!next[id]) sheetOps.del.add(id); });
   SHEETS = next; shadow = {}; cshadow = {};
   Object.keys(next).forEach(id => { sheetOps.set.add(id); applySheet(id); });

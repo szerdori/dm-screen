@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 4);
+modul('akciok', 5);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -94,7 +94,10 @@ const AKCIOK = {
   partyRemove: el => { setPartyMember(el.dataset.pc, false); rerenderParty(); },
   partySortReset: () => { partySort.s = {col: null, dir: 1}; rerenderParty(); },
   libParty: el => { const lib = konyvtari(el); setPartyMember(lib.id, !partyMembers().some(c => c.id === lib.id)); filterLib(); },
-  partyGroup: (el, e) => partyRoll(partyMembers().map(c => c.id), el.dataset.sk, dobasMod(e)),
+  // dobáskérés mindenkitől (skill, próba, mentő); akinek nincs telefonos lapja, annak itt dobunk
+  partyGroup: (el, e) => partyKer(partyMembers().map(c => c.id), el.dataset.tipus || 'skill', el.dataset.sk, dobasMod(e)),
+  keresVissza: el => { keresVisszavon(el.dataset.id); csapatFrissit(); },
+  initTelefon: () => { if (regiFajl()) { alert('Az oldal egy része régi változatból töltődött be, ezért nem küldtem el a kérést.\nFrissítsd az oldalt (Ctrl + F5).'); return; } initTelefonrol(); closeModal(); render(); },
   partyEdit: el => {
     const pcLib = S.library.find(c => c.id === el.dataset.pc);
     if (pcLib) openEditor(pcLib, c => { c.id = pcLib.id; upsertLibrary(c, false); setTimeout(openParty); }, undefined, {share: true});
@@ -244,8 +247,8 @@ const AKCIOK = {
 // ---------- kattintásszabályok: a dobások és fülek, nem gombok ----------
 // A data-act gombok előtt, ebben a sorrendben nézzük; az első illeszkedő dönt (egy gomb belsejében lévő dobás is csak dob).
 const KATTINTASOK = [
-  // Csapat nézet: titkos skill-dobás egy játékosnak
-  ['td.sk', (sk, e) => { partyRoll([sk.dataset.pc], sk.dataset.sk, dobasMod(e)); }],
+  // Csapat nézet: dobáskérés egy játékostól (skill-cella, próba / mentő); akinek nincs telefonos lapja, annak itt dobunk
+  ['td.sk, .kr', (sk, e) => { partyKer([sk.dataset.pc], sk.dataset.tipus || 'skill', sk.dataset.sk, dobasMod(e)); }],
   ['th.sortable', th => { setPartySort(th.dataset.sort, /^\d+$/.test(th.dataset.col) ? +th.dataset.col : th.dataset.col); rerenderParty(); }],
   // dobások
   ['.roll', (r, e) => {

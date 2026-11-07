@@ -1,7 +1,7 @@
 // Indulás (az utolsó betöltött fájl): a Firebase-modul kapuja (DMApp), az eseményfigyelők felkapcsolása és az első rajzolás.
 // Csak ez a fájl futtat kódot betöltéskor (a többi csak deklarál; docs/dontesek/0001, 0006). Ha változik: modul('indulas', N) és az index.html-ben az indulas.js?v=N és a VART_MODULOK.
 'use strict';
-modul('indulas', 2);
+modul('indulas', 3);
 
 // a Firebase-modul (index.html alja) hívja, amikor kiderül, be vagy-e lépve
 window.DMApp = {
@@ -35,7 +35,7 @@ window.DMApp = {
 function indulas() {
   Ertesito.naplo = log;
   Ertesito.mentesAllapot = setSaveState;
-  Ertesito.lapokValtoztak = () => { render(); konyvtarFrissit(); };
+  Ertesito.lapokValtoztak = () => { render(); konyvtarFrissit(); csapatFrissit(); };
   window.addEventListener('beforeunload', e => {
     try { localStorage.setItem(HELYI.allapot, JSON.stringify(S)); } catch {}
     if (saveTimer) { doSave(); e.preventDefault(); }

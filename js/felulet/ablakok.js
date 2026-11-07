@@ -1,7 +1,7 @@
 // Zsákmány és Csapat nézet ablaka (felület): rajzolás, rendezés, keresés, csapatdobás.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('ablakok', N) és az index.html-ben az ablakok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('ablakok', 3);
+modul('ablakok', 4);
 
 // ---------- zsákmány (megjelenítés) ----------
 function openLoot() {
@@ -59,9 +59,10 @@ function setPartySort(t, col) {
 function openParty() { openModal(partyHtml(), true); }
 // újrarajzolás úgy, hogy a keresés és az utolsó dobás eredménye megmaradjon
 function rerenderParty() {
-  const q = $('#partySearch')?.value || '', roll = $('#partyRoll')?.innerHTML || '', top = $('#modalBox').scrollTop;
+  const q = $('#partySearch')?.value || '', roll = $('#partyRoll')?.innerHTML || '', dc = $('#keresDc')?.value || '', top = $('#modalBox').scrollTop;
   openParty();
   if ($('#partyRoll')) $('#partyRoll').innerHTML = roll;
+  if ($('#keresDc')) $('#keresDc').value = dc;
   if (q && $('#partySearch')) { $('#partySearch').value = q; filterPartyItems(q); }
   $('#modalBox').scrollTop = top;
 }
@@ -117,8 +118,8 @@ function partyHtml() {
   const rows = keys.map(k => {
     const vals = pcs.map(c => partySkill(c, k)), top = Math.max(...vals.map(v => v.b));
     return `<tr><td>${esc(skillLabel(k))} <span class="ab">${SKILLS[k].toUpperCase()}</span></td>
-      ${vals.map((v, i) => `<td class="sk ${v.b === top ? 'best' : ''}" data-pc="${esc(pcs[i].id)}" data-sk="${k}" title="${esc(pcs[i].name)} – ${esc(skillLabel(k))}${v.p ? ' (' + PROF_HU[v.p] + ')' : ''}. Kattints: titkos dobás · Shift: előny · Ctrl: hátrány">${esc(sgn(v.b))}<span class="pmark">${PROF_MARK[v.p]}</span></td>`).join('')}
-      <td><button class="small" data-act="partyGroup" data-sk="${k}" title="Mindenki dob erre a skillre">Mindenki</button></td></tr>`;
+      ${vals.map((v, i) => `<td class="sk ${v.b === top ? 'best' : ''}" data-pc="${esc(pcs[i].id)}" data-sk="${k}" title="${esc(pcs[i].name)} – ${esc(skillLabel(k))}${v.p ? ' (' + PROF_HU[v.p] + ')' : ''}. Kattints: dobást kérsz a telefonjára · Shift: előny · Ctrl: hátrány">${esc(sgn(v.b))}<span class="pmark">${PROF_MARK[v.p]}</span></td>`).join('')}
+      <td><button class="small" data-act="partyGroup" data-sk="${k}" title="Dobást kérsz mindenkitől erre a skillre">Mindenki</button></td></tr>`;
   }).join('');
   const skills = `<table class="ptable"><tr><th class="sortable" data-sort="s" data-col="skill">Skill${sortArrow('s', 'skill')}</th>${head}<th>${ss.col ? '<button class="small" data-act="partySortReset" title="Vissza a képességek szerinti sorrendhez">alap sorrend</button>' : ''}</th></tr>${rows}</table>
     <p class="hint">● jártas · ◆ expertise · ½ fél jártasság (Jack of All Trades) · aranyszínű = a csapat legjobbja · a fejlécre kattintva rendezhető (▼ csökkenő, ▲ növekvő)</p>`;
@@ -142,9 +143,13 @@ function partyHtml() {
   const total = {}; pcs.forEach(c => COINS.forEach(k => total[k] = (total[k] || 0) + (c.currency[k] || 0)));
   return `<h2>👥 Csapat</h2>
     ${partyMembersBar(pcs)}
+    <div class="toolbar hint">📱 Kattints egy skillre, próbára vagy mentőre: dobást kérsz a játékos telefonjára (akinek nincs telefonos lapja, annak itt dobunk) · Shift: előny · Ctrl: hátrány
+      <label>DC <input id="keresDc" type="number" min="1" max="40" placeholder="–" style="width:56px" title="Nem kötelező. A játékos nem látja; a naplóban ✔ / ✖ jelzi, sikerült-e."></label></div>
+    <div id="keresAllas" class="le">${keresAllasHtml()}</div>
     <div id="partyRoll" class="le"></div>
     <h3>Passzív értékek</h3>${passives}
     <h3>Skillek</h3>${skills}
+    <h3>Képességpróbák és mentők</h3>${partyAbilHtml(pcs)}
     <h3>Felszerelés</h3>
     <div class="toolbar"><input id="partySearch" placeholder="Keresés a tárgyak között (pl. kötél, potion, scroll)…" style="flex:1"><span id="partySearchInfo" class="hint"></span>
       <span>Csapat pénze: <b>${esc(coinStr(total) || '0')}</b> <span class="muted">(≈ ${esc(coinsGp(total))} gp)</span></span></div>
@@ -157,8 +162,33 @@ function filterPartyItems(q) {
   document.querySelectorAll('#modalBox .pcard').forEach(card => card.style.opacity = q && !card.querySelector('[data-item]:not([hidden])') ? 0.35 : 1);
   $('#partySearchInfo').textContent = q ? `${hits} találat` : '';
 }
-function partyRoll(ids, k, mode) {
-  const res = ids.map(id => S.library.find(c => c.id === id)).filter(Boolean)
-    .map(c => rollHit(sgn(partySkill(c, k).b), c.name, skillLabel(k), mode));
-  $('#partyRoll').innerHTML = '🎲 ' + res.map(r => r.html).join(' &nbsp;·&nbsp; ');
+// képességpróbák és mentők táblázata: a cellában két kattintható érték (próba / mentő), soronként „Mindenki” gombok
+function partyAbilHtml(pcs) {
+  const cell = (c, a) => {
+    const sv = mentoBonusz(c, a);
+    return `<td><span class="roll kr" data-pc="${esc(c.id)}" data-tipus="check" data-sk="${a}" title="${esc(c.name)} – ${ABIL_FULL[a]} próba. Kattints: dobást kérsz">${esc(sgn(mod(c.abilities[a])))}</span>
+      · <span class="roll kr" data-pc="${esc(c.id)}" data-tipus="save" data-sk="${a}" title="${esc(c.name)} – ${ABIL_FULL[a]} mentő. Kattints: dobást kérsz">mentő ${esc(sgn(sv))}</span></td>`;
+  };
+  return `<table class="ptable"><tr><th>Képesség</th>${pcs.map(c => `<th>${esc(c.name)}</th>`).join('')}<th></th></tr>
+    ${['str', 'dex', 'con', 'int', 'wis', 'cha'].map(a => `<tr><td>${ABIL_FULL[a]} <span class="ab">${a.toUpperCase()}</span></td>${pcs.map(c => cell(c, a)).join('')}
+      <td><button class="small" data-act="partyGroup" data-tipus="check" data-sk="${a}" title="Próbát kérsz mindenkitől">Mindenki: próba</button> <button class="small" data-act="partyGroup" data-tipus="save" data-sk="${a}" title="Mentőt kérsz mindenkitől">Mindenki: mentő</button></td></tr>`).join('')}</table>`;
 }
+// dobáskérés a Csapat nézetből: tipus = skill | check | save, k = skill vagy képesség; a DC a mezőből (nem kötelező)
+function partyKer(ids, tipus, k, mode) {
+  const dc = parseInt($('#keresDc')?.value);
+  const r = dobastKer(ids, keresKind(tipus, k), mode, dc >= 1 && dc <= 40 ? dc : null);
+  if (!r) { alert('Az oldal egy része régi változatból töltődött be, ezért nem küldtem el a kérést.\nFrissítsd az oldalt (Ctrl + F5).'); return; }
+  if ($('#partyRoll')) $('#partyRoll').innerHTML = r.helyben.length ? '🎲 ' + r.helyben.map(x => x.html).join(' &nbsp;·&nbsp; ') : '';
+  csapatFrissit();
+}
+// a legutóbbi kérés állása (élőben frissül, ahogy a telefonokról jönnek a dobások)
+function keresAllasHtml() {
+  const k = keresek[0];
+  if (!k) return '';
+  const a = keresAllas(k), nev = l => l.map(x => esc(x.name)).join(', ');
+  return `📱 <b>${esc(k.label)}</b>${k.mode === 'adv' ? ' (előnnyel)' : k.mode === 'dis' ? ' (hátránnyal)' : ''}${k.dc != null ? ` · DC ${esc(k.dc)}` : ''}: ${a.dobott.length}/${k.ids.length} dobott
+    ${a.dobott.length ? ' – ' + a.dobott.map(x => `${esc(x.name)} <b>${esc(x.total)}</b>`).join(', ') : ''}
+    ${a.var.length ? ` · vár: ${nev(a.var)}` : ''}${a.kihagyta.length ? ` · kihagyta: ${nev(a.kihagyta)}` : ''}${a.lejart.length ? ` · ${k.visszavonva ? 'visszavonva' : 'lejárt'}: ${nev(a.lejart)}` : ''}
+    ${a.var.length ? ` <button class="small" data-act="keresVissza" data-id="${esc(k.id)}" title="A még nem dobott játékosoknál eltűnik a kérés">✕ visszavonás</button>` : ''}`;
+}
+function csapatFrissit() { if ($('#keresAllas')) $('#keresAllas').innerHTML = keresAllasHtml(); }

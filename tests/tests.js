@@ -51,7 +51,7 @@ function fresh() {
      selected = null; logLines = []; libTab = 'lib'; lastSaved = emptySaved();
      fiveIndex = null; fiveData = {}; fiveResults = []; backupWarn = ''; lootData = null; lootResult = null;
      partySort = {p: {col: null, dir: 1}, s: {col: null, dir: 1}};
-     SHEETS = {}; shadow = {}; cshadow = {}; sheetOps = {set: new Set(), del: new Set()}; sheetUnsub = null; sheetsWarn = ''; rulebook = null; itemResults = []; latottDobas = {}; dobasokElso = true;
+     SHEETS = {}; shadow = {}; cshadow = {}; sheetOps = {set: new Set(), del: new Set()}; sheetUnsub = null; sheetsWarn = ''; rulebook = null; itemResults = []; latottDobas = {}; dobasokElso = true; keresek = [];
      closeModal(); renderGate(null); render();`);
   W.document.getElementById('log').innerHTML = '';
 }
@@ -1988,6 +1988,25 @@ describe('Karakterlap: formátum és számolás (sheet.js)', () => {
     eq([e.conditions, e.exhaustion], [['Prone'], 6]);
     eq(H.norm({owner: ' A@X.hu '}).owner, 'a@x.hu');
   });
+  test('dobáskérés a lapon (rollReq): csak érvényes fajta, azonosító és idő; a DC nem kerül rá; a dobás req-je; bónusz a lapról; backup és letöltés nem viszi', () => {
+    const H = W.Sheet, at = '2026-11-06T18:00:00.000Z';
+    const q = {id: 'k1', kind: 'check:int:history', label: XSS, mode: 'adv', by: 'dm@x.hu', at, dc: 15};
+    eq(H.norm({}).rollReq, null);
+    eq(H.norm({rollReq: q}).rollReq, {id: 'k1', kind: 'check:int:history', label: XSS, mode: 'adv', by: 'dm@x.hu', at}, 'a DC nem kerül a lapra');
+    for (const kind of ['check:int:stealth', 'save:dex:stealth', 'bogus', 'check:xxx', 'check:dex:stealth:x', '', null]) eq(H.norm({rollReq: {...q, kind}}).rollReq, null, String(kind));
+    for (const kind of ['init', 'save:wis', 'check:str', 'check:dex:stealth']) eq(H.norm({rollReq: {...q, kind}}).rollReq.kind, kind);
+    eq([H.norm({rollReq: {...q, id: 'a b'}}).rollReq, H.norm({rollReq: {...q, at: 'tegnap'}}).rollReq, H.norm({rollReq: {...q, mode: 'x'}}).rollReq.mode], [null, null, '']);
+    eq(H.norm({rolls: [{at, label: 'x', req: 'k1'}, {at, label: 'y', req: '<b>'}]}).rolls.map(r => r.req || ''), ['k1', '']);
+    ok(H.reqAktiv({at: new Date().toISOString()}), 'friss'); ok(!H.reqAktiv({at: new Date(Date.now() - H.REQ_TTL_MS - 1000).toISOString()}), 'lejárt'); ok(!H.reqAktiv(null));
+    const s = H.norm({abilities: {dex: 16, wis: 14, str: 8}, saveProf: ['dex'], skillProf: {stealth: 1}, classes: [{name: 'Rogue', level: 1}]});
+    eq(['init', 'save:dex', 'check:str', 'check:dex:stealth'].map(k => H.reqRoll(s, k)),
+      [{bonus: 3, label: 'Initiative'}, {bonus: 5, label: 'Dexterity mentő'}, {bonus: -1, label: 'Strength próba'}, {bonus: 5, label: 'Stealth'}]);
+    const lap = H.norm({rollReq: q});
+    eq(H.norm(lap), lap, 'kétszer tisztítva sem változik');
+    eq(H.exportLap(lap).rollReq, null, 'letöltésben nincs');
+    ok(!('rollReq' in H.backupPatch(H.norm({}), {sheet: lap}, null)), 'visszaállításnál nem jön vissza');
+    eq([H.norm({}).rollSkip, H.norm({rollSkip: 'k1'}).rollSkip, H.norm({rollSkip: '<b>'}).rollSkip, H.exportLap(H.norm({rollSkip: 'k1'})).rollSkip], ['', 'k1', '', '']);
+  });
   test('dobások a lapon (rolls): tisztítva, legfeljebb 15, idő nélküli kimarad; a backup és a letöltés nem viszi', () => {
     const H = W.Sheet, at = '2026-11-06T18:00:00.000Z';
     eq(H.norm({}).rolls, []);
@@ -3512,6 +3531,76 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
   });
 });
 
+describe('Dobáskérés (DM Screen → telefon)', () => {
+  const lapos = (id, nev) => { A(`S.library.push(normCreature(${JSON.stringify({...pc(nev, 5), id, owner: 'a@x.hu'})}))`); W.createSheet(id, {name: nev, classes: [{name: 'Rogue', level: 5}]}); };
+  // a telefon válasza: a dobás a kérés azonosítójával (a kérést a telefon nem írja); ✕ = rollSkip
+  const valasz = (id, req, total) => A(`onSheets(Object.entries(SHEETS).map(([id, s]) => id === '${id}' ? {...s, id, rolls: [{at: new Date().toISOString(), label: 'x', total: '${total}', detail: '', nat: 10, req: '${req}'}, ...s.rolls]} : {...s, id}))`);
+  const kihagy = id => A(`onSheets(Object.entries(SHEETS).map(([id, s]) => id === '${id}' ? {...s, id, rollSkip: s.rollReq.id} : {...s, id}))`);
+  test('a kérés a lapra és a felhőbe megy (DC nélkül); akinek nincs lapja, annak helyben dob; válasz: ✔ / ✖ a DC-vel, állás; visszavonás', async () => {
+    const f = makeFakeDb(); A('Tar').kapcsol(f.db);
+    lapos('p1', 'Aranka'); lapos('p2', 'Béla');
+    A(`S.library.push(normCreature(${JSON.stringify({...pc('Lap nélküli', 3), id: 'p3'})}))`);
+    await A('doSave()');
+    await until(() => f.store['sheets/p2'], 2000, 'a lapok a felhőben');
+    const r = A(`dobastKer(['p1', 'p2', 'p3'], keresKind('skill', 'history'), 'adv', 15)`);
+    eq([r.keres.ids, r.helyben.length], [['p1', 'p2'], 1]);
+    has(r.helyben[0].html, 'Lap nélküli'); has(r.helyben[0].html, 'History (DC 15)');
+    eq(A('SHEETS.p1.rollReq'), {id: r.keres.id, kind: 'check:int:history', label: 'History', mode: 'adv', by: 'DM', at: r.keres.at});
+    await until(() => f.store['sheets/p1'].rollReq?.id === r.keres.id, 2000, 'a felhőben');
+    ok(!JSON.stringify(f.store['sheets/p1']).includes('"dc"'), 'a DC nem megy a lapra');
+    has(lastLog(), 'Dobáskérés'); has(lastLog(), 'History');
+    valasz('p1', r.keres.id, 17);
+    has(lastLog(), '📱 Aranka'); has(lastLog(), '✔ (DC 15)');
+    kihagy('p2');
+    eq(A('keresAllas(keresek[0])'), {dobott: [{id: 'p1', name: 'Aranka', total: '17'}], var: [], kihagyta: [{id: 'p2', name: 'Béla'}], lejart: []});
+    const r2 = A(`dobastKer(['p1', 'p2'], keresKind('save', 'con'), '', 12)`);
+    valasz('p2', r2.keres.id, 9);
+    has(lastLog(), '✖ (DC 12)');
+    eq(A(`keresVisszavon('${r2.keres.id}')`), true);
+    eq([A('SHEETS.p1.rollReq'), A('keresAllas(keresek[0]).lejart.map(x => x.id)'), A('keresAllas(keresek[0]).dobott.map(x => x.id)')], [null, ['p1'], ['p2']]);
+    await until(() => f.store['sheets/p1'].rollReq === null, 2000, 'a felhőből is törlődik');
+    // egy újabb kérés felülírja a régit: a régi „lejárt” lesz, nem „kihagyta”; a mentés visszaállítása a mostani kérést megtartja
+    const r3 = A(`dobastKer(['p1'], keresKind('check', 'str'))`), r4 = A(`dobastKer(['p1'], keresKind('check', 'dex'))`);
+    eq(A(`keresAllas(keresek.find(k => k.id === '${r3.keres.id}')).lejart.map(x => x.id)`), ['p1']);
+    A(`restoreSheets([{...SHEETS.p1, id: 'p1', rollReq: null, rollSkip: 'regi'}])`);
+    eq([A('SHEETS.p1.rollReq.id'), A('SHEETS.p1.rollSkip')], [r4.keres.id, ''], 'a mentésből a régi kérés-állapot nem jön vissza');
+    A('VART_MODULOK.sheet += 100');
+    try { eq(A(`dobastKer(['p1'], 'init')`), null, 'régi közös fájl mellett nem ír'); } finally { A('VART_MODULOK.sheet -= 100'); }
+  });
+  test('Initiative a telefonról: az ellenfelek dobnak, a játékostól kér; a válasz beíródik a harcba; lap nélküli játékosnál nem dob', () => {
+    lapos('p1', 'Aranka');
+    A(`S.library.push(normCreature(${JSON.stringify({...pc('Lap nélküli', 3), id: 'p3'})}))`);
+    A(`addToEncounter(S.library.find(c => c.id === 'p1')); addToEncounter(S.library.find(c => c.id === 'p3')); addToEncounter(normCreature(${JSON.stringify(mk('Goblin'))}))`);
+    W.openInitMenu(); click('[data-act="initTelefon"]');
+    const init = n => A(`S.enc.list.find(x => x.c.name === '${n}').init`);
+    ok(init('Goblin') != null, 'az ellenfél dobott'); eq([init('Aranka'), init('Lap nélküli')], [null, null]);
+    eq([A('SHEETS.p1.rollReq.kind'), A('keresek[0].ids')], ['init', ['p1']]);
+    valasz('p1', A('keresek[0].id'), 18);
+    eq(init('Aranka'), 18); has(lastLog(), 'Initiative beírva');
+    ok([...W.document.querySelectorAll('#tiles input.init')].some(i => i.value === '18'), 'a csempén is látszik');
+  });
+  test('Csapat nézet: cellára kattintva egytől, „Mindenki” gombbal mindenkitől kér (próba, mentő is); DC a mezőből; élő állás és visszavonás; gonosz név nem fut', () => {
+    lapos('p1', 'Aranka'); lapos('p2', XSS);
+    W.openParty();
+    click('td.sk[data-pc="p1"][data-sk="history"]');
+    eq([A('SHEETS.p1.rollReq.kind'), A('SHEETS.p2.rollReq')], ['check:int:history', null]);
+    has($('#keresAllas').textContent, '0/1 dobott'); has($('#keresAllas').textContent, 'vár: Aranka');
+    $('#keresDc').value = '13';
+    click('[data-act="partyGroup"][data-tipus="save"][data-sk="dex"]', {shiftKey: true});
+    eq([A('SHEETS.p1.rollReq.kind'), A('SHEETS.p2.rollReq.kind'), A('SHEETS.p2.rollReq.mode'), A('keresek[0].dc')], ['save:dex', 'save:dex', 'adv', 13]);
+    has($('#keresAllas').textContent, 'Dexterity mentő'); has($('#keresAllas').textContent, 'DC 13'); has($('#keresAllas').textContent, 'előnnyel');
+    click('.kr[data-pc="p1"][data-tipus="check"][data-sk="str"]');
+    eq(A('SHEETS.p1.rollReq.kind'), 'check:str');
+    valasz('p1', A('keresek[0].id'), 11);
+    has($('#keresAllas').textContent, '1/1 dobott'); has($('#keresAllas').textContent, 'Aranka 11');
+    click('[data-act="partyGroup"][data-tipus="check"][data-sk="wis"]');
+    click('[data-act="keresVissza"]');
+    eq([A('SHEETS.p1.rollReq'), A('SHEETS.p2.rollReq')], [null, null]);
+    has($('#keresAllas').textContent, 'visszavonva');
+    assertNoXss();
+  });
+});
+
 describe('Játékosok dobásai a DM naplójában', () => {
   const t = (perc, mp = 0) => `2026-11-06T18:${String(perc).padStart(2, '0')}:${String(mp).padStart(2, '0')}.000Z`;
   const lap = (id, name, rolls, extra = {}) => ({...W.Sheet.norm({name, classes: [{name: 'Rogue', level: 3}], rolls, ...extra}), id});
@@ -4757,6 +4846,29 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     K.rnd = () => 4; kclick('#rollbar [data-mode="crit"]');
     kclick(kqa('[data-act="dmg"]').find(b => b.dataset.expr === '1d6+3'));
     eq(kq('#lastRoll b').textContent, '11', '2×d6 + 3');
+  });
+  ktest('dobáskérés: felugró ablak a saját lapon; Dobok = a kérés módjával dob, a válasz a kérés azonosítójával megy, a kérés törlődik; ✕; lejárt és a DM-nek nem ugrik fel', () => {
+    const most = new Date().toISOString();
+    openSheet({rollReq: {id: 'k1', kind: 'check:dex:stealth', label: 'Stealth', mode: 'adv', by: 'dm@x.hu', at: most}});
+    ok(!kq('#keresPop').hidden, 'felugrik'); has(kq('#keresPop').textContent, 'Stealth +7'); has(kq('#keresPop').textContent, 'előnnyel');
+    let n = 0; K.rnd = () => [15, 4][n++ % 2];
+    kclick('[data-act="keresDob"]');
+    const u = lastUpdate();
+    eq([u.rolls[0].req, u.rolls[0].total, 'rollReq' in u], ['k1', '22', false], 'a DM kérését a telefon nem írja'); has(u.rolls[0].detail, 'előny');
+    ok(kq('#keresPop').hidden, 'eltűnt'); eq(kq('#lastRoll b').textContent, '22');
+    ok(kq('#rollbar [data-mode=""]').classList.contains('on'), 'a mód visszaállt normálra');
+    openSheet({rollReq: {id: 'k2', kind: 'save:wis', label: 'x', mode: '', by: '', at: most}});
+    ok(!kq('#keresPop').hidden); has(kq('#keresPop').textContent, 'Wisdom mentő');
+    kclick('[data-act="keresElvet"]');
+    eq([lastUpdate().rollSkip, 'rollReq' in lastUpdate()], ['k2', false]); ok(!('rolls' in lastUpdate()), 'nem dobott'); ok(kq('#keresPop').hidden, '✕ után eltűnt');
+    openSheet({rollReq: {id: 'k5', kind: 'init', label: '', mode: '', by: '', at: most}, rollSkip: 'k5'});
+    ok(kq('#keresPop').hidden, 'a kihagyott kérés másik eszközön sem ugrik fel');
+    openSheet({rollReq: {id: 'k6', kind: 'init', label: '', mode: '', by: '', at: most}, rolls: [{at: most, label: 'Initiative', total: '12', req: 'k6'}]});
+    ok(kq('#keresPop').hidden, 'a megválaszolt kérés sem');
+    openSheet({rollReq: {id: 'k3', kind: 'init', label: '', mode: '', by: '', at: new Date(Date.now() - 11 * 60000).toISOString()}});
+    ok(kq('#keresPop').hidden, 'lejárt');
+    openSheet({owner: 'b@x.hu', rollReq: {id: 'k4', kind: 'init', label: '', mode: '', by: '', at: most}}, 'dm@x.hu', true);
+    ok(kq('#keresPop').hidden, 'a DM-nek nem ugrik fel');
   });
   ktest('dobás a lapra is felkerül (rolls, legújabb elöl, legfeljebb 15) a DM Screen naplójához; idegen lapnál nem ír', () => {
     openSheet();

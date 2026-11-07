@@ -33,7 +33,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 | `docs/mukodes.md` | mit tud az app: a funkciók elfogadott viselkedése |
 | `docs/kulso-forrasok.md` | 5e.tools, D&D Beyond: elérés és buktatók – olvasd el, mielőtt az importhoz vagy a szabálykönyvhöz nyúlsz |
 | `docs/dontesek/NNNN-*.md` | technikai döntések (háttér, döntés, következmény); számozott, nem törlődik |
-| `TERV-*.md` | tervek: `TERV-jatekos-app.md` (0–5. fázis), `TERV-2-fazis.md`, `TERV-3-4-fazis.md`, `TERV-refaktor.md`, `TERV-olvashato-mod.md` |
+| `TERV-*.md` | tervek: `TERV-jatekos-app.md` (0–5. fázis), `TERV-2-fazis.md`, `TERV-3-4-fazis.md`, `TERV-refaktor.md`, `TERV-olvashato-mod.md`, `TERV-dobaskeres.md` |
 | `README.md` | a felhasználónak: mi ez, hogyan indul |
 
 ## Felépítés
@@ -53,6 +53,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 - **Játékos app:** a 0–3. fázis a `main`-en (a 3.: szintlépés-varázsló, előzmények; feltöltve 2026-10-30; a felhasználó teendői: `firestore.rules` a konzolba, szabálykönyv újratöltése, próba telefonon) – `TERV-jatekos-app.md`. Következik a 4. fázis (multiclass). Szintén a `main`-en (feltöltve 2026-10-31): átállítás-jelvény, backup (3 mentés, teljes visszaállítás, letöltés), karakter törlése, üres játékos és az 5. fázis szűkített kezdő varázslója (`docs/mukodes.md`); a felhasználó teendői: `firestore.rules` a konzolba, karakterek átállítása, próba telefonon.
 - **Megjelenítés a telefonos lapon** (Fiók menü: betűméret, sötét/világos): élesben (a `main`-en, feltöltve 2026-11-05) – `TERV-olvashato-mod.md`, `docs/mukodes.md`, `docs/dontesek/0007`. Hátra: próba a játékosok telefonján szemüveg nélkül; utána döntés a wishlistről (nagyítás hosszú nyomásra).
 - **Játékosok dobásai a DM Screen naplójában** (a lap `rolls` mezője, `docs/mukodes.md`): élesben (a `main`-en, feltöltve 2026-11-06). Hátra: próba egy játékos telefonjával.
+- **Dobáskérés** (`TERV-dobaskeres.md`, a lap `rollReq` mezője, `js/logika/dobaskeres.js`): élesben (a `main`-en, feltöltve 2026-11-07). Hátra: próba egy játékos telefonjával.
 - **Refaktor:** `TERV-refaktor.md` (elfogadva 2026-10-29), ág: `refaktor-retegek`. Kész és élesben: 0–7. lépés (a 7.: `Sheet.calc` → `CALC_LEPESEK`, 2026-10-30). A 8. lépés (opcionális, a `karakter.html` rétegei) a 3. fázis élesítése után.
 
 ## Nyitott / félretett ügyek (2026-10-29)

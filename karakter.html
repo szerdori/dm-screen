@@ -33,9 +33,11 @@ button,select,input,textarea{font:inherit;color:var(--text)}
 button{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
 button.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
 .ibtn{width:26px;height:26px;min-width:26px;padding:0;border-radius:50%;font:italic 700 13px Georgia,serif;line-height:1;margin-left:4px;flex:none;vertical-align:middle}
-#infoPop{position:fixed;inset:0;background:var(--backdrop);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
-#infoPop[hidden]{display:none}
-#infoPop .ibox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;max-width:440px;width:100%;max-height:85vh;overflow:auto}
+#infoPop,#keresPop{position:fixed;inset:0;background:var(--backdrop);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
+#keresPop{z-index:60}
+#keresPop .ibox{text-align:center} #keresPop .kerdob{font-size:1.5em;margin:10px 0} #keresPop .row{justify-content:center;gap:10px}
+#infoPop[hidden],#keresPop[hidden]{display:none}
+#infoPop .ibox,#keresPop .ibox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;max-width:440px;width:100%;max-height:85vh;overflow:auto}
 #infoPop h3{margin:0 0 8px}
 #infoPop ol{margin:6px 0;padding-left:20px}
 #infoPop .hol{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:3px 8px;margin-bottom:6px;font-size:13px}
@@ -322,9 +324,10 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on{background:var(--accent
 </div></div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <div id="infoPop" hidden></div>
+<div id="keresPop" hidden role="dialog" aria-label="Dobáskérés a DM-től"></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=16"></script>
+<script src="sheet.js?v=17"></script>
 <script src="szerzodes.js?v=5"></script>
 <script>
 'use strict';
@@ -333,7 +336,7 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on{background:var(--accent
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 16, szerzodes: 5};
+const VART_MODULOK = {kozos: 3, sheet: 17, szerzodes: 5};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -408,8 +411,52 @@ function showRoll(r, kuld = true) {
 function dobasKuld(r) {
   const s = cur();
   if (!s || !canEdit(s) || sheetStale) return;
-  const uj = H.normRoll({...r, at: new Date().toISOString()});
+  // a DM kérésére dobott dobás a kérés azonosítójával megy (ebből tudja a DM és a telefon, hogy megválaszolta); a kérést csak a DM írja
+  const kert = kertDobas?.id === view.id ? kertDobas.req : '';
+  const uj = H.normRoll({...r, at: new Date().toISOString(), req: kert});
   write(view.id, {rolls: [uj, ...(s.rolls || [])].slice(0, H.ROLLS_MAX)});
+}
+// ---------- dobáskérés a DM-től (TERV-dobaskeres.md): felugró ablak, egy koppintás a dobás ----------
+// csak a saját (gazdaként hozzám rendelt) lapon; a DM a telefonos lapon nem kap felugró ablakot. 10 perc után lejár.
+let kertDobas = null;  // {id: lap, req: kérés} – amíg a kért dobás tart
+const keresElvetve = new Set();  // 'lap|kérés': a ✕ azonnal eltünteti, az írás visszhangja előtt is
+let keresIdozito = null;  // a lejáratkor eltünteti az ablakot
+function nyitottKeres() {
+  if (!me) return null;
+  for (const [id, s] of sheets) {
+    const q = s.rollReq;
+    if (s.owner === me && !s.deleted && q && H.reqAktiv(q) && s.rollSkip !== q.id && !s.rolls.some(r => r.req === q.id) && !keresElvetve.has(id + '|' + q.id)) return {id, s, q};
+  }
+  return null;
+}
+function keresAblak() {
+  const el = $('#keresPop'), k = nyitottKeres();
+  clearTimeout(keresIdozito);
+  el.hidden = !k;
+  if (!k) { el.innerHTML = ''; el.dataset.html = ''; return; }
+  keresIdozito = setTimeout(keresAblak, Math.max(1000, Date.parse(k.q.at) + H.REQ_TTL_MS - Date.now() + 50));
+  const {bonus, label} = H.reqRoll(k.s, k.q.kind);
+  const tobb = [...sheets.values()].filter(s => s.owner === me && !s.deleted).length > 1;
+  const html = `<div class="ibox"><h3>🎲 A DM dobást kért tőled</h3>${tobb ? `<div class="muted">${esc(k.s.name)}</div>` : ''}
+    <div class="kerdob"><b>${esc(label)} ${esc(sgn(bonus))}</b>${k.q.mode === 'adv' ? '<br><small>előnnyel</small>' : k.q.mode === 'dis' ? '<br><small>hátránnyal</small>' : ''}</div>
+    <div class="row"><button class="primary" data-act="keresDob" data-id="${esc(k.id)}">🎲 Dobok</button><button data-act="keresElvet" data-id="${esc(k.id)}" title="Nem érint (pl. nem vagy ott)">✕</button></div></div>`;
+  if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }  // csak ha változott: egy koppintás közbeni újrarajzolás ne nyelje el a kattintást
+}
+function keresDob(id) {
+  const s = sheets.get(id), q = s?.rollReq;
+  if (!s || !q || !canEdit(s) || !H.reqAktiv(q)) { keresAblak(); return; }
+  if (view.id !== id) { location.hash = '#lap/' + id; route(); }  // a lapon dob (a hatások és az eredmény helye miatt)
+  const {bonus, label} = H.reqRoll(s, q.kind);
+  keresElvetve.add(id + '|' + q.id);  // ha az írás nem sikerül (régi fájl), akkor se ugorjon fel újra
+  kertDobas = {id, req: q.id};
+  setMode(q.mode);  // a DM előnye / hátránya; a lap hatásai a rollD20-ban jönnek hozzá
+  try { rollD20(bonus, label, q.kind); } finally { kertDobas = null; }
+  keresAblak();
+}
+function keresElvet(id) {
+  const s = sheets.get(id), q = s?.rollReq;
+  if (q) { keresElvetve.add(id + '|' + q.id); if (canEdit(s) && !sheetStale) write(id, {rollSkip: q.id}); }
+  keresAblak();
 }
 function setMode(m) { rollMode = m; document.querySelectorAll('#rollbar [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m)); }
 // előny / hátrány / krit: egy dobásra szól, utána visszaáll normálra
@@ -1491,6 +1538,7 @@ const pipToggle = (used, j) => used === j + 1 ? j : j + 1;  // az adott pöttyig
 
 // gépelés közben nem rajzolunk újra (pl. ha a DM közben sebzést ír a lapra), csak amikor a mező elveszti a fókuszt
 function render(force = false) {
+  keresAblak();  // a DM dobáskérése gépelés közben is felugrik
   const a = document.activeElement;
   const typing = a && a.closest?.('#main') && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !['checkbox', 'button', 'radio'].includes(a.type)));
   if ((typing || atkDrag) && !force) { pendingRender = true; return; }
@@ -1604,9 +1652,11 @@ document.addEventListener('click', e => {
   if (!el || el.tagName === 'INPUT' || el.tagName === 'SELECT') return;
   const act = el.dataset.act, s = cur(), i = +el.dataset.i;
   if (el.tagName === 'A' || el.closest('summary')) e.preventDefault();
-  if (!s && !['signIn', 'signOut', 'reload', 'infoClose', 'fiok', 'megj'].includes(act)) return;
+  if (!s && !['signIn', 'signOut', 'reload', 'infoClose', 'fiok', 'megj', 'keresDob', 'keresElvet'].includes(act)) return;
   switch (act) {
     case 'fiok': fiokMutat(); break;
+    case 'keresDob': keresDob(el.dataset.id); break;
+    case 'keresElvet': keresElvet(el.dataset.id); break;
     case 'megj': megjAllit(el.dataset.k, el.dataset.v); fiokMutat(); break;
     case 'luStart': if (canEdit(s) && luEnabled(s) && luReady(s) && !sheetStale) { luLoad(view.id, s); window.scrollTo(0, 0); render(true); } break;
     case 'info': { const info = infoReg.get(el.dataset.info); if (info) infoMutat(info); break; }
