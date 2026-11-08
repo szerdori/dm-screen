@@ -1,7 +1,157 @@
-// Telefonos karakterlap (lap-akciok, a karakter.html része): gombok (kattintás), módosítás, gépelés, billentyűk
+// Telefonos karakterlap (lap-akciok, a karakter.html része): a gombok nyilvántartása (LAP_AKCIOK: data-act → kezelő), módosítás, gépelés, billentyűk
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-akciok', N) és a karakter.html-ben a lap-akciok.js?v=N és a VART_MODULOK.
 'use strict';
 modul('lap-akciok', 1);
+
+// ---------- nyilvántartás: data-act="nev" → LAP_AKCIOK.nev(el, s, i, act) ----------
+// Új gomb = új bejegyzés (s = a nyitott lap, i = a gomb data-i értéke). A kezelő maga ír és rajzol, ha kell.
+// Lap nélkül (belépés, lista, Fiók menü) csak ezek futnak:
+const LAP_NELKUL = new Set(['signIn', 'signOut', 'reload', 'infoClose', 'fiok', 'megj', 'keresDob', 'keresElvet']);
+// több gomb közös kezelője (a gomb neve dönt)
+const ncGomb = (el, s, i, act) => { if (s.newChar && canEdit(s)) ncAct(act, el, s); };
+const luGomb = (el, s, i, act) => { if (lu) luAct(act, el, s); };
+function histGomb(el, s, i, act) {
+  const h = histCache.get(view.id)?.find?.(x => x.id === el.dataset.h); if (!h || !canEdit(s)) return;
+  if (act === 'histDl') download(H.exportNev(h.sheet.name, h.at), H.exportLap(h.sheet));
+  else if (act === 'histFull') histFull(s, h); else histRestore(s, h);
+}
+function hpGomb(el, s, i, act) {
+  const n = Math.abs(parseInt($('#hpIn').value));
+  if (isNaN(n)) return;
+  if (act === 'hpDmg' && n) takeDamage(s, n);
+  else if (act === 'hpHeal' && n) patch(H.heal(s, n));
+  else if (act === 'hpTemp') patch({hp: {...s.hp, temp: n}});
+}
+// az űrlap (Alapadatok) sorai: a piszkozatot olvassa, és ha az közben újratöltődött, csak újrarajzol
+function urlapGomb(fn) { const d = readForm(); if (d) fn(d); render(true); }
+const LAP_AKCIOK = {
+  fiok() { fiokMutat(); },
+  keresDob(el) { keresDob(el.dataset.id); },
+  keresElvet(el) { keresElvet(el.dataset.id); },
+  megj(el) { megjAllit(el.dataset.k, el.dataset.v); fiokMutat(); },
+  luStart(el, s) { if (canEdit(s) && luEnabled(s) && luReady(s) && !sheetStale) { luLoad(view.id, s); window.scrollTo(0, 0); render(true); } },
+  info(el) { const info = infoReg.get(el.dataset.info); if (info) infoMutat(info); },
+  infoClose() { $('#infoPop').hidden = true; },
+  ncPortre() { $('#ncPortreFile')?.click(); },
+  ncPortreTorol(el, s) { if (s.newChar && canEdit(s)) patch({portrait: ''}); },
+  ncCls: ncGomb, ncMethod: ncGomb, ncRollDo: ncGomb, ncReroll: ncGomb, ncNext: ncGomb, ncBack: ncGomb, ncDone: ncGomb, ncSkip: ncGomb,
+  luClose: luGomb, luCls: luGomb, luHow: luGomb, luNext: luGomb, luBack: luGomb, luSave: luGomb,
+  histRestore: histGomb, histFull: histGomb, histDl: histGomb,
+  histSave(el, s) { if (canEdit(s)) histMent(s); },
+  lapTorol(el, s) { if (canEdit(s) && !s.deleted) lapTorol(s); },
+  lapDl(el, s) { download(H.exportNev(s.name, new Date().toISOString()), H.exportLap(s)); },
+  signIn() { window.KAuth?.signIn(); },
+  signOut() { $('#infoPop').hidden = true; window.KAuth?.signOut(); },
+  reload() { location.reload(); },
+  d20(el) { rollD20(+el.dataset.bonus || 0, el.dataset.label, el.dataset.kind || ''); },
+  dmg(el) { rollDamage(el.dataset.expr, el.dataset.label, el.dataset.kind || '', {dt: el.dataset.dt || '', dk: el.dataset.dk || ''}); },
+  hpDmg: hpGomb, hpHeal: hpGomb, hpTemp: hpGomb,
+  ds(el, s, i) { const k = el.dataset.kind; patch({deathSaves: {...s.deathSaves, [k]: pipToggle(s.deathSaves[k], i)}}); },
+  dsRoll(el, s) {
+    const r = rollD20(0, 'Halálmentő'), ds = {...s.deathSaves};
+    if (r.nat === 20) { patch({hp: {...s.hp, cur: 1}, deathSaves: {ok: 0, fail: 0}}); return; }
+    if (r.nat === 1) ds.fail += 2; else if (r.total >= 10) ds.ok++; else ds.fail++;
+    patch({deathSaves: ds});
+  },
+  hd(el, s) {
+    const die = +el.dataset.die, r = rollExpr('1d' + die), gain = Math.max(0, r.total + mod(s.abilities.con));
+    showRoll({label: `Hit Die d${die}`, total: gain, detail: `${r.detail} ${sgn(mod(s.abilities.con))} (CON)`});
+    patch({...H.heal(s, gain), hitDiceUsed: {...s.hitDiceUsed, [die]: (s.hitDiceUsed[die] || 0) + 1}});
+  },
+  hdToggle() { hdOpen = !hdOpen; render(true); },
+  shortRest(el, s) { if (confirm('Short rest: a „short rest” erőforrások és a Pact Magic slotok visszatöltődnek. Mehet?')) patch(H.shortRest(s)); },
+  longRest(el, s) { if (confirm('Long rest: teljes HP, minden spell slot és erőforrás visszatöltődik, a Hit Dice fele visszajön, exhaustion −1. Mehet?')) patch(H.longRest(s)); },
+  res(el, s, i) { patch({resources: s.resources.map((r, k) => k === i ? {...r, used: pipToggle(r.used, +el.dataset.j)} : r)}); },
+  slot(el, s) { const l = +el.dataset.l, used = [...s.spellcasting.used]; used[l] = pipToggle(used[l], +el.dataset.j); patch({spellcasting: {...s.spellcasting, used}}); },
+  pact(el, s) { patch({spellcasting: {...s.spellcasting, pact: {...s.spellcasting.pact, used: pipToggle(s.spellcasting.pact.used, +el.dataset.j)}}}); },
+  condRm(el, s, i) {
+    const p = {conditions: s.conditions.filter((_, k) => k !== i)};
+    if (s.concentration && s.conditions[i]?.toLowerCase() === s.concentration.toLowerCase()) p.concentration = '';
+    patch(p);
+  },
+  spellRm(el, s, i) { if (confirm(`Eltávolítod: ${s.spells[i].name}?`)) patch({spells: s.spells.filter((_, k) => k !== i)}); },
+  spellAdd(el, s) {
+    const sp = H.byRef(RB().spells, el.dataset.ref); if (!sp) return;
+    patch({spells: [...s.spells, {name: sp.n, level: sp.l || 0, prepared: !sp.l, ref: H.refOf(sp)}]});
+  },
+  spellCustom(el, s) { const n = $('#spellNew').value.trim(); if (n) patch({spells: [...s.spells, {name: n, level: +$('#spellNewL').value, prepared: true}]}); },
+  qty(el, s, i) { patch({inventory: s.inventory.map((it, k) => k === i ? {...it, qty: Math.max(0, it.qty + +el.dataset.d)} : it)}); },
+  itemRm(el, s, i) { if (confirm(`Eltávolítod: ${s.inventory[i].name}?`)) patch(invPatch(s, s.inventory.filter((_, k) => k !== i), s.inventory[i])); },
+  castOpen(el, s, i) { castOpen = castOpen === i ? null : i; render(true); },
+  cast(el, s, i) {
+    const sp = s.spells[i], how = el.dataset.how, sc = s.spellcasting;
+    if (!sp) return;
+    let p = how === 'pact' ? {spellcasting: {...sc, pact: {...sc.pact, used: Math.min(sc.pact.max, sc.pact.used + 1)}}}
+      : how === 'ritual' || how === '0' ? {} : {spellcasting: {...sc, used: sc.used.map((u, l) => l === +how - 1 ? Math.min(sc.slots[l], u + 1) : u)}};
+    castOpen = null;
+    // koncentrációs spell: ha már másra koncentrál, előbb rákérdez (Mégse = nem castol, slot sem fogy)
+    if (rbSpell(sp)?.k) { const c = concTo(s, sp.name, p); if (!c) { render(true); return; } p = c; }
+    // hatással járó spell (Mage Armor, Shield, Haste…): magára is érvényesüljön?
+    const conds = p.conditions || s.conditions;
+    if (H.effectOf(sp.name) && !conds.some(c => c.toLowerCase() === sp.name.toLowerCase()) && confirm(`${sp.name}: rád is hat? (bekerül az aktív hatások közé, és a bónusza magától érvényesül)`))
+      p.conditions = [...conds, sp.name];
+    showRoll({label: sp.name, total: '✨', detail: how === '0' ? 'cantrip' : how === 'ritual' ? 'rituáléként, slot nélkül' : how === 'pact' ? `Pact slotból (${sc.pact.level}. szint)` : `${how}. szintű slotból` + (+how > sp.level ? ' (upcast)' : '')}, false);
+    if (Object.keys(p).length) patch(p); else render(true);
+  },
+  concEnd(el, s) { patch({concentration: '', conditions: H.dropConc(s.conditions, s.concentration)}); },
+  effToggle(el, s) { const k = el.dataset.key; patch({effOff: s.effOff.includes(k) ? s.effOff.filter(x => x !== k) : [...s.effOff, k]}); },
+  featPick(el, s) {
+    if (!featPick) return;
+    const a = el.dataset.a, p = {abilities: H.addAb(s.abilities, {[a]: featPick.amt})};
+    if (/^resilient$/i.test(featPick.name) && !s.saveProf.includes(a)) p.saveProf = [...s.saveProf, a];
+    featPick = featPick.left > 1 ? {...featPick, left: featPick.left - 1, from: featPick.from.filter(x => x !== a)} : null;
+    patch(p);
+  },
+  featPickSkip() { featPick = null; render(true); },
+  itemAdd(el, s) {
+    const it = H.byRef(H.allItems(RB()), el.dataset.ref); if (!it) return;
+    const ref = H.refOf(it), k = s.inventory.findIndex(x => x.ref === ref);
+    patch({inventory: k >= 0 ? s.inventory.map((x, j) => j === k ? {...x, qty: x.qty + 1} : x) : [...s.inventory, {name: it.n, qty: 1, magic: !!it.mag, rarity: it.rar || '', ref}]});
+  },
+  itemCustom(el, s) { const n = $('#itemNew').value.trim(); if (n) patch({inventory: [...s.inventory, {name: n, qty: Math.max(1, +$('#itemNewQ').value || 1)}]}); },
+  featAdd(el, s) {
+    const f = H.byRef(RB().feats, el.dataset.ref); if (!f) return;
+    const p = {features: [...s.features, {name: f.n, text: f.tx || '', src: 'Feat'}]};
+    // kézi lapon a feat képességbónusza a beírt értékekhez adódik; a választhatót (pl. Resilient) a játékos választja ki
+    if (!s.auto) {
+      const b = H.abBonusOf(f.fx);
+      if (Object.keys(b.fixed).length) p.abilities = H.addAb(s.abilities, b.fixed);
+      featPick = b.choose.length ? {name: f.n, from: b.choose[0].from, amt: b.choose[0].amt, left: b.choose[0].n} : null;
+    }
+    patch(p);
+  },
+  featCustom(el, s) { const n = $('#featNew').value.trim(); if (n) patch({features: [...s.features, {name: n, text: $('#featNewT').value, src: $('#featNewS').value}]}); },
+  featRm(el, s, i) { if (confirm(`Eltávolítod: ${s.features[i].name}?` + (s.auto ? '' : '\n(Ha képességbónuszt adott, azt az Alapadatokon vedd vissza kézzel.)'))) patch({features: s.features.filter((_, k) => k !== i)}); },
+  rowAdd(el) { urlapGomb(d => d[el.dataset.list].push({name: '', subclass: '', level: 1, hitDie: 8, hit: '', dmg: '', note: '', max: 1, used: 0, reset: 'long'})); },
+  rowRm(el, s, i) { urlapGomb(d => d[el.dataset.list].splice(i, 1)); },
+  slotsAuto() { urlapGomb(d => { const sl = H.slotsFor(H.norm(d).classes); d.spellcasting = {...d.spellcasting, slots: sl.slots, pact: {...d.spellcasting.pact, ...sl.pact}}; }); },
+  toAuto(el, s) {
+    if (!confirm('Átállítod a lapot a szabálymotorra? A jelenlegi értékek megmaradnak (ahol eltérnek a számolttól, felülírásként), a hiányzó választások a Teendők közé kerülnek.')) return;
+    toAutoMent(s);
+  },
+  todoGo() { if (view.tab === 'adat') readForm(); view.tab = 'adat'; openKeys.add('todos'); render(true); $('details[data-key="todos"]')?.scrollIntoView({block: 'start'}); },
+  chGo(el) { document.getElementById(chId(el.dataset.key))?.scrollIntoView({block: 'center'}); },
+  todoReset() { patch({todoDone: []}); },
+  ovReset(el, s) { const ov = {...s.ov}; delete ov[el.dataset.key]; patch({ov}); },
+  lvAdd(el, s) { if (isDM) patch({build: {...s.build, levels: [...s.build.levels, {c: $('#lvCls').value, hp: null}]}}); },
+  lvRm(el, s) { if (isDM && confirm('Leveszed az utolsó szintet?')) patch({build: {...s.build, levels: s.build.levels.slice(0, -1)}}); },
+  edSave(el, s) {
+    // piszkozat nélkül nincs mit menteni: üres lap soha nem íródhat a karakterre
+    if (!readForm()) { alert('Az űrlap közben újratöltődött, ezért nem mentettem. Nézd át, és nyomd meg újra a Mentést.'); render(true); return; }
+    if (s.auto) {
+      // a számolt tételek (auto) a lapról maradnak, a piszkozatból csak a sajátok jönnek
+      const d = readForm();
+      draft = null;
+      savedToast(patch(changedOnly(s, {name: d.name, alignment: d.alignment, attacks: H.regiSorrend(d.attacks, [...s.attacks.filter(a => a.auto), ...d.attacks.filter(a => !a.auto)]), resources: [...s.resources.filter(r => r.auto), ...d.resources.filter(r => !r.auto)]})));
+      return;
+    }
+    const d = H.norm(readForm()), p = {};
+    for (const k of EDIT_KEYS) p[k] = d[k];
+    p.hp = {...s.hp, max: d.hp.max};
+    draft = null; savedToast(patch(changedOnly(s, p)));
+  },
+  edCancel() { draft = null; render(true); },
+};
 
 // figyelők (a lap-indulas.js kapcsolja fel)
 function akciokEsemenyek() {
@@ -16,149 +166,8 @@ function akciokEsemenyek() {
     if (!el || el.tagName === 'INPUT' || el.tagName === 'SELECT') return;
     const act = el.dataset.act, s = cur(), i = +el.dataset.i;
     if (el.tagName === 'A' || el.closest('summary')) e.preventDefault();
-    if (!s && !['signIn', 'signOut', 'reload', 'infoClose', 'fiok', 'megj', 'keresDob', 'keresElvet'].includes(act)) return;
-    switch (act) {
-      case 'fiok': fiokMutat(); break;
-      case 'keresDob': keresDob(el.dataset.id); break;
-      case 'keresElvet': keresElvet(el.dataset.id); break;
-      case 'megj': megjAllit(el.dataset.k, el.dataset.v); fiokMutat(); break;
-      case 'luStart': if (canEdit(s) && luEnabled(s) && luReady(s) && !sheetStale) { luLoad(view.id, s); window.scrollTo(0, 0); render(true); } break;
-      case 'info': { const info = infoReg.get(el.dataset.info); if (info) infoMutat(info); break; }
-      case 'infoClose': $('#infoPop').hidden = true; break;
-      case 'ncPortre': $('#ncPortreFile')?.click(); break;
-      case 'ncPortreTorol': if (s.newChar && canEdit(s)) patch({portrait: ''}); break;
-      case 'ncCls': case 'ncMethod': case 'ncRollDo': case 'ncReroll': case 'ncNext': case 'ncBack': case 'ncDone': case 'ncSkip': if (s.newChar && canEdit(s)) ncAct(act, el, s); break;
-      case 'luClose': case 'luCls': case 'luHow': case 'luNext': case 'luBack': case 'luSave': if (lu) luAct(act, el, s); break;
-      case 'histRestore': case 'histFull': case 'histDl': {
-        const h = histCache.get(view.id)?.find?.(x => x.id === el.dataset.h); if (!h || !canEdit(s)) break;
-        if (act === 'histDl') download(H.exportNev(h.sheet.name, h.at), H.exportLap(h.sheet));
-        else if (act === 'histFull') histFull(s, h); else histRestore(s, h);
-        break;
-      }
-      case 'histSave': if (canEdit(s)) histMent(s); break;
-      case 'lapTorol': if (canEdit(s) && !s.deleted) lapTorol(s); break;
-      case 'lapDl': download(H.exportNev(s.name, new Date().toISOString()), H.exportLap(s)); break;
-      case 'signIn': window.KAuth?.signIn(); break;
-      case 'signOut': $('#infoPop').hidden = true; window.KAuth?.signOut(); break;
-      case 'reload': location.reload(); break;
-      case 'd20': rollD20(+el.dataset.bonus || 0, el.dataset.label, el.dataset.kind || ''); break;
-      case 'dmg': rollDamage(el.dataset.expr, el.dataset.label, el.dataset.kind || '', {dt: el.dataset.dt || '', dk: el.dataset.dk || ''}); break;
-      case 'hpDmg': case 'hpHeal': case 'hpTemp': {
-        const n = Math.abs(parseInt($('#hpIn').value));
-        if (isNaN(n)) break;
-        if (act === 'hpDmg' && n) takeDamage(s, n);
-        else if (act === 'hpHeal' && n) patch(H.heal(s, n));
-        else if (act === 'hpTemp') patch({hp: {...s.hp, temp: n}});
-        break;
-      }
-      case 'ds': { const k = el.dataset.kind; patch({deathSaves: {...s.deathSaves, [k]: pipToggle(s.deathSaves[k], i)}}); break; }
-      case 'dsRoll': {
-        const r = rollD20(0, 'Halálmentő'), ds = {...s.deathSaves};
-        if (r.nat === 20) { patch({hp: {...s.hp, cur: 1}, deathSaves: {ok: 0, fail: 0}}); break; }
-        if (r.nat === 1) ds.fail += 2; else if (r.total >= 10) ds.ok++; else ds.fail++;
-        patch({deathSaves: ds}); break;
-      }
-      case 'hd': {
-        const die = +el.dataset.die, r = rollExpr('1d' + die), gain = Math.max(0, r.total + mod(s.abilities.con));
-        showRoll({label: `Hit Die d${die}`, total: gain, detail: `${r.detail} ${sgn(mod(s.abilities.con))} (CON)`});
-        patch({...H.heal(s, gain), hitDiceUsed: {...s.hitDiceUsed, [die]: (s.hitDiceUsed[die] || 0) + 1}}); break;
-      }
-      case 'hdToggle': hdOpen = !hdOpen; render(true); break;
-      case 'shortRest': if (confirm('Short rest: a „short rest” erőforrások és a Pact Magic slotok visszatöltődnek. Mehet?')) patch(H.shortRest(s)); break;
-      case 'longRest': if (confirm('Long rest: teljes HP, minden spell slot és erőforrás visszatöltődik, a Hit Dice fele visszajön, exhaustion −1. Mehet?')) patch(H.longRest(s)); break;
-      case 'res': patch({resources: s.resources.map((r, k) => k === i ? {...r, used: pipToggle(r.used, +el.dataset.j)} : r)}); break;
-      case 'slot': { const l = +el.dataset.l, used = [...s.spellcasting.used]; used[l] = pipToggle(used[l], +el.dataset.j); patch({spellcasting: {...s.spellcasting, used}}); break; }
-      case 'pact': patch({spellcasting: {...s.spellcasting, pact: {...s.spellcasting.pact, used: pipToggle(s.spellcasting.pact.used, +el.dataset.j)}}}); break;
-      case 'condRm': {
-        const p = {conditions: s.conditions.filter((_, k) => k !== i)};
-        if (s.concentration && s.conditions[i]?.toLowerCase() === s.concentration.toLowerCase()) p.concentration = '';
-        patch(p); break;
-      }
-      case 'spellRm': if (confirm(`Eltávolítod: ${s.spells[i].name}?`)) patch({spells: s.spells.filter((_, k) => k !== i)}); break;
-      case 'spellAdd': {
-        const sp = H.byRef(RB().spells, el.dataset.ref); if (!sp) break;
-        patch({spells: [...s.spells, {name: sp.n, level: sp.l || 0, prepared: !sp.l, ref: H.refOf(sp)}]}); break;
-      }
-      case 'spellCustom': { const n = $('#spellNew').value.trim(); if (n) patch({spells: [...s.spells, {name: n, level: +$('#spellNewL').value, prepared: true}]}); break; }
-      case 'qty': patch({inventory: s.inventory.map((it, k) => k === i ? {...it, qty: Math.max(0, it.qty + +el.dataset.d)} : it)}); break;
-      case 'itemRm': if (confirm(`Eltávolítod: ${s.inventory[i].name}?`)) patch(invPatch(s, s.inventory.filter((_, k) => k !== i), s.inventory[i])); break;
-      case 'castOpen': castOpen = castOpen === i ? null : i; render(true); break;
-      case 'cast': {
-        const sp = s.spells[i], how = el.dataset.how, sc = s.spellcasting;
-        if (!sp) break;
-        let p = how === 'pact' ? {spellcasting: {...sc, pact: {...sc.pact, used: Math.min(sc.pact.max, sc.pact.used + 1)}}}
-          : how === 'ritual' || how === '0' ? {} : {spellcasting: {...sc, used: sc.used.map((u, l) => l === +how - 1 ? Math.min(sc.slots[l], u + 1) : u)}};
-        castOpen = null;
-        // koncentrációs spell: ha már másra koncentrál, előbb rákérdez (Mégse = nem castol, slot sem fogy)
-        if (rbSpell(sp)?.k) { const c = concTo(s, sp.name, p); if (!c) { render(true); break; } p = c; }
-        // hatással járó spell (Mage Armor, Shield, Haste…): magára is érvényesüljön?
-        const conds = p.conditions || s.conditions;
-        if (H.effectOf(sp.name) && !conds.some(c => c.toLowerCase() === sp.name.toLowerCase()) && confirm(`${sp.name}: rád is hat? (bekerül az aktív hatások közé, és a bónusza magától érvényesül)`))
-          p.conditions = [...conds, sp.name];
-        showRoll({label: sp.name, total: '✨', detail: how === '0' ? 'cantrip' : how === 'ritual' ? 'rituáléként, slot nélkül' : how === 'pact' ? `Pact slotból (${sc.pact.level}. szint)` : `${how}. szintű slotból` + (+how > sp.level ? ' (upcast)' : '')}, false);
-        if (Object.keys(p).length) patch(p); else render(true);
-        break;
-      }
-      case 'concEnd': patch({concentration: '', conditions: H.dropConc(s.conditions, s.concentration)}); break;
-      case 'effToggle': { const k = el.dataset.key; patch({effOff: s.effOff.includes(k) ? s.effOff.filter(x => x !== k) : [...s.effOff, k]}); break; }
-      case 'featPick': {
-        if (!featPick) break;
-        const a = el.dataset.a, p = {abilities: H.addAb(s.abilities, {[a]: featPick.amt})};
-        if (/^resilient$/i.test(featPick.name) && !s.saveProf.includes(a)) p.saveProf = [...s.saveProf, a];
-        featPick = featPick.left > 1 ? {...featPick, left: featPick.left - 1, from: featPick.from.filter(x => x !== a)} : null;
-        patch(p); break;
-      }
-      case 'featPickSkip': featPick = null; render(true); break;
-      case 'itemAdd': {
-        const it = H.byRef(H.allItems(RB()), el.dataset.ref); if (!it) break;
-        const ref = H.refOf(it), k = s.inventory.findIndex(x => x.ref === ref);
-        patch({inventory: k >= 0 ? s.inventory.map((x, j) => j === k ? {...x, qty: x.qty + 1} : x) : [...s.inventory, {name: it.n, qty: 1, magic: !!it.mag, rarity: it.rar || '', ref}]});
-        break;
-      }
-      case 'itemCustom': { const n = $('#itemNew').value.trim(); if (n) patch({inventory: [...s.inventory, {name: n, qty: Math.max(1, +$('#itemNewQ').value || 1)}]}); break; }
-      case 'featAdd': {
-        const f = H.byRef(RB().feats, el.dataset.ref); if (!f) break;
-        const p = {features: [...s.features, {name: f.n, text: f.tx || '', src: 'Feat'}]};
-        // kézi lapon a feat képességbónusza a beírt értékekhez adódik; a választhatót (pl. Resilient) a játékos választja ki
-        if (!s.auto) {
-          const b = H.abBonusOf(f.fx);
-          if (Object.keys(b.fixed).length) p.abilities = H.addAb(s.abilities, b.fixed);
-          featPick = b.choose.length ? {name: f.n, from: b.choose[0].from, amt: b.choose[0].amt, left: b.choose[0].n} : null;
-        }
-        patch(p); break;
-      }
-      case 'featCustom': { const n = $('#featNew').value.trim(); if (n) patch({features: [...s.features, {name: n, text: $('#featNewT').value, src: $('#featNewS').value}]}); break; }
-      case 'featRm': if (confirm(`Eltávolítod: ${s.features[i].name}?` + (s.auto ? '' : '\n(Ha képességbónuszt adott, azt az Alapadatokon vedd vissza kézzel.)'))) patch({features: s.features.filter((_, k) => k !== i)}); break;
-      case 'rowAdd': { const d = readForm(); if (!d) { render(true); break; } d[el.dataset.list].push({name: '', subclass: '', level: 1, hitDie: 8, hit: '', dmg: '', note: '', max: 1, used: 0, reset: 'long'}); render(true); break; }
-      case 'rowRm': { const d = readForm(); if (!d) { render(true); break; } d[el.dataset.list].splice(i, 1); render(true); break; }
-      case 'slotsAuto': { const d = readForm(); if (!d) { render(true); break; } const sl = H.slotsFor(H.norm(d).classes); d.spellcasting = {...d.spellcasting, slots: sl.slots, pact: {...d.spellcasting.pact, ...sl.pact}}; render(true); break; }
-      case 'toAuto':
-        if (!confirm('Átállítod a lapot a szabálymotorra? A jelenlegi értékek megmaradnak (ahol eltérnek a számolttól, felülírásként), a hiányzó választások a Teendők közé kerülnek.')) break;
-        toAutoMent(s);
-        break;
-      case 'todoGo': if (view.tab === 'adat') readForm(); view.tab = 'adat'; openKeys.add('todos'); render(true); $('details[data-key="todos"]')?.scrollIntoView({block: 'start'}); break;
-      case 'chGo': document.getElementById(chId(el.dataset.key))?.scrollIntoView({block: 'center'}); break;
-      case 'todoReset': patch({todoDone: []}); break;
-      case 'ovReset': { const ov = {...s.ov}; delete ov[el.dataset.key]; patch({ov}); break; }
-      case 'lvAdd': if (isDM) patch({build: {...s.build, levels: [...s.build.levels, {c: $('#lvCls').value, hp: null}]}}); break;
-      case 'lvRm': if (isDM && confirm('Leveszed az utolsó szintet?')) patch({build: {...s.build, levels: s.build.levels.slice(0, -1)}}); break;
-      case 'edSave': {
-        // piszkozat nélkül nincs mit menteni: üres lap soha nem íródhat a karakterre
-        if (!readForm()) { alert('Az űrlap közben újratöltődött, ezért nem mentettem. Nézd át, és nyomd meg újra a Mentést.'); render(true); break; }
-        if (s.auto) {
-          // a számolt tételek (auto) a lapról maradnak, a piszkozatból csak a sajátok jönnek
-          const d = readForm();
-          draft = null;
-          savedToast(patch(changedOnly(s, {name: d.name, alignment: d.alignment, attacks: H.regiSorrend(d.attacks, [...s.attacks.filter(a => a.auto), ...d.attacks.filter(a => !a.auto)]), resources: [...s.resources.filter(r => r.auto), ...d.resources.filter(r => !r.auto)]})));
-          break;
-        }
-        const d = H.norm(readForm()), p = {};
-        for (const k of EDIT_KEYS) p[k] = d[k];
-        p.hp = {...s.hp, max: d.hp.max};
-        draft = null; savedToast(patch(changedOnly(s, p))); break;
-      }
-      case 'edCancel': draft = null; render(true); break;
-    }
+    if (!s && !LAP_NELKUL.has(act)) return;
+    if (Object.hasOwn(LAP_AKCIOK, act)) LAP_AKCIOK[act](el, s, i, act);
   });
   document.addEventListener('toggle', e => {
     const k = e.target.dataset?.key;

@@ -5642,6 +5642,23 @@ describe('Szerződés (szerzodes.js)', () => {
       ok(!/^(document|window)\.addEventListener/m.test(await szoveg(f)), f + ': figyelő csak …Esemenyek() függvényben');
     }
   });
+  test('telefonos lap gombjai: minden data-act-hoz van LAP_AKCIOK-bejegyzés vagy módosítás-kezelő, és nincs gazdátlan bejegyzés', async () => {
+    const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();
+    const html = await szoveg('karakter.html');
+    const fajlok = [...html.matchAll(/<script src="(js\/lap\/[\w-]+\.js)\?v=\d+"><\/script>/g)].map(m => m[1]);
+    const kod = [html, ...await Promise.all(fajlok.map(szoveg))].join('\n').replace(/^\s*\/\/.*$/gm, '');
+    eq([...kod.matchAll(/data-act=(?!"\w+")[^\s>]*/g)].map(m => m[0]), [], 'összerakott data-act (a teszt csak a szó szerinti nevet látja)');
+    const nevek = new Set([...kod.matchAll(/data-act="(\w+)"/g)].map(m => m[1]));
+    const kulcsok = K.eval('Object.keys(LAP_AKCIOK)');
+    eq(kulcsok.filter(k => !nevek.has(k)), [], 'gazdátlan bejegyzés');
+    // a mezők (jelölőnégyzet, legördülő, szövegmező) a change-figyelőben, act === '…' alapján
+    const valtozas = [...nevek].filter(n => !kulcsok.includes(n)).sort();
+    eq(valtozas, ['attune', 'bBase', 'bBg', 'bRace', 'coin', 'csakBek', 'equip', 'itemCont', 'itemNote', 'lvHp', 'prep', 'todoDone']);
+    const akciok = await szoveg('js/lap/lap-akciok.js');
+    for (const n of valtozas) ok(akciok.includes(`act === '${n}'`), n + ': a change-figyelő kezeli');
+    ok(K.eval('LAP_NELKUL').size && [...K.eval('LAP_NELKUL')].every(k => kulcsok.includes(k)), 'a lap nélküli gombok is a táblázatban');
+    ok(!/switch \(act\)/.test(akciok), 'nincs nagy elágazás');
+  });
   test('gombok: minden data-act-hoz van AKCIOK-bejegyzés és viszont; mind szó szerinti név (docs/dontesek/0006)', async () => {
     const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();
     const html = await szoveg('index.html');
