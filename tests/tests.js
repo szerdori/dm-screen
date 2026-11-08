@@ -4681,8 +4681,9 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     huz('.hero', B, J); eq(fül(), 'fel');
     const mezo = kq('main input:not([type=checkbox])');
     ok(mezo, 'mező a Felszerelés fülön');
+    // a blur() hívását nézzük, nem a blur eseményt: ha a tesztablaknak nincs fókusza (lefedettségmérés), a Chrome az eseményt nem küldi el
     let elengedve = false;
-    mezo.addEventListener('blur', () => { elengedve = true; });
+    const blur = mezo.blur.bind(mezo); mezo.blur = () => { elengedve = true; blur(); };
     mezo.focus(); eq(K.document.activeElement, mezo);
     huz('.hero', J, B); eq([fül(), elengedve], ['adat', true]);
     // a lap listáján (nincs fülsáv) nem csinál semmit
@@ -4968,6 +4969,14 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     ok(!('dt' in lastUpdate().rolls[0]) && !('dk' in lastUpdate().rolls[0]), 'd20-on nincs');
     eq(['You make a melee spell attack', 'Make a ranged spell attack', 'Each creature must make a Dexterity saving throw', 'A creature you touch regains'].map(t => K.eval('varazsFajta')(t)), ['ms', 'rs', 'sv', 'sp']);
     eq(K.eval('tamadasFx')(K.eval('sheets.get("p1")'), {name: 'Bite', dmg: '1d6+2 piercing', note: ''}), {dt: 'piercing', dk: 'nat'});
+    // a közös döntés (Sheet.fegyverFajta): a Slam a telefonon is természetes, mint a DM Screenen
+    eq(K.eval('tamadasFx')(K.eval('sheets.get("p1")'), {name: 'Slam', dmg: '1d8+3 bludgeoning', note: ''}), {dt: 'bludgeoning', dk: 'nat'});
+  });
+  ktest('a fegyver sebzésgombja: közelharci (wdmg:melee, a Rage és más melee-hatás ide jön) vagy távolra is használható (wdmg; a dobófegyver is)', () => {
+    const at = (name, note = '') => ({name, hit: '+5', dmg: '1d6+3 piercing', note});
+    openSheet({attacks: [at('Longsword'), at('Dagger', 'finesse, light'), at('Longbow', 'range 150/600'), at('Javelin', 'Thrown · range 30/120'), at('Hand Crossbows'), at('Elbow Strike')]});
+    const kind = n => kqa('[data-act="dmg"]').find(b => b.dataset.label === n + ' – sebzés')?.dataset.kind;
+    eq(['Longsword', 'Dagger', 'Longbow', 'Javelin', 'Hand Crossbows', 'Elbow Strike'].map(kind), ['wdmg:melee', 'wdmg:melee', 'wdmg', 'wdmg', 'wdmg', 'wdmg:melee']);
   });
   ktest('dobás a lapra is felkerül (rolls, legújabb elöl, legfeljebb 15) a DM Screen naplójához; idegen lapnál nem ír', () => {
     openSheet();
@@ -5473,6 +5482,15 @@ describe('Flavour text a sebzésdobásokhoz (leiras.js, TERV-flavour.md)', () =>
       ['Longbow', 'Attack: +7 to hit.'], ['Light Crossbow', 'Attack: +5 to hit.'], ['Dagger', 'Melee vagy Ranged Weapon Attack: +6 to hit'],
       ['Javelin', 'Attack: +5 to hit. Hit: 1d6+3 piercing damage. Thrown · range 30/120']].map(([n, t]) => W.tamadasFajta(n, t)),
       ['mw', 'rw', 'rw', 'rw', 'mw', 'mw']);
+  });
+  test('a telefonos lap és a DM Screen ugyanúgy dönti el a fegyveres támadás fajtáját (Sheet.fegyverFajta, egy helyen)', () => {
+    // régen két külön lista volt: a telefonon a Slam, a Gore, a Tentacle és a Sting közelharci fegyver lett, a DM-en természetes; a „range” szóhatár nélkül
+    const sorok = [['Slam', ''], ['Gore', ''], ['Tentacle', ''], ['Sting', ''], ['Bite', ''], ['Longsword', ''], ['Shortbow', 'range 80/320'], ['Light Crossbow', ''],
+      ['Javelin', 'Thrown · range 30/120'], ['Sling', ''], ['Dart', 'finesse, thrown'], ['Arrangement', ''], ['Orange Blade', ''], ['Hand Crossbows', ''], ['Slingshot', ''], ['Elbow Strike', ''], ['Rainbow Blade', '']];
+    const vart = ['nat', 'nat', 'nat', 'nat', 'nat', 'mw', 'rw', 'rw', 'mw', 'rw', 'mw', 'mw', 'mw', 'rw', 'rw', 'mw', 'mw'];
+    eq(sorok.map(([n, m]) => W.Sheet.fegyverFajta(n, m)), vart);
+    // a DM Screen a telefonos lapból jövő sorral („Attack: +5 to hit. … megjegyzés”, lapszinkron.js) ugyanezt mondja
+    eq(sorok.map(([n, m]) => W.tamadasFajta(n, 'Attack: +5 to hit. Hit: 1d6+3 piercing damage. ' + m)), vart);
   });
   test('játékos és NPC a telefonos lapból: a sebzésdobása is leírást kap (a lap „1d8+3 slashing” sebzése „… slashing damage” lesz)', () => {
     const lap = {...W.Sheet.norm({name: 'Aranka', classes: [{name: 'Fighter', level: 3}], attacks: [

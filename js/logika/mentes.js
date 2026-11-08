@@ -14,8 +14,8 @@ function save() { clearTimeout(saveTimer); saveTimer = setTimeout(doSave, 400); 
 function ensureIds() { S.saved.forEach(e => { if (!e.id) e.id = uid(); }); }
 // van-e felhős kapcsolat (belépve) – a felület ezt kérdezi, nem közvetlenül a Tar-t
 const felhoben = () => Tar.kapcsolva();
-// kulcssorrendtől független JSON (a Firestore más sorrendben adja vissza a mezőket)
-const stableJson = v => JSON.stringify(v, (k, x) => isObj(x) ? Object.fromEntries(Object.keys(x).sort().map(n => [n, x[n]])) : x);
+// kulcssorrendtől független JSON (a Firestore más sorrendben adja vissza a mezőket); egy helyen, a sheet.js-ben
+const stableJson = Sheet.stableJson;
 // egy gyűjtemény (Tar.konyvtar, Tar.mentett, Tar.karakterek) szinkronja: csak a változott és a törölt dokumentumok
 function syncCol(gyujt, arr, key, ops, ser = JSON.stringify) {
   const seen = {}, prev = lastSaved[key] || {};

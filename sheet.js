@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 18;
+  const VERSION = 19;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -139,6 +139,15 @@ window.Sheet = (() => {
   // a sebzés típusa egy szövegből: előbb a „… fire damage” alak, különben az első típusnév (pl. „1d8+3 slashing”); '' = nincs benne
   const DMG_RE = new RegExp(`\\b(${DMG_TYPES.join('|')})\\b`, 'i'), DMG_DAMAGE_RE = new RegExp(`\\b(${DMG_TYPES.join('|')})\\s+damage\\b`, 'i');
   const dmgType = t => ((String(t || '').match(DMG_DAMAGE_RE) || String(t || '').match(DMG_RE) || [])[1] || '').toLowerCase();
+  // fegyveres támadás fajtája a nevéből és a megjegyzéséből (nat / rw / mw); a DM Screen és a telefonos lap is ezt használja, hogy ugyanazt döntsék
+  const TERMESZETES_RE = /\b(bite|claws?|talons?|tail|gore|slam|tentacles?|horns?|hooves|sting|beak|tusks?|pincers?|fist)\b/i;
+  const TAVOLSAGI_RE = /\brange|\b(?:cross|long|short)?bows?\b|\bsling(?:s|shot)?\b|\bdarts?\b/i;  // range 80/320, ranged, Longbow, Light Crossbow, Hand Crossbows, Sling, Slingshot, Dart (az Elbow, Rainbow nem)
+  const termeszetesFegyver = nev => TERMESZETES_RE.test(String(nev || ''));
+  // a név vagy a megjegyzés szerint távolra is használható (a dobófegyver is: a Rage-hez ez számít, a leíráshoz a fegyverFajta)
+  const tavolsagiFegyver = (nev, megj = '') => TAVOLSAGI_RE.test(String(nev || '') + ' ' + String(megj || ''));
+  // a dobófegyver (thrown: Dagger, Javelin) közelharci, mint a szörnynél a „Melee or Ranged”
+  const fegyverFajta = (nev, megj = '') => termeszetesFegyver(nev) ? 'nat'
+    : tavolsagiFegyver(nev, megj) && !/\bthrown\b/i.test(String(megj || '')) ? 'rw' : 'mw';
   const normRoll = x => {
     const req = str(x.req, 40), dt = str(x.dt, 12), dk = str(x.dk, 4);
     return {at: isoTime(x.at), label: str(x.label, 120), total: str(x.total, 20), detail: str(x.detail, 400), nat: int(x.nat, 0, 0, 20), ...(/^[A-Za-z0-9_-]+$/.test(req) ? {req} : {}),
@@ -1771,7 +1780,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
+    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,

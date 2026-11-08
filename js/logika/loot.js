@@ -9,7 +9,8 @@ modul('loot', 1);
 const LOOT_URL = 'https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/loot.json';
 const COIN_GP = {pp: 10, gp: 1, ep: 0.5, sp: 0.1, cp: 0.01}, COINS = ['pp', 'gp', 'ep', 'sp', 'cp'];
 const BAND_HU = ['CR 0–4', 'CR 5–10', 'CR 11–16', 'CR 17+'];
-const NATURAL_ATTACK = /\b(bite|claws?|slam|tail|tentacles?|horns?|hoof|hooves|talons?|gore|sting|fists?|unarmed|beak|tusks?|touch|rend|pseudopod|ram|stomp|wings?|harapás|karom)\b/i;
+// szándékosan bővebb, mint a Sheet.termeszetesFegyver (flavour text): itt a zsákmányhoz azt kell tudni, hogy a lénynél nincs-e valódi fegyver (touch, rend, unarmed is)
+const NATURAL_ATTACK =/\b(bite|claws?|slam|tail|tentacles?|horns?|hoof|hooves|talons?|gore|sting|fists?|unarmed|beak|tusks?|touch|rend|pseudopod|ram|stomp|wings?|harapás|karom)\b/i;
 let lootData = null, lootResult = null;
 async function loadLoot() {
   if (!lootData) { const r = await fetch(LOOT_URL); if (!r.ok) throw new Error('HTTP ' + r.status); lootData = await r.json(); }

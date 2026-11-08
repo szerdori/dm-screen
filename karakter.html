@@ -327,7 +327,7 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on{background:var(--accent
 <div id="keresPop" hidden role="dialog" aria-label="Dobáskérés a DM-től"></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=18"></script>
+<script src="sheet.js?v=19"></script>
 <script src="szerzodes.js?v=6"></script>
 <script>
 'use strict';
@@ -336,7 +336,7 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on{background:var(--accent
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 const H = window.Sheet;
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 18, szerzodes: 6};
+const VART_MODULOK = {kozos: 3, sheet: 19, szerzodes: 6};
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
 function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulok(VART_MODULOK).length > 0; }
 let sheetStale = regiFajl();
@@ -492,10 +492,9 @@ const rollBtn = (bonus, label, text = sgn(bonus), kind = '') => `<button class="
 const dmgBtn = (expr, label, kind = '', fx = {}) => `<button class="rb" data-act="dmg" data-expr="${esc(expr)}" data-label="${esc(label)}" data-kind="${esc(kind)}" data-dt="${esc(fx.dt || '')}" data-dk="${esc(fx.dk || '')}">${esc(expr)}</button>`;
 // a flavour texthez (TERV-flavour.md): a varázslat támadásfajtája a leírásából, a támadássoré a nevéből (természetes fegyver, varázslat, távolsági fegyver)
 const varazsFajta = tx => /melee spell attack/i.test(tx || '') ? 'ms' : /spell attack/i.test(tx || '') ? 'rs' : /saving throw/i.test(tx || '') ? 'sv' : 'sp';
-const TAVOLSAGI_RE = /range|ranged|bow\b|crossbow|sling|dart/i;
 function tamadasFx(s, a) {
   const sp = s.spells.find(x => x.name.toLowerCase() === a.name.toLowerCase()), r = sp && rbSpell(sp);
-  const dk = sp ? varazsFajta(r?.tx) : /\b(bite|claws?|talons?|horns?|hooves|tail)\b/i.test(a.name) ? 'nat' : TAVOLSAGI_RE.test(a.name + ' ' + a.note) && !/\bthrown\b/i.test(a.note) ? 'rw' : 'mw';  // dobófegyver (thrown): közelharci leírás, mint a DM Screenen
+  const dk = sp ? varazsFajta(r?.tx) : H.fegyverFajta(a.name, a.note);  // ugyanaz a döntés, mint a DM Screenen (sheet.js)
   return {dt: H.dmgType(a.dmg + ' ' + a.note) || H.dmgType(r?.tx), dk};
 }
 // sebzés-szövegből a kocka (pl. „1d8+3 slashing” → 1d8+3)
@@ -570,7 +569,7 @@ function tabHarc(s, ed) {
   const dis = ed ? '' : 'disabled';
   const fog = ed && s.attacks.length > 1;
   const atk = s.attacks.map((a, i) => `<div class="li">${fog ? `<span class="drag" data-drag="atk" data-i="${i}" title="Húzd a sorrend megváltoztatásához" aria-label="${esc(a.name)} áthelyezése">⠿</span>` : ''}<span class="nm"><b>${esc(a.name)}</b><small>${esc([a.dmg.replace(diceOf(a.dmg), '').trim(), a.note].filter(Boolean).join(' · '))}</small></span>
-    ${a.hit.trim() ? rollBtn(parseInt(a.hit.replace('−', '-')) || 0, a.name + ' – támadás', undefined, 'atk') : ''}${diceOf(a.dmg) ? dmgBtn(diceOf(a.dmg), a.name + ' – sebzés', TAVOLSAGI_RE.test(a.name + ' ' + a.note) ? 'wdmg' : 'wdmg:melee', tamadasFx(s, a)) : ''}</div>`).join('');
+    ${a.hit.trim() ? rollBtn(parseInt(a.hit.replace('−', '-')) || 0, a.name + ' – támadás', undefined, 'atk') : ''}${diceOf(a.dmg) ? dmgBtn(diceOf(a.dmg), a.name + ' – sebzés', H.tavolsagiFegyver(a.name, a.note) ? 'wdmg' : 'wdmg:melee', tamadasFx(s, a)) : ''}</div>`).join('');
   const sDc = H.spellDc(s);
   const res = s.resources.map((r, i) => `<div class="li"><span class="nm"><b>${esc(r.name)}</b><small>${esc(r.max - r.used)} / ${esc(r.max)} · ${esc(RESET_HU[r.reset])}</small></span>
     <span class="pips">${pipRow(r.max, r.used, `data-act="res" data-i="${i}"`, dis, r.name)}</span></div>`).join('');
