@@ -5625,6 +5625,23 @@ describe('Szerződés (szerzodes.js)', () => {
     const srcek = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => s !== 'firebase-config.js');
     ok(srcek.at(-1).startsWith('js/indulas.js?'), 'az utolsó: ' + srcek.at(-1));
   });
+  test('rétegek: a karakter.html-ben csak a VART_MODULOK maradt, a kód a js/lap/ fájlokban; csak a lap-indulas.js futtat kódot betöltéskor', async () => {
+    const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();
+    const html = await szoveg('karakter.html');
+    const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1].replace(/^\s*\/\/.*$/gm, '').trim());
+    eq(inline.length, 1, 'egy sima <script> blokk');
+    ok(/^'use strict';\s*const VART_MODULOK = \{[^}]*\};$/.test(inline[0]), 'csak a VART_MODULOK: ' + inline[0].slice(0, 80));
+    const srcek = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => s !== 'firebase-config.js');
+    ok(srcek.at(-1).startsWith('js/lap/lap-indulas.js?'), 'az utolsó: ' + srcek.at(-1));
+    const fajlok = srcek.filter(s => s.startsWith('js/lap/')).map(s => s.split('?')[0]);
+    ok(fajlok.length >= 10, 'megtalálta a fájlokat: ' + fajlok.length);
+    // a többi fájl legfelső szintjén csak deklaráció: nincs figyelő, nincs hívás (a modul() bejelentésen kívül)
+    for (const f of fajlok.filter(f => !f.endsWith('lap-indulas.js'))) {
+      const fut = (await szoveg(f)).split(/\r?\n/).filter(l => /^[\w$.]+\(/.test(l) && !/^modul\(/.test(l));
+      eq(fut, [], f + ': a legfelső szinten csak deklaráció');
+      ok(!/^(document|window)\.addEventListener/m.test(await szoveg(f)), f + ': figyelő csak …Esemenyek() függvényben');
+    }
+  });
   test('gombok: minden data-act-hoz van AKCIOK-bejegyzés és viszont; mind szó szerinti név (docs/dontesek/0006)', async () => {
     const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();
     const html = await szoveg('index.html');

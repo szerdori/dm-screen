@@ -69,7 +69,7 @@ Az `index.html`-ben a HTML-váz, a stílus, egy inline `<script>` a `VART_MODULO
 
 **A 6. lépés után nyitva maradt:** a `fiveResults` (keresési találatok) felületi állapot a logikában; a `localStorage` (helyi másolat) a logikában van, később a `Tar` alá kerülhet; a napló szövege (HTML) a logikában készül, és az `Ertesito`-n át jut a felületre (`docs/dontesek/0006`).
 
-A `karakter.html` (≈ 900 sor szkript) ugyanígy bontható, de **később** (8. lépés), mert a 3. fázis épp oda fejleszt.
+A `karakter.html` szkriptje (2026-11-08-án 1613 sor) a 8. lépésben a `js/lap/` alá került, betöltési sorrendben: `lap-alap`, `lap-dobas`, `lap-rajz`, `lap-felepites`, `lap-szintlepes`, `lap-ujkarakter`, `lap-elozmenyek`, `lap-fiok`, `lap-iras`, `lap-utvonal`, `lap-gesztus`, `lap-akciok`, `lap-indulas` (az utolsó: `KApp`, a figyelők felkapcsolása, első rajzolás). A sorok betűre változatlanok; a figyelők `…Esemenyek()` függvényekbe kerültek, a `sheetStale` az indításkor számolódik. A rétegteszt: csak a `lap-indulas.js` futtat kódot betöltéskor.
 
 ## A szerződés (contract-first)
 
