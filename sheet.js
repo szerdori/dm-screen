@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 19;
+  const VERSION = 20;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -699,7 +699,11 @@ window.Sheet = (() => {
       if (isObj(fx.res) && fx.res.n) A.res.push({...fx.res, src, ctx: kor});
       if (Array.isArray(fx.spells)) A.spells.push(...fx.spells.filter(isObj).map(x => ({...x, ctx: kor})));
       if (ch.spell?.ok.length) A.spells.push({t: 'known', lvl: 1, sp: ch.spell.ok.map(refName), ctx: kor});
-      if (fx.todo) A.todo.push({key: '✋ ' + src, text: `${src}: ${str(fx.todo, 300)}`});
+      // ✋ teendő: a forrás első teendőjének kulcsa a régi ('✋ ' + forrás, így a már kipipált megmarad); a többié a szöveggel bővül, hogy ne takarják el egymást; 200 karakterre vágva, mint a todoDone a Sheet.norm-ban
+      if (fx.todo) {
+        const text = `${src}: ${str(fx.todo, 300)}`, k = '✋ ' + src;
+        if (!A.todo.some(t => t.text === text)) A.todo.push({key: str(A.todo.some(t => t.key === k) ? k + ' – ' + fx.todo : k, 200), text});
+      }
     }
     ctx.abil = abil;
     ctx.A = A;

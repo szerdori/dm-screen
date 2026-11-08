@@ -2321,6 +2321,26 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     eq(H.calc(H.norm({...r, todoDone: ['✋ Favored Enemy (Ranger 1)']}), rb).todos, []);
   });
 
+  test('azonos forrású ✋ teendők: mind látszik, külön pipálható; az első kulcsa a régi (a kipipált megmarad); azonos szöveg csak egyszer', () => {
+    const H = W.Sheet, rb = rb3();
+    rb.races.push({n: 'Kettősfaj', s: 'HB', sp: {walk: 30}, fx: [{todo: 'Válassz színt'}, {todo: 'Válassz elemet'}, {todo: 'Válassz színt'}]});
+    const r = mkS({race: 'Kettősfaj|HB', levels: [{c: 'Fighter'}]});
+    const keys = H.calc(r, rb).todos.filter(t => t.kind === 'manual').map(t => t.key);
+    eq(keys.length, 2, 'két különböző teendő, a duplikált szöveg egyszer');
+    ok(new Set(keys).size === 2, 'különböző kulcsok');
+    ok(/Kettősfaj/.test(keys[0]) && !/–/.test(keys[0]), 'az első kulcsa a régi alak: ' + keys[0]);
+    eq(H.calc(H.norm({...r, todoDone: [keys[0]]}), rb).todos.filter(t => t.kind === 'manual').map(t => t.key), [keys[1]], 'a régi kipipálás csak az elsőt rejti');
+    eq(H.calc(H.norm({...r, todoDone: keys}), rb).todos.filter(t => t.kind === 'manual'), [], 'mindkettő kipipálható');
+    // hosszú (homebrew) név: a kulcs a Sheet.norm 200 karakteres vágása után is egyezik, így a kipipált eltűnik
+    const hosszu = 'Nagyon hosszú nevű homebrew faj '.repeat(4);
+    rb.races.push({n: hosszu, s: 'HB', sp: {walk: 30}, fx: [{todo: 'Válassz színt'}, {todo: 'Válassz elemet ' + 'x'.repeat(150)}]});
+    const r2 = mkS({race: hosszu + '|HB', levels: [{c: 'Fighter'}]});
+    const k2 = H.calc(r2, rb).todos.filter(t => t.kind === 'manual').map(t => t.key);
+    eq(k2.length, 2);
+    ok(k2.every(k => k.length <= 200), 'a kulcs legfeljebb 200 karakter');
+    eq(H.calc(H.norm({...r2, todoDone: k2}), rb).todos.filter(t => t.kind === 'manual'), [], 'hosszú névvel is kipipálható');
+  });
+
   test('támadások sorrendje: az újraszámolás (materialize) a lapon beállított sorrendet tartja, azonos nevű tételekkel is; az új tétel a számolt helyén', () => {
     const H = W.Sheet, rb = rb3();
     const s = mkS({base: {str: 16, dex: 14}, levels: lv('Fighter', 1)}, {inventory: inv('+1 Longsword'),
