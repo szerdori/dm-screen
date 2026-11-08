@@ -85,6 +85,7 @@ window.Szerzodes = (() => {
     const hp = isObj(c.hp) ? c.hp : c.hp != null ? {max: c.hp} : {};
     o.hp = {max: Math.max(1, num(hp.max, 10)), formula: str(hp.formula)};
     if (hp.cur != null) o.hp.cur = Math.max(0, num(hp.cur, o.hp.max));
+    if (num(hp.temp, 0) > 0) o.hp.temp = Math.floor(num(hp.temp, 0));  // csak mentett encounterben (lásd SZERZODES.md)
     o.ac = num(o.ac, 10) || 10;
     o.legendaryCount = Math.max(0, Math.min(10, Math.floor(num(o.legendaryCount, 0))));
     const sv = isObj(c.saves) ? c.saves : {};
@@ -116,7 +117,7 @@ window.Szerzodes = (() => {
   function normCombatant(x) {
     x = isObj(x) ? x : {};
     const c = normCreature(x.c);
-    delete c.hp.cur;
+    delete c.hp.cur; delete c.hp.temp;
     const o = {
       cid: safeId(x.cid), num: Math.max(0, Math.floor(num(x.num, 0))), c,
       hp: Math.max(0, num(x.hp, c.hp.max)), temp: Math.max(0, num(x.temp, 0)), init: num(x.init, null),
@@ -166,7 +167,7 @@ window.Szerzodes = (() => {
     };
   }
 
-  if (typeof modul === 'function') modul('szerzodes', 5);
+  if (typeof modul === 'function') modul('szerzodes', 6);
   return {UT, HELYI, MEGJELENITES, CSATORNA, SECTIONS, TEMPLATE, KINDS, SIDES, VIS, ALLAPOTOK, ALAP_BEALLITASOK, str, safeId, blankCreature, splitEntry,
     normInventory, normCreature, normCombatant, sanitizeState, normPublicChar};
 })();

@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 6);
+modul('akciok', 7);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -206,16 +206,12 @@ const AKCIOK = {
 
   // mentett encounterek
   encSave: () => {
-    const list = S.enc.list.filter(y => y.c.kind !== 'pc').map(y => y.c);
-    if (!list.length) { alert('Nincs nem-játékos lény az encounterben.'); return; }
-    S.saved.push({id: uid(), name:$('#encName').value.trim() || 'Encounter ' + (S.saved.length + 1), list: structuredClone(list)});
-    save(); renderLib();
+    if (!encounterMentese($('#encName').value.trim())) { alert('Nincs nem-játékos lény az encounterben.'); return; }
+    renderLib();
   },
   encLoad: el => {
     const enc = S.saved[+el.closest('[data-enc]').dataset.enc];
-    const groups = {};
-    enc.list.forEach(c => (groups[c.name] = groups[c.name] || []).push(c));
-    Object.values(groups).forEach(g => addToEncounter(g[0], g.length)); render();
+    encounterBetoltese(enc); render();
     log(`⚔ ${esc(enc.name)} betöltve`); closeModal();
   },
   encDel: el => { if (confirm('Törlöd ezt a mentett encountert?')) { S.saved.splice(+el.closest('[data-enc]').dataset.enc, 1); save(); renderLib(); } },

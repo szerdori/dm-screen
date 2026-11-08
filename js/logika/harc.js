@@ -1,7 +1,7 @@
 // Harc (logika, DOM nélkül): kockadobás, initiative-sorrend, encounter, körök, sebzés és gyógyítás.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('harc', N) és az index.html-ben a harc.js?v=N és a VART_MODULOK.
 'use strict';
-modul('harc', 3);
+modul('harc', 4);
 
 // ---------- kocka ----------
 function roll(expr) {
@@ -57,7 +57,7 @@ function order() {
     (a.c.kind === 'pc' ? 0 : 1) - (b.c.kind === 'pc' ? 0 : 1) ||
     nameOf(a).localeCompare(nameOf(b), 'hu', {numeric: true}));
 }
-function addToEncounter(creature, count = 1) {
+function addToEncounter(creature, count = 1, mentettHp = false) {  // mentettHp: mentett encounterből, a hp.cur-t nem dobja újra
   const c0 = normCreature(structuredClone(creature));
   const base = c0.name;
   const same = S.enc.list.filter(x => x.c.name === base);
@@ -70,9 +70,9 @@ function addToEncounter(creature, count = 1) {
     c.libId = creature.libId || creature.id;
     const num = c.kind === 'pc' ? 0 : (count > 1 || same.length ? next++ : 0);
     let hp = c.hp.cur ?? c.hp.max;
-    if (S.settings.rollHp && c.hp.formula && c.kind !== 'pc') hp = Math.max(1, roll(c.hp.formula).total);
+    if (S.settings.rollHp && c.hp.formula && c.kind !== 'pc' && !(mentettHp && c.hp.cur != null)) hp = Math.max(1, roll(c.hp.formula).total);
     if (c.kind !== 'pc') c.hp.max = Math.max(c.hp.max, hp);
-    delete c.hp.cur;
+    delete c.hp.cur; delete c.hp.temp;
     const sheet = c.kind === 'pc' && SHEETS[c.libId];  // telefonos lapnál a lap szerinti HP és temp HP
     if (sheet) hp = sheet.hp.cur;
     const x = {cid: uid(), num, c, hp, temp: sheet ? sheet.hp.temp : 0, init: null, cond: sheet ? condsFromSheet(sheet) : [], conc: !!sheet?.concentration, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group, hiddenP: false, publicName: ''};
@@ -82,6 +82,31 @@ function addToEncounter(creature, count = 1) {
   if (S.enc.active) added.forEach(x => { if (x.c.kind !== 'pc') x.init = roll('1d20').total + initBonusOf(x.c); });
   save();
   return added;
+}
+// ---------- mentett encounterek ----------
+// a nem játékos lények a mostani HP-jukkal (hp.cur), maximumukkal és temp HP-jukkal (hp.temp) – SZERZODES.md
+function encounterMentese(name) {
+  const list = S.enc.list.filter(y => y.c.kind !== 'pc').map(y => {
+    const c = structuredClone(y.c);
+    c.hp.cur = y.hp;
+    if (y.temp > 0) c.hp.temp = y.temp; else delete c.hp.temp;
+    return c;
+  });
+  if (!list.length) return null;
+  const e = {id: uid(), name: name || 'Encounter ' + (S.saved.length + 1), list};
+  S.saved.push(e); save();
+  return e;
+}
+// betöltés a mentett HP-val; a régi (HP nélküli) mentés teljes HP-val, mint eddig
+function encounterBetoltese(enc) {
+  const groups = {};
+  enc.list.forEach(c => (groups[c.name] = groups[c.name] || []).push(c));
+  Object.values(groups).forEach(g => addToEncounter(g[0], g.length, true).forEach((x, i) => {
+    const h = g[i].hp;
+    if (h.cur == null || x.c.kind === 'pc') return;
+    x.c.hp.max = h.max; x.hp = h.cur; x.temp = h.temp || 0; x.dead = x.hp === 0;
+  }));
+  save();
 }
 function startTurn(x) {
   x.leg = 0;

@@ -836,6 +836,35 @@ describe('Mentett encounterek és új harc', () => {
     W.openLib('enc'); click('[data-act="encLoad"]');
     eq(names().sort(), ['Goblin 1', 'Goblin 2', 'Goblin 3', 'Ogre', 'Rella']);
   });
+  test('a HP, a maximum és a temp HP lényenként mentődik és töltődik vissza', () => {
+    const [p] = add(pc('Rella')); const g = add(mk(), 3); const [o] = add(ogre());
+    p.hp = 4; g[0].hp = 3; g[1].hp = 0; g[1].dead = true; g[2].temp = 5; o.c.hp.max = 70; o.hp = 66;
+    W.openLib('enc'); $('#encName').value = 'Kápolna'; click('[data-act="encSave"]');
+    const s = A('S.saved')[0];
+    eq(s.list.map(c => [c.hp.cur, c.hp.max, c.hp.temp]), [[3, 7, undefined], [0, 7, undefined], [7, 7, 5], [66, 70, undefined]]);
+    ok($('[data-enc="0"] small').textContent.includes('3× Goblin, Ogre · 3 sérült'), 'a lista jelzi a sérülteket');
+    // a mentett encounter tisztítás (Firestore-betöltés) után is ugyanez
+    const t = W.Szerzodes.sanitizeState({saved: JSON.parse(JSON.stringify(A('S.saved')))}).saved[0];
+    eq(t.list.map(c => [c.hp.cur, c.hp.temp]), [[3, undefined], [0, undefined], [7, 5], [66, undefined]]);
+    A('S.enc.list = S.enc.list.filter(x => x.c.kind === "pc")'); W.render();
+    A('S.settings.rollHp = true'); stubRnd(1);  // a mentett HP-t nem dobja újra
+    W.openLib('enc'); click('[data-act="encLoad"]');
+    const by = n => A('S.enc.list').find(x => W.nameOf(x) === n);
+    eq(['Goblin 1', 'Goblin 2', 'Goblin 3', 'Ogre'].map(n => [by(n).hp, by(n).c.hp.max, by(n).temp, by(n).dead]),
+      [[3, 7, 0, false], [0, 7, 0, true], [7, 7, 5, false], [66, 70, 0, false]]);
+    eq(by('Rella').hp, 4);
+    eq(['Goblin 1', 'Goblin 2', 'Goblin 3'].map(n => by(n).group).filter((v, i, a) => a.indexOf(v) === i).length, 1);  // egy initiative-csoport
+    ok(!('cur' in by('Goblin 1').c.hp) && !('temp' in by('Goblin 3').c.hp), 'a harcosban nincs hp.cur / hp.temp');
+    eq(W.normCombatant({c: {hp: {max: 7, cur: 2, temp: 4}}}).c.hp, {max: 7, formula: ''});
+  });
+  test('régi (HP nélküli) mentett encounter: teljes HP, dobott HP-nál dob', () => {
+    A(`S.saved = [{id: 'r1', name: 'Régi', list: [${JSON.stringify(mk())}, ${JSON.stringify(mk())}]}]`);
+    A('S.settings.rollHp = true'); stubRnd(2, 3, 6, 6);
+    W.openLib('enc');
+    ok(!$('[data-enc="0"] small').textContent.includes('sérült'), 'nincs sérült-jelzés');
+    click('[data-act="encLoad"]');
+    eq(A('S.enc.list').map(x => [x.hp, x.c.hp.max]), [[5, 7], [12, 12]]);
+  });
   test('„Új harc”: ellenfelek ki, játékosok maradnak, initiative és kör nullázva', () => {
     const [p] = add(pc('Rella')); add(mk(), 2);
     p.init = 12; p.cond = [{name: 'Prone', rounds: null}]; W.lep(1); W.lep(1);

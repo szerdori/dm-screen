@@ -1,7 +1,7 @@
 // Könyvtár ablak (felület): a fülek (könyvtár, 5e.tools, D&D Beyond, tárgyak, JSON, mentett encounterek) és a fájlbetöltés.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('konyvtar-ablak', N) és az index.html-ben a konyvtar-ablak.js?v=N és a VART_MODULOK.
 'use strict';
-modul('konyvtar-ablak', 5);
+modul('konyvtar-ablak', 6);
 
 let libTab = 'lib';
 // ---------- könyvtár ----------
@@ -193,9 +193,11 @@ function fajlBetoltesEsemenyek() {
   });
 }
 // ---------- mentett encounterek ----------
+// a mentett HP-ból: hány lény töltődik be sérülten
+const serultSzoveg = list => { const n = list.filter(c => c.hp.cur != null && c.hp.cur < c.hp.max).length; return n ? ` · ${n} sérült` : ''; };
 function encTabHtml() {
-  return `<p>Előre összerakott harcok. Mentéskor az encounterben lévő <b>nem játékos</b> lények kerülnek bele; betöltéskor hozzáadódnak a mostani encounterhez (a játékosok maradnak).</p>
+  return `<p>Előre összerakott harcok. Mentéskor az encounterben lévő <b>nem játékos</b> lények kerülnek bele a mostani HP-jukkal (és temp HP-jukkal); betöltéskor ugyanezzel a HP-val hozzáadódnak a mostani encounterhez (a játékosok maradnak).</p>
     <div class="toolbar"><input id="encName" placeholder="Encounter neve, pl. Romos kápolna – kultisták" style="flex:1"><button class="primary" data-act="encSave">Jelenlegi mentése</button></div>
-    <div class="rows">${S.saved.length ? S.saved.map((e, i) => `<div class="lrow" data-enc="${i}"><span class="nm"><b>${esc(e.name)}</b><small>${esc(summarize(e.list))}</small></span>
+    <div class="rows">${S.saved.length ? S.saved.map((e, i) => `<div class="lrow" data-enc="${i}"><span class="nm"><b>${esc(e.name)}</b><small>${esc(summarize(e.list) + serultSzoveg(e.list))}</small></span>
       <button class="primary" data-act="encLoad">Betöltés</button><button class="small" data-act="encDel">🗑</button></div>`).join('') : '<p class="muted">Még nincs mentett encounter.</p>'}</div>`;
 }

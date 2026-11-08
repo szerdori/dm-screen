@@ -55,6 +55,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 - **Játékosok dobásai a DM Screen naplójában** (a lap `rolls` mezője, `docs/mukodes.md`): élesben (a `main`-en, feltöltve 2026-11-06). Hátra: próba egy játékos telefonjával.
 - **Dobáskérés** (`TERV-dobaskeres.md`, a lap `rollReq` mezője, `js/logika/dobaskeres.js`): élesben (a `main`-en, feltöltve 2026-11-07). Hátra: próba egy játékos telefonjával.
 - **Flavour text a sebzésdobásokhoz** (`TERV-flavour.md`, `js/logika/leiras.js`, a lap `rolls[].dt` / `dk` mezője): élesben (a `main`-en, feltöltve 2026-11-08). Hátra: próba játék közben és egy játékos telefonjával. Döntések: saját mondatbank (nem AI), csak dobáskor, közepes véresség kapcsoló nélkül, a telefonos dobások is; a HP-hoz mért súlyosság, a halálos csapás és a mellétalálás szövege később.
+- **Mentett encounter a HP-kkal** (`docs/mukodes.md`, a `dmscreen_saved` lényeinek `hp.cur` / `hp.temp` mezője): élesben (a `main`-en, feltöltve 2026-11-08). Döntések: HP + max HP + temp HP (állapot, koncentráció, jegyzet nem); betöltés mindig a mentett HP-val, külön „teljes HP-val” gomb nincs.
 - **Refaktor:** `TERV-refaktor.md` (elfogadva 2026-10-29), ág: `refaktor-retegek`. Kész és élesben: 0–7. lépés (a 7.: `Sheet.calc` → `CALC_LEPESEK`, 2026-10-30). A 8. lépés (opcionális, a `karakter.html` rétegei) a 3. fázis élesítése után.
 
 ## Nyitott / félretett ügyek (2026-10-29)
