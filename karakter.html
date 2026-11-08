@@ -495,7 +495,7 @@ const varazsFajta = tx => /melee spell attack/i.test(tx || '') ? 'ms' : /spell a
 const TAVOLSAGI_RE = /range|ranged|bow\b|crossbow|sling|dart/i;
 function tamadasFx(s, a) {
   const sp = s.spells.find(x => x.name.toLowerCase() === a.name.toLowerCase()), r = sp && rbSpell(sp);
-  const dk = sp ? varazsFajta(r?.tx) : /\b(bite|claws?|talons?|horns?|hooves|tail)\b/i.test(a.name) ? 'nat' : TAVOLSAGI_RE.test(a.name + ' ' + a.note) ? 'rw' : 'mw';
+  const dk = sp ? varazsFajta(r?.tx) : /\b(bite|claws?|talons?|horns?|hooves|tail)\b/i.test(a.name) ? 'nat' : TAVOLSAGI_RE.test(a.name + ' ' + a.note) && !/\bthrown\b/i.test(a.note) ? 'rw' : 'mw';  // dobófegyver (thrown): közelharci leírás, mint a DM Screenen
   return {dt: H.dmgType(a.dmg + ' ' + a.note) || H.dmgType(r?.tx), dk};
 }
 // sebzés-szövegből a kocka (pl. „1d8+3 slashing” → 1d8+3)

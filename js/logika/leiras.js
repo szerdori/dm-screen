@@ -2,7 +2,7 @@
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('leiras', N) és az index.html-ben a leiras.js?v=N és a VART_MODULOK.
 // A célpont humanoid; a véresség közepes (van vér és seb, de nem részletezi) – a felhasználó döntése, kapcsoló nincs.
 'use strict';
-modul('leiras', 1);
+modul('leiras', 2);
 
 // ---------- testrészek: előre ragozott alakok ----------
 // {ba} = -ba/-be (a vállába), {n} = -n (a vállán), {t} = tárgyeset (a vállát), {a} = birtokos alanyeset (a válla)
@@ -182,17 +182,21 @@ const HELYORZO_RE = /\{(ba|n|t|a)\}/;
 
 // ---------- a támadás felismerése ----------
 const TERMESZETES_RE = /\b(bite|claws?|talons?|tail|gore|slam|tentacles?|horns?|hooves|sting|beak|tusks?|pincers?|fist)\b/i;
+const TAVOLSAGI_RE = /\brange|bow\b|\bslings?\b|\bdarts?\b/i;  // range 80/320, ranged, Longbow, Light Crossbow, Sling, Dart
 // a támadás fajtája a nevéből és a szövegéből: mw/rw = közelharci/távolsági fegyver, ms/rs = spell attack, sv = mentős (területi), sp = varázslat, nat = természetes fegyver
 function tamadasFajta(nev, szoveg = '') {
   const t = String(szoveg);
   if (TERMESZETES_RE.test(String(nev))) return 'nat';
-  if (/melee or ranged weapon attack/i.test(t)) return 'mw';
+  if (/melee (or|vagy) ranged weapon attack/i.test(t)) return 'mw';
   if (/melee weapon attack|melee attack roll/i.test(t)) return 'mw';
   if (/ranged weapon attack|ranged attack roll/i.test(t)) return 'rw';
   if (/melee spell attack/i.test(t)) return 'ms';
   if (/ranged spell attack/i.test(t)) return 'rs';
   if (/saving throw/i.test(t)) return 'sv';
   if (/\bspell\b/i.test(t)) return 'sp';
+  // a telefonos lapból jövő sor („Attack: +5 to hit.”, lapszinkron.js): a név és a megjegyzés dönt (range 80/320, bow…)
+  // a dobófegyver (thrown: Dagger, Javelin) közelharci, mint a szörnynél a „Melee or Ranged”
+  if (/\battack:\s*[+\-−]?\d+\s+to hit/i.test(t)) return TAVOLSAGI_RE.test(nev + ' ' + t) && !/\bthrown\b/i.test(t) ? 'rw' : 'mw';
   return '';
 }
 // a dobás súlyossága a kockák lehetséges tartományához mérve (a krit külön)

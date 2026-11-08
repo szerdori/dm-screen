@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 11);
+modul('lapszinkron', 12);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -17,6 +17,8 @@ const hpShadow = x => JSON.stringify([x.hp, x.temp, !!x.conc, syncedConds(x.cond
 // a lap állapotai a harcbeli példányra; a DM által megadott körszám név szerint megmarad, a csak harcbeli „Exhaustion” is
 const condsFromSheet = (s, old = []) => [...s.conditions.map(n => ({name: n, rounds: old.find(k => k.name.toLowerCase() === n.toLowerCase())?.rounds ?? null})),
   ...old.filter(k => k.name === 'Exhaustion')];
+// a lap sebzése („1d8+3 slashing”) a statblokk szokása szerint „… slashing damage” lesz: így a DM Screen ismeri a típust (flavour text, leiras.js)
+const SEBZES_SZO_RE = new RegExp(`\\b(${Sheet.DMG_TYPES.join('|')})\\b(?!\\s+damage)`, 'gi');
 function sheetToCreature(s, base) {
   const H = Sheet;
   // szabálymotoros lapnál a mentők és a skillek a cache-ből (abban már benne van pl. az Aura of Protection, a Remarkable Athlete);
@@ -29,7 +31,7 @@ function sheetToCreature(s, base) {
   const skillMods = {}; for (const k of Object.keys(SKILLS)) skillMods[k] = {b: cache?.skills?.[k] ?? H.skillBonus(s, k), p: H.skillProfOf(s, k)};
   const actions = s.attacks.map(a => {
     const hit = a.hit.trim() ? sgn(parseInt(a.hit.replace('−', '-')) || 0) : '';
-    return {name: a.name, text: [hit ? `Attack: ${hit} to hit.` : '', a.dmg ? `Hit: ${a.dmg}.` : '', a.note].filter(Boolean).join(' ')};
+    return {name: a.name, text: [hit ? `Attack: ${hit} to hit.` : '', a.dmg ? `Hit: ${a.dmg.replace(SEBZES_SZO_RE, '$1 damage')}.` : '', a.note].filter(Boolean).join(' ')};
   });
   const traits = s.features.map(f => ({name: f.name, text: f.text.slice(0, 600)}));
   if (s.resources.length) traits.unshift({name: 'Erőforrások', text: s.resources.map(r => `${r.name}: ${r.max - r.used}/${r.max}`).join(', ')});

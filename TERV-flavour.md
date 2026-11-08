@@ -23,6 +23,7 @@ A felhasználó kérése és döntései (2026-11-08). Cél: minden sebzésdobás
 - Leírás csak akkor jön, ha van támadó (név) és ismert a típus vagy a fajta: a kézi kockadobás (d6, d20 gomb, saját kifejezés) és a HP-képlet dobása nem kap.
 - Több kockás támadásnál (pl. 1d8+3 slashing + 2d6 fire) minden dobás a saját típusa szerint kap mondatot.
 - Nem kap leírást a támadás nem sebző kockája (utána „hit points”, „rounds”, „minutes”…, pl. „regains 1d4 hit points”). Mentős varázslatnál nincs krit (a Shift-tel duplázott összeg dönt). A fizikai sebzésű varázslat (pl. Ice Knife) varázslatos mondatot kap, nem fegyverest. A telefonos dobás súlyossága a lap hatásaival (Rage, Hunter's Mark) együtt mérődik.
+- **A DM dobása játékos karakterrel és NPC-vel is** (a felhasználó kérése, 2026-11-08): a telefonos lapból jövő karakter támadássora a DM Screenen „… slashing damage” alakot kap (a lapon „1d8+3 slashing”), a sima „Attack: +5 to hit.” sornál a név és a megjegyzés dönt a közelharci / távolsági fajtáról (`lapszinkron.js`, `leiras.js`).
 - A krit testrészei között nincs fej és nyak (a „markolatig a nyakába” már túl véres); a fejet a mondatok maguk említik, ahol illik.
 
 ## Adat (részletek: `SZERZODES.md`)

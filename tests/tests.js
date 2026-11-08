@@ -3299,7 +3299,7 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     eq([lib().name, lib().ac, lib().hp.max, lib().cr, lib().owner, lib().source], ['Minta Tolvaj', 14, 24, 'Szint 3', 'a@x.hu', 'Karakterlap']);
     has(lib().type, 'Lightfoot Halfling — Rogue 3 (Thief)');
     eq([lib().skillMods.stealth, lib().saves, lib().initBonus], [{b: 7, p: 2}, {dex: 5, int: 3}, 3]);
-    ok(lib().actions.some(a => a.text === 'Attack: +5 to hit. Hit: 1d6+3 piercing. finesse, light'), JSON.stringify(lib().actions));
+    ok(lib().actions.some(a => a.text === 'Attack: +5 to hit. Hit: 1d6+3 piercing damage. finesse, light'), JSON.stringify(lib().actions));
     has(lib().senses, 'passive Perception 13');
     ok(!f.log.some(l => /sheets\//.test(l)), 'betöltéskor nem írhat a lapra: ' + f.log);
     eq(f.store['characters/p1'].name, 'Minta Tolvaj', 'a csapat a lap szerinti nevet látja');
@@ -5468,6 +5468,25 @@ describe('Flavour text a sebzésdobásokhoz (leiras.js, TERV-flavour.md)', () =>
       ['Shocking Grasp', 'Melee Spell Attack: +5'], ['Fire Bolt', 'Ranged Spell Attack: +5'], ['Fire Breath', 'DC 12 Dexterity saving throw, 3d6 fire damage'],
       ['Bite', 'Melee Weapon Attack: +4 to hit'], ['Claws', 'Melee Attack Roll: +6'], ['Spellcasting', 'The mage casts one spell'], ['Heal', 'regains 2d8 hit points']].map(([n, t]) => W.tamadasFajta(n, t)),
       ['mw', 'rw', 'mw', 'ms', 'rs', 'sv', 'nat', 'nat', 'sp', '']);
+    // a telefonos lapból jövő sor (lapszinkron.js) és a magyar „vagy”
+    eq([['Shortsword', 'Attack: +5 to hit. Hit: 1d6+3 piercing damage. finesse, light'], ['Shortbow', 'Attack: +5 to hit. Hit: 1d6+3 piercing damage. range 80/320'],
+      ['Longbow', 'Attack: +7 to hit.'], ['Light Crossbow', 'Attack: +5 to hit.'], ['Dagger', 'Melee vagy Ranged Weapon Attack: +6 to hit'],
+      ['Javelin', 'Attack: +5 to hit. Hit: 1d6+3 piercing damage. Thrown · range 30/120']].map(([n, t]) => W.tamadasFajta(n, t)),
+      ['mw', 'rw', 'rw', 'rw', 'mw', 'mw']);
+  });
+  test('játékos és NPC a telefonos lapból: a sebzésdobása is leírást kap (a lap „1d8+3 slashing” sebzése „… slashing damage” lesz)', () => {
+    const lap = {...W.Sheet.norm({name: 'Aranka', classes: [{name: 'Fighter', level: 3}], attacks: [
+      {name: 'Longsword', hit: '+5', dmg: '1d8+3 slashing', note: ''}, {name: 'Longbow', hit: '+5', dmg: '1d8+3 piercing damage', note: 'range 150/600'},
+      {name: 'Flame Blade', hit: '+5', dmg: '1d8+3 slashing + 1d6 fire', note: ''}]}), id: 'p1'};
+    for (const kind of ['pc', 'npc']) {
+      const c = W.sheetToCreature(lap, {kind});
+      eq(c.actions.map(a => a.text), ['Attack: +5 to hit. Hit: 1d8+3 slashing damage.', 'Attack: +5 to hit. Hit: 1d8+3 piercing damage. range 150/600', 'Attack: +5 to hit. Hit: 1d8+3 slashing damage + 1d6 fire damage.']);
+      A('S.enc.list = []'); add({...c, id: 'p1-' + kind});
+      const kocka = (atk, e) => $$('.tile .atk').find(a => a.dataset.label === atk).querySelector(`.roll[data-roll="${e}"]`);
+      click(kocka('Longsword', '1d8+3')); has(lastLog(), 'data-flv="slashing|mw|', kind);
+      click(kocka('Longbow', '1d8+3')); has(lastLog(), 'data-flv="piercing|rw|', kind);
+      click(kocka('Flame Blade', '1d6')); has(lastLog(), 'data-flv="fire|mw|', kind);
+    }
   });
   test('ugyanaz a mondat nem jön kétszer egymás után; ismeretlen típus és fajta = nincs leírás', () => {
     stubRnd(1);
