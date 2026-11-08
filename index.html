@@ -42,6 +42,7 @@ main{display:flex;height:calc(100% - 52px)}
 .le .who{color:var(--muted)} .le b{font-size:15px}
 .le.crit b{color:var(--green)} .le.fumble b{color:var(--red)}
 .le.turn{color:var(--accent);font-weight:600} .le.warn{color:var(--orange)} .le.round{color:var(--accent);text-align:center;font-weight:700}
+.le .flv{font-style:italic;color:#c9bfa6;font-size:12.5px;margin-top:2px;line-height:1.35} .le .flvuj{cursor:pointer;font-style:normal;opacity:.55} .le .flvuj:hover{opacity:1}
 .empty{grid-column:1/-1;text-align:center;padding:60px;color:var(--muted)}
 .empty button{margin-top:12px}
 
@@ -200,14 +201,15 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 // a közös fájlok várt változata (= a lenti <script src> ?v= száma); a verzióőr (regiFajl) ezzel veti össze a betöltött fájlokat:
 // régi, gyorsítótárazott példánynál a lapokra nem írunk (syncSheets). A fájlok előtt áll, hogy induláskor már meglegyen.
 // Új fájl vagy verzióemelés: a fájlban modul('név', N), itt és a <script src>-ben ugyanaz az N (teszt nézi).
-const VART_MODULOK = {kozos: 3, sheet: 17, szerzodes: 5, tar: 4, alap: 2, harc: 2, nehezseg: 1, loot: 1, csapat: 2, 'import-5etools': 1, 'import-ddb': 2, 'import-json': 2, szabalykonyv: 3, lapszinkron: 10, dobaskeres: 1, mentes: 3, konyvtar: 1, harcter: 1, 'jatekos-kepernyo': 1, modal: 2, 'konyvtar-ablak': 5, szerkeszto: 2, ablakok: 4, akciok: 5, indulas: 3};
+const VART_MODULOK = {kozos: 3, sheet: 18, szerzodes: 5, tar: 4, alap: 2, leiras: 1, harc: 3, nehezseg: 1, loot: 1, csapat: 2, 'import-5etools': 1, 'import-ddb': 2, 'import-json': 2, szabalykonyv: 3, lapszinkron: 11, dobaskeres: 1, mentes: 3, konyvtar: 1, harcter: 2, 'jatekos-kepernyo': 1, modal: 2, 'konyvtar-ablak': 5, szerkeszto: 2, ablakok: 4, akciok: 6, indulas: 3};
 </script>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=17"></script>
+<script src="sheet.js?v=18"></script>
 <script src="szerzodes.js?v=5"></script>
 <script src="js/adat/tar.js?v=4"></script>
 <script src="js/logika/alap.js?v=2"></script>
-<script src="js/logika/harc.js?v=2"></script>
+<script src="js/logika/leiras.js?v=1"></script>
+<script src="js/logika/harc.js?v=3"></script>
 <script src="js/logika/nehezseg.js?v=1"></script>
 <script src="js/logika/loot.js?v=1"></script>
 <script src="js/logika/csapat.js?v=2"></script>
@@ -215,17 +217,17 @@ const VART_MODULOK = {kozos: 3, sheet: 17, szerzodes: 5, tar: 4, alap: 2, harc: 
 <script src="js/logika/import-ddb.js?v=2"></script>
 <script src="js/logika/import-json.js?v=2"></script>
 <script src="js/logika/szabalykonyv.js?v=3"></script>
-<script src="js/logika/lapszinkron.js?v=10"></script>
+<script src="js/logika/lapszinkron.js?v=11"></script>
 <script src="js/logika/dobaskeres.js?v=1"></script>
 <script src="js/logika/mentes.js?v=3"></script>
 <script src="js/logika/konyvtar.js?v=1"></script>
-<script src="js/felulet/harcter.js?v=1"></script>
+<script src="js/felulet/harcter.js?v=2"></script>
 <script src="js/felulet/jatekos-kepernyo.js?v=1"></script>
 <script src="js/felulet/modal.js?v=2"></script>
 <script src="js/felulet/konyvtar-ablak.js?v=5"></script>
 <script src="js/felulet/szerkeszto.js?v=2"></script>
 <script src="js/felulet/ablakok.js?v=4"></script>
-<script src="js/felulet/akciok.js?v=5"></script>
+<script src="js/felulet/akciok.js?v=6"></script>
 <script src="js/indulas.js?v=3"></script>
 
 <script src="firebase-config.js"></script>

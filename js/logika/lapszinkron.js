@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 10);
+modul('lapszinkron', 11);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -155,7 +155,8 @@ function jatekosDobasok() {
   const lista = dobasokElso ? uj.slice(-Sheet.ROLLS_MAX) : uj;
   dobasokElso = false;
   // kérésre jött dobás (req): a dobaskeres.js dönti el, mi lesz vele (Initiative a harcba, DC-nél ✔ / ✖)
-  for (const r of lista) Ertesito.naplo(dobasSor(r) + (r.req ? esc(keresValasz(r.lap, r)) : ''), r.nat === 20 ? 'crit' : r.nat === 1 ? 'fumble' : '');
+  // a flavour text a sor végére (a 🔄 a sor végéig cseréli)
+  for (const r of lista) Ertesito.naplo(dobasSor(r) + (r.req ? esc(keresValasz(r.lap, r)) : '') + dobasLeiras(r), r.nat === 20 ? 'crit' : r.nat === 1 ? 'fumble' : '');
 }
 // óra:perc; ha nem mai, elé a dátum is (a betöltéskor megjelenő régebbi dobásokhoz)
 const dobasIdo = at => {
@@ -164,6 +165,11 @@ const dobasIdo = at => {
   return d.toDateString() === new Date().toDateString() ? ido : d.toLocaleDateString('hu-HU', {month: '2-digit', day: '2-digit'}) + ' ' + ido;
 };
 const dobasSor = r => `<span class="who">📱 ${esc(r.who || 'Névtelen')}</span> ${esc(r.label)}: <b>${esc(r.total)}</b> <small>${esc(r.detail)}${r.nat === 20 ? ' — KRITIKUS!' : r.nat === 1 ? ' — elvétve' : ''} · ${esc(dobasIdo(r.at))}</small>`;
+// telefonos sebzésdobás (dt / dk, TERV-flavour.md): flavour text; a krit a címke vége. A kifejezés a részletek eleje („1d8+3: [5] +3”)
+// és a lap hozzáadott hatásai („… +2 Rage +1d6 Hunter's Mark [4]”: előjeles érték, utána a forrás neve), hogy a súlyosság a teljes összeghez mérődjön
+const HATAS_RE = /\s([+-]\d*(?:d\d+)?)\s+(?=[A-Za-zÀ-ű])/g;
+const dobasKifejezes = detail => { const [eleje, ...resz] = String(detail).split(':'); return eleje + [...resz.join(':').matchAll(HATAS_RE)].map(m => m[1]).join(''); };
+const dobasLeiras = r => r.dt || r.dk ? leirasHtml({type: r.dt, kind: r.dk, expr: dobasKifejezes(r.detail), total: r.total, crit: /\(krit\)$/.test(r.label)}) : '';
 const lapKeszul = new Set();  // dupla kattintás ellen: amíg a szabálykönyv töltődik
 // új lap a könyvtári lényből (📱): ha a szabálykönyv ismeri az osztályait, rögtön szabálymotoros (mint a telefonos Átállítás), különben kézi.
 // Visszatér: true = átállítva, false = kézi lap (a szabálykönyv nem ismeri az osztályait, vagy nincs feltöltve), 'hiba' = kézi lap, mert az átállítás hibát dobott, null = nem készült (már van lapja, vagy épp készül)

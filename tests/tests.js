@@ -4928,6 +4928,18 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     openSheet({owner: 'b@x.hu', rollReq: {id: 'k4', kind: 'init', label: '', mode: '', by: '', at: most}}, 'dm@x.hu', true);
     ok(kq('#keresPop').hidden, 'a DM-nek nem ugrik fel');
   });
+  ktest('sebzésdobás: a sebzés típusa és a támadás fajtája (dt / dk) is felkerül a DM Screen flavour textjéhez; a d20-on nincs', () => {
+    openSheet();
+    K.rnd = () => 3;
+    const dob = re => { kclick(kqa('[data-act="dmg"]').find(b => re.test(b.dataset.label))); const r = lastUpdate().rolls[0]; return [r.dt, r.dk]; };
+    eq(dob(/Shortsword/), ['piercing', 'mw']);
+    eq(dob(/Shortbow/), ['piercing', 'rw']);
+    kclick('[data-tab="kep"]');
+    kclick(kqa('.li').find(r => r.textContent.includes('Stealth')).querySelector('[data-act="d20"]'));
+    ok(!('dt' in lastUpdate().rolls[0]) && !('dk' in lastUpdate().rolls[0]), 'd20-on nincs');
+    eq(['You make a melee spell attack', 'Make a ranged spell attack', 'Each creature must make a Dexterity saving throw', 'A creature you touch regains'].map(t => K.eval('varazsFajta')(t)), ['ms', 'rs', 'sv', 'sp']);
+    eq(K.eval('tamadasFx')(K.eval('sheets.get("p1")'), {name: 'Bite', dmg: '1d6+2 piercing', note: ''}), {dt: 'piercing', dk: 'nat'});
+  });
   ktest('dobás a lapra is felkerül (rolls, legújabb elöl, legfeljebb 15) a DM Screen naplójához; idegen lapnál nem ír', () => {
     openSheet();
     kclick('[data-tab="kep"]');
@@ -5384,6 +5396,116 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     const seen = new Set();
     for (let i = 0; i < 2000; i++) { const v = ORIGK.rnd(6); ok(v >= 1 && v <= 6 && Number.isInteger(v), 'érvénytelen: ' + v); seen.add(v); }
     eq(seen.size, 6);
+  });
+});
+
+// ======================================================================
+describe('Flavour text a sebzésdobásokhoz (leiras.js, TERV-flavour.md)', () => {
+  const FOK = ['karc', 'rendes', 'sulyos', 'krit'], FAJTAK = ['mw', 'rw', 'ms', 'rs', 'sv', 'sp', 'nat', 'w', ''], TAMADAS = ['mw', 'rw', 'ms', 'rs', 'nat', 'w'];
+  const FIZ = ['slashing', 'piercing', 'bludgeoning'], HELYORZO = /\{(ba|n|t|a)\}/;
+  test('mondatbank: minden típus × fajta × súlyosság párosra kész, kitöltött mondat jön; típus nélkül csak támadásnál', () => {
+    const L = A('LEIRAS'), hibak = [];
+    for (const [k, p] of Object.entries(L)) for (const f of FOK) {
+      if (!(p[f]?.length >= 3)) hibak.push(`${k}/${f}: kevés mondat`);
+      for (const s of p[f] || []) if (/[{}]/.test(s.replace(/\{(ba|n|t|a)\}/g, '')) || !/[.!]$/.test(s)) hibak.push(`${k}/${f}: ${s}`);
+    }
+    for (const t of [...A('Sheet.DMG_TYPES'), '']) for (const k of FAJTAK) for (const f of FOK) for (let i = 0; i < 4; i++) {
+      const s = W.sebzesLeiras({type: t, kind: k, fokozat: f});
+      if (!t && !TAMADAS.includes(k)) { if (s !== '') hibak.push(`típus nélkül, ${k}: nem kellene leírás`); continue; }
+      if (!s || /[{}]/.test(s) || s[0] !== s[0].toUpperCase() || !/[.!]$/.test(s)) hibak.push(`${t}/${k}/${f}: ${s}`);
+    }
+    eq(hibak, []);
+    eq(Object.keys(L).filter(k => !k.includes(':') && !['varazs', 'terulet'].includes(k)).sort(), A('Sheet.DMG_TYPES').filter(t => !FIZ.includes(t)).sort(), 'minden energiatípusnak saját csoport');
+  });
+  test('mentős (területi) varázslatnál testrész nélküli mondat; ehhez energiánál fokozatonként legalább kettő van', () => {
+    const L = A('LEIRAS');
+    for (const t of A('Sheet.DMG_TYPES').filter(t => !FIZ.includes(t))) for (const f of FOK) ok(L[t][f].filter(s => !HELYORZO.test(s)).length >= 2, `${t}/${f}`);
+    const tuz = new Set(L.fire.sulyos.filter(s => !HELYORZO.test(s)));
+    for (let i = 0; i < 12; i++) ok(tuz.has(W.sebzesLeiras({type: 'fire', kind: 'sv', fokozat: 'sulyos'})), 'testrész nélkül');
+    for (let i = 0; i < 6; i++) ok(L.terulet.rendes.includes(W.sebzesLeiras({type: 'piercing', kind: 'sv', fokozat: 'rendes'})), 'fizikai területi: általános');
+  });
+  test('testrészek: a súlyosság testrészeinek mind a négy alakja megvan', () => {
+    const T = A('TESTRESZ'), H = A('HELY_FOKOZAT');
+    eq(Object.keys(H).sort(), [...FOK].sort());
+    for (const [f, lista] of Object.entries(H)) for (const r of lista) ok(T[r]?.length === 4 && T[r].every(x => /^az? \S+$/.test(x)), `${f}: ${r}`);
+  });
+  test('súlyosság a kockák lehetséges tartományához mérve; a krit külön', () => {
+    eq([['2d6+3', 5], ['2d6+3', 9], ['2d6+3', 12], ['2d6+3', 15], ['7', 7], ['1d8-1', 0], ['1d6+1d4', 10], ['2d6', 'x']].map(([e, t]) => W.sebzesFokozat(e, t, false)),
+      ['karc', 'rendes', 'sulyos', 'sulyos', 'rendes', 'karc', 'sulyos', 'rendes']);
+    eq(W.sebzesFokozat('2d6+3', 5, true), 'krit');
+  });
+  test('a támadás fajtája a nevéből és a szövegéből', () => {
+    eq([['Scimitar', 'Melee Weapon Attack: +4 to hit'], ['Longbow', 'Ranged Weapon Attack: +5 to hit'], ['Javelin', 'Melee or Ranged Weapon Attack: +4'],
+      ['Shocking Grasp', 'Melee Spell Attack: +5'], ['Fire Bolt', 'Ranged Spell Attack: +5'], ['Fire Breath', 'DC 12 Dexterity saving throw, 3d6 fire damage'],
+      ['Bite', 'Melee Weapon Attack: +4 to hit'], ['Claws', 'Melee Attack Roll: +6'], ['Spellcasting', 'The mage casts one spell'], ['Heal', 'regains 2d8 hit points']].map(([n, t]) => W.tamadasFajta(n, t)),
+      ['mw', 'rw', 'mw', 'ms', 'rs', 'sv', 'nat', 'nat', 'sp', '']);
+  });
+  test('ugyanaz a mondat nem jön kétszer egymás után; ismeretlen típus és fajta = nincs leírás', () => {
+    stubRnd(1);
+    const sorok = Array.from({length: 6}, () => W.sebzesLeiras({type: 'slashing', kind: 'mw', fokozat: 'rendes'}));
+    for (let i = 1; i < sorok.length; i++) ok(sorok[i] !== sorok[i - 1], 'ismétlés: ' + sorok[i]);
+    eq([W.sebzesLeiras({type: 'xyz', kind: 'abc', fokozat: 'rendes'}), W.sebzesLeiras({type: '', kind: 'sp', fokozat: 'krit'}), W.leirasHtml({type: '', kind: 'sv'})], ['', '', '']);
+    ok(W.sebzesLeiras({type: 'FIRE', kind: 'zz', fokozat: 'karc'}).length > 10, 'nagybetűs típus is jó, ismeretlen fajtával is');
+  });
+  test('DM Screen: a csempe sebzésdobása alá leírás kerül (típus, fajta, súlyosság); 🔄 új mondat; kézi dobásnál és típus nélkül nincs', () => {
+    add(mk());
+    stubRnd(1);
+    click($$('.tile .atk .roll[data-roll]').find(r => r.dataset.roll === '1d6+2'));
+    has(lastLog(), 'Scimitar'); has(lastLog(), 'data-flv="slashing|mw|karc"');
+    const szoveg = () => $('#log .le .flv').textContent;
+    const elotte = szoveg(), sor = lastLog().slice(0, lastLog().indexOf('<div class="flv"')), db = A('logLines').length;
+    click('#log .flvuj');
+    ok(szoveg() !== elotte, 'új mondat'); has(lastLog(), sor, 'a dobássor nem változott'); eq(A('logLines').length, db, 'nem új sor');
+    click($$('.tile .atk .roll[data-roll]').find(r => r.dataset.roll === '3d6'), {shiftKey: true});
+    has(lastLog(), 'data-flv="fire|sv|karc"', 'mentőnél nincs krit: a duplázott kockák összege dönt');
+    setVal('#diceInput', '2d6'); click('[data-act="rollCustom"]'); hasNot(lastLog(), 'flv', 'kézi dobás');
+    W.rollDmg('1d6', 'Goblin', 'Gyógyítás', false, {type: '', kind: 'sp'}); hasNot(lastLog(), 'flv', 'típus nélküli varázslat');
+    W.rollDmg('1d6', '', 'X', false, {type: 'fire', kind: 'rs'}); hasNot(lastLog(), 'flv', 'támadó nélkül');
+  });
+  test('a nem sebző kocka (hit points, időtartam) nem kap leírást egy támadásban sem; a fizikai sebzésű varázslat varázslatos mondatot kap', () => {
+    add(mk('Vámpírdenevér', {actions: [{name: 'Bite', text: 'Melee Weapon Attack: +4 to hit. Hit: 1d6 piercing damage, and it regains 1d4 hit points. The target is stunned for 1d4 rounds.'}]}));
+    const kocka = e => $$('.tile .atk .roll[data-roll]').find(r => r.dataset.roll === e);
+    eq([kocka('1d6').dataset.type, kocka('1d4').dataset.type], ['piercing', '-']);
+    click(kocka('1d6')); has(lastLog(), 'data-flv="piercing|nat|');
+    click(kocka('1d4')); hasNot(lastLog(), 'flv');
+    eq(W.atkInfo('Hit: 1d6 piercing damage, regains 1d4 hit points').dice.map(d => !!d.nem), [false, true]);
+    for (let i = 0; i < 8; i++) ok(!/vessző|lövedék|penge/.test(W.sebzesLeiras({type: 'piercing', kind: 'rs', fokozat: 'rendes'})), 'Ice Knife: nem nyílvessző');
+  });
+  test('statblokk: a dobás a „… fire damage” típusát és a bekezdés támadásfajtáját kapja', () => {
+    has(W.linkify('Hit: 7 (2d6) fire damage.'), 'data-type="fire"');
+    has(W.linkify('Hit: 9 (2d6 + 2) Piercing damage plus 3 (1d6) poison damage.'), 'data-type="piercing"');
+    has(W.linkify('Hit: 9 (2d6 + 2) Piercing damage plus 3 (1d6) poison damage.'), 'data-type="poison"');
+    hasNot(W.linkify('regains 2d8 fire'), 'data-type="fire"', 'csak „… damage” után');
+    has(W.linkify('and it regains 1d4 hit points'), 'data-type="-"'); has(W.linkify('stunned for 1d4 rounds'), 'data-type="-"');
+    const [x] = add(mk());
+    A(`selected = ${JSON.stringify(x.cid)}`); W.render();
+    ok($('#detail .sb p[data-kind="mw"] .roll[data-type="slashing"]'), 'Scimitar'); ok($('#detail .sb p[data-kind="sv"] .roll[data-type="fire"]'), 'Fire Breath');
+    stubRnd(6); click('#detail .sb p[data-kind="mw"] .roll[data-type="slashing"]');
+    has(lastLog(), 'data-flv="slashing|mw|sulyos"');
+  });
+  test('telefonos sebzésdobás (dt / dk): a DM naplójában leírással; a krit a címkéből; a régi, jelölés nélküli dobás és a d20 nélküle', () => {
+    const t = p => `2026-11-08T18:${String(p).padStart(2, '0')}:00.000Z`;
+    const lap = {...W.Sheet.norm({name: 'Aranka', classes: [{name: 'Rogue', level: 3}], rolls: [
+      {at: t(4), label: 'Shortsword – sebzés (krit)', total: '10', detail: '1d6+3: [3,4] +3', nat: 0, dt: 'piercing', dk: 'mw'},
+      {at: t(3), label: 'Fire Bolt', total: '3', detail: '1d10: [3]', nat: 0, dt: 'fire', dk: 'rs'},
+      {at: t(2), label: 'Shortbow – sebzés', total: '9', detail: '1d6+3: [6] +3', nat: 0, dt: 'piercing', dk: 'rw'},
+      {at: t(1), label: 'Régi – sebzés', total: '5', detail: '1d6+3: [2] +3', nat: 0},
+      {at: t(0), label: 'Perception', total: '14', detail: '[9] +5', nat: 9}]}), id: 'p1'};
+    A(`onSheets(${JSON.stringify([lap])})`);
+    const sorok = A('logLines').map(l => l.html);
+    eq(sorok.map(s => (s.match(/data-flv="([^"]*)"/) || [])[1] || ''), ['piercing|mw|krit', 'fire|rs|karc', 'piercing|rw|sulyos', '', '']);
+    has(sorok[0], '📱 Aranka');
+    // a lap hatásai (Rage, Hunter's Mark) is a kifejezésbe kerülnek: 8 a 1d6+3+2+1d6 tartományban (7–17) karcolás, nem súlyos
+    eq(A(`dobasKifejezes("1d6+3: [2] +3 +2 Rage +1d6 Hunter's Mark [1]")`), '1d6+3+2+1d6');
+    eq(A(`dobasKifejezes("1d8+3: [5] +3")`), '1d8+3');
+    A(`onSheets(${JSON.stringify([{...lap, rolls: [{at: t(9), label: 'Greataxe – sebzés', total: '8', detail: "1d6+3: [2] +3 +2 Rage +1d6 Hunter's Mark [1]", nat: 0, dt: 'slashing', dk: 'mw'}, ...lap.rolls]}])})`);
+    has(lastLog(), 'data-flv="slashing|mw|karc"');
+  });
+  test('dobás a lapon: dt / dk tisztítva; Sheet.dmgType a szövegből', () => {
+    const H = W.Sheet, at = '2026-11-08T18:00:00.000Z';
+    eq(H.normRoll({at, label: 'x', dt: 'fire', dk: 'rs'}), {at, label: 'x', total: '', detail: '', nat: 0, dt: 'fire', dk: 'rs'});
+    eq(H.normRoll({at, label: 'x', dt: XSS, dk: 'zz'}), {at, label: 'x', total: '', detail: '', nat: 0});
+    eq(['1d8+3 slashing', 'takes 2d10 Fire damage', 'resistance to cold; 3d6 necrotic damage', 'regains 1d8 hit points', null].map(H.dmgType), ['slashing', 'fire', 'necrotic', '', '']);
   });
 });
 

@@ -46,6 +46,7 @@ A fájlok (a 4. lépés után, 2026-10-30; betöltési sorrendben, ≈ sor):
 | `szerzodes.js` | útvonalak, lényformátum, tisztítók | szerződés |
 | `js/adat/tar.js` | felhős olvasás/írás gyűjteményenként (`Tar.*`) | adat |
 | `js/logika/alap.js` (35) | a közös fájlok segédei, az állapot (`S`), kis segédek, `regiFajl`, `Ertesito` | logika |
+| `js/logika/leiras.js` (250) | flavour text a sebzésdobásokhoz: mondatbank, támadásfajta és súlyosság (`TERV-flavour.md`) | logika |
 | `js/logika/harc.js` (145) | kocka, initiative-sorrend, encounter, körök, sebzés/gyógyítás | logika |
 | `js/logika/nehezseg.js` (35) | XP-küszöbök, `difficulty()` | logika |
 | `js/logika/loot.js` (100) | kincstáblák, zsákmány dobása, összesítés | logika |

@@ -33,7 +33,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 | `docs/mukodes.md` | mit tud az app: a funkciók elfogadott viselkedése |
 | `docs/kulso-forrasok.md` | 5e.tools, D&D Beyond: elérés és buktatók – olvasd el, mielőtt az importhoz vagy a szabálykönyvhöz nyúlsz |
 | `docs/dontesek/NNNN-*.md` | technikai döntések (háttér, döntés, következmény); számozott, nem törlődik |
-| `TERV-*.md` | tervek: `TERV-jatekos-app.md` (0–5. fázis), `TERV-2-fazis.md`, `TERV-3-4-fazis.md`, `TERV-refaktor.md`, `TERV-olvashato-mod.md`, `TERV-dobaskeres.md` |
+| `TERV-*.md` | tervek: `TERV-jatekos-app.md` (0–5. fázis), `TERV-2-fazis.md`, `TERV-3-4-fazis.md`, `TERV-refaktor.md`, `TERV-olvashato-mod.md`, `TERV-dobaskeres.md`, `TERV-flavour.md` |
 | `README.md` | a felhasználónak: mi ez, hogyan indul |
 
 ## Felépítés
@@ -54,6 +54,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 - **Megjelenítés a telefonos lapon** (Fiók menü: betűméret, sötét/világos): élesben (a `main`-en, feltöltve 2026-11-05) – `TERV-olvashato-mod.md`, `docs/mukodes.md`, `docs/dontesek/0007`. Hátra: próba a játékosok telefonján szemüveg nélkül; utána döntés a wishlistről (nagyítás hosszú nyomásra).
 - **Játékosok dobásai a DM Screen naplójában** (a lap `rolls` mezője, `docs/mukodes.md`): élesben (a `main`-en, feltöltve 2026-11-06). Hátra: próba egy játékos telefonjával.
 - **Dobáskérés** (`TERV-dobaskeres.md`, a lap `rollReq` mezője, `js/logika/dobaskeres.js`): élesben (a `main`-en, feltöltve 2026-11-07). Hátra: próba egy játékos telefonjával.
+- **Flavour text a sebzésdobásokhoz** (`TERV-flavour.md`, `js/logika/leiras.js`, a lap `rolls[].dt` / `dk` mezője): élesben (a `main`-en, feltöltve 2026-11-08). Hátra: próba játék közben és egy játékos telefonjával. Döntések: saját mondatbank (nem AI), csak dobáskor, közepes véresség kapcsoló nélkül, a telefonos dobások is; a HP-hoz mért súlyosság, a halálos csapás és a mellétalálás szövege később.
 - **Refaktor:** `TERV-refaktor.md` (elfogadva 2026-10-29), ág: `refaktor-retegek`. Kész és élesben: 0–7. lépés (a 7.: `Sheet.calc` → `CALC_LEPESEK`, 2026-10-30). A 8. lépés (opcionális, a `karakter.html` rétegei) a 3. fázis élesítése után.
 
 ## Nyitott / félretett ügyek (2026-10-29)

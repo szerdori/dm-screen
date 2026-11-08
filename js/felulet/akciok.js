@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 5);
+modul('akciok', 6);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -22,6 +22,14 @@ const AKCIOK = {
   rollInit: () => openInitMenu(),
   init: el => { rollInitiative(el.dataset.mode); closeModal(); render(); },
   rollCustom: () => { const v = $('#diceInput').value.trim(); if (v) rollDmg(v, '', v); },
+  // flavour text: új mondat ugyanarra a dobásra (ugyanaz a típus, fajta, súlyosság); a naplósor végén cseréli
+  flvUj: el => {
+    const sor = el.closest('.le'), flv = el.closest('.flv'), i = [...$('#log').children].indexOf(sor);
+    if (!flv || !logLines[i]) return;
+    const [type, kind, fokozat] = flv.dataset.flv.split('|');
+    const uj = leirasHtml({type, kind, fokozat}), hol = logLines[i].html.indexOf('<div class="flv"');
+    if (uj && hol >= 0) { logLines[i].html = logLines[i].html.slice(0, hol) + uj; naploRajzol(); }
+  },
   select: el => { selected = harcos(el).cid; render(); },
   deselect: () => { selected = null; render(); },
   dmg: el => { const n = Math.abs(parseInt(hpMezo(el))); if (n > 0) harcMod(el, x => damage(x, n)); },
@@ -257,7 +265,7 @@ const KATTINTASOK = [
     const who = x ? nameOf(x) : '';
     const label = r.closest('[data-label]')?.dataset.label || r.dataset.label || '';
     if (r.dataset.hit) rollHit(r.dataset.hit, who, label || 'Támadás', dobasMod(e));
-    else if (r.dataset.roll) rollDmg(r.dataset.roll, who, label || 'Dobás', e.shiftKey);
+    else if (r.dataset.roll) rollDmg(r.dataset.roll, who, label || 'Dobás', e.shiftKey, r.dataset.type === '-' ? null : {type: r.dataset.type || '', kind: r.closest('[data-kind]')?.dataset.kind || ''});
     else if (r.dataset.rech) {
       const d = rnd(6), ok = d >= +r.dataset.rech;
       log(`<span class="who">${esc(who)}</span> ${esc(label || 'Recharge')}: d6 = <b>${d}</b> — ${ok ? 'feltöltődött ✓' : 'nem töltődött'}`, ok ? 'crit' : '');

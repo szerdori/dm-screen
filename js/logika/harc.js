@@ -1,7 +1,7 @@
 // Harc (logika, DOM nélkül): kockadobás, initiative-sorrend, encounter, körök, sebzés és gyógyítás.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('harc', N) és az index.html-ben a harc.js?v=N és a VART_MODULOK.
 'use strict';
-modul('harc', 2);
+modul('harc', 3);
 
 // ---------- kocka ----------
 function roll(expr) {
@@ -31,18 +31,20 @@ function rollHit(bonus, who, label, mode) {
   Ertesito.naplo(html, cls);
   return {html, cls, total: d + b};
 }
-function rollDmg(expr, who, label, crit) {
+// leiras = {type, kind}: a sebzés típusa és a támadás fajtája – ha van támadó és ezekből legalább egy, a sor alá flavour text kerül (leiras.js)
+function rollDmg(expr, who, label, crit, leiras = null) {
   if (crit) expr = expr.replace(/(\d*)d(\d+)/g, (m, n, d) => `${2 * (+n || 1)}d${d}`);
   const r = roll(expr);
-  Ertesito.naplo(`<span class="who">${esc(who)}</span> ${esc(label)}: <b>${r.total}</b> <small>${esc(expr)}${crit ? ' (krit)' : ''} ${esc(r.detail)}</small>`);
+  const flv = who && leiras ? leirasHtml({...leiras, expr, total: r.total, crit}) : '';
+  Ertesito.naplo(`<span class="who">${esc(who)}</span> ${esc(label)}: <b>${r.total}</b> <small>${esc(expr)}${crit ? ' (krit)' : ''} ${esc(r.detail)}</small>${flv}`);
 }
 function atkInfo(text) {
   const hit = (text.match(/([+\-]\d+)(?= to hit)/) || text.match(/Attack(?: Roll)?:\s?([+\-]\d+)/) || [])[1];
   const dice = [];
   const re = /(\d+d\d+(?:\s*[+\-−]\s*\d+(?!\s*d))?)/g; let m;
   while ((m = re.exec(text))) {
-    const after = text.slice(re.lastIndex, re.lastIndex + 30).match(/^\)?\s*([A-Za-z]+)\s+damage/i);
-    dice.push({expr: m[1].replace(/\s/g, ''), type: after ? after[1].toLowerCase() : ''});
+    const utana = text.slice(re.lastIndex, re.lastIndex + 30), after = utana.match(/^\)?\s*([A-Za-z]+)\s+damage/i);
+    dice.push({expr: m[1].replace(/\s/g, ''), type: after ? after[1].toLowerCase() : '', ...(nemSebzes(utana) ? {nem: true} : {})});  // nem: hit points, időtartam (leiras.js)
   }
   return {hit, dice};
 }

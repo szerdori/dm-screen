@@ -1,7 +1,7 @@
 // Harctér (felület): a fő képernyő rajzolása – csempék, részletes adatlap, napló és dobáslinkek, nehézség, mentésjelző, belépő-ablak.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('harcter', N) és az index.html-ben a harcter.js?v=N és a VART_MODULOK.
 'use strict';
-modul('harcter', 1);
+modul('harcter', 2);
 
 // ---------- fejléc: mentésjelző, emlékeztető a fájlba mentésre, belépő-ablak ----------
 const setSaveState = t => $('#saveState').textContent = t;
@@ -25,14 +25,16 @@ const TIP_RECH = 'Recharge – d6 dobás, ennyi vagy több kell, hogy újra hasz
 function log(html, cls = '') {
   logLines.unshift({html, cls});
   logLines = logLines.slice(0, 150);
-  $('#log').innerHTML = logLines.map(l => `<div class="le ${l.cls}">${l.html}</div>`).join('');
+  naploRajzol();
 }
+function naploRajzol() { $('#log').innerHTML = logLines.map(l => `<div class="le ${l.cls}">${l.html}</div>`).join(''); }
 
-// szövegben lévő dobások kattinthatóvá tétele
+// szövegben lévő dobások kattinthatóvá tétele; a sebzéskocka mögötti „… fire damage” a data-type (a flavour texthez), '-' = nem sebzés (hit points, időtartam)
 const LINK_RE = /(\d+d\d+(?:\s*[+\-−]\s*\d+(?!\s*d))?)|([+\-]\d+)(?= to hit)|(?<=Attack(?: Roll)?:\s?)([+\-]\d+)|(\(Recharge (\d)(?:[–-]6)?\))/g;
+const kockaTipus = (szoveg, hol) => { const utana = szoveg.slice(hol, hol + 30); return nemSebzes(utana) ? '-' : Sheet.dmgType((utana.match(/^\)?\s*[A-Za-z]+\s+damage/i) || [''])[0]); };
 function linkify(s) {
-  return esc(s).replace(LINK_RE, (m, dice, hit, hit2, rech, rn) => {
-    if (dice) return `<span class="roll" data-roll="${dice.replace(/\s/g, '')}" title="${TIP_DMG}">${dice}</span>`;
+  return esc(s).replace(LINK_RE, (m, dice, hit, hit2, rech, rn, hol, egesz) => {
+    if (dice) { const tip = kockaTipus(egesz, hol + m.length); return `<span class="roll" data-roll="${dice.replace(/\s/g, '')}"${tip ? ` data-type="${tip}"` : ''} title="${TIP_DMG}">${dice}</span>`; }
     if (hit || hit2) return `<span class="roll hit" data-hit="${hit || hit2}" title="${TIP_HIT}">${hit || hit2}</span>`;
     if (rech) return `<span class="roll" data-rech="${rn || 6}" title="${TIP_RECH}">${rech}</span>`;
     return m;
@@ -110,10 +112,10 @@ function tileHtml(x) {
     const a = {...a0, text: lenySablon(c, a0)}, inf = atkInfo(a.name + ' ' + a.text);
     const rech = (a.name.match(/Recharge (\d)/) || [])[1];
     if (inf.hit || inf.dice.length) {
-      atkRows.push(`<div class="atk" data-label="${esc(a.name)}">${t ? `<span class="tag">${t}</span>` : ''}<span class="an" title="${esc(a.text)}">${esc(a.name.replace(/\s*\(Recharge[^)]*\)/, ''))}</span>` +
+      atkRows.push(`<div class="atk" data-label="${esc(a.name)}" data-kind="${esc(tamadasFajta(a.name, a.text))}">${t ?`<span class="tag">${t}</span>` : ''}<span class="an" title="${esc(a.text)}">${esc(a.name.replace(/\s*\(Recharge[^)]*\)/, ''))}</span>` +
         (rech ? `<span class="roll" data-rech="${rech}" title="${TIP_RECH}">⟳${rech}</span>` : '') +
         (inf.hit ? `<span class="roll hit" data-hit="${inf.hit}" title="${TIP_HIT}">${inf.hit}</span>` : '') +
-        inf.dice.slice(0, 3).map(d => `<span class="roll" data-roll="${d.expr}" title="${TIP_DMG}">${d.expr}</span>${d.type ? `<small class="muted">${esc(d.type)}</small>` : ''}`).join(' ') + '</div>');
+        inf.dice.slice(0, 3).map(d => `<span class="roll" data-roll="${d.expr}" data-type="${d.nem ? '-' : esc(Sheet.dmgType(d.type))}" title="${TIP_DMG}">${d.expr}</span>${d.type ? `<small class="muted">${esc(d.type)}</small>` : ''}`).join(' ') + '</div>');
     } else others.push((t ? t + ': ' : '') + a.name);
   });
   c.reactions.forEach(a => others.push('R: ' + a.name));
@@ -149,7 +151,7 @@ function statblock(c) {
   const line = (k, v) => v ? `<p class="line"><b>${k}</b> ${linkify(v)}</p>` : '';
   const saves = ABIL.filter(a => c.saves[a] != null).map(a => `${cap(a)} ${sgn(+c.saves[a])}`).join(', ');
   const sec = k => c[k].length ? `<h3>${SECTION_HU[k]}${k === 'legendary' && c.legendaryCount ? ` (${c.legendaryCount}/kör)` : ''}</h3>` +
-    c[k].map(e => `<p data-label="${esc(e.name)}">${e.name ? `<b><i>${linkify(e.name)}.</i></b> ` : ''}${linkify(lenySablon(c, e))}</p>`).join('') : '';
+    c[k].map(e => `<p data-label="${esc(e.name)}" data-kind="${esc(tamadasFajta(e.name, lenySablon(c, e)))}">${e.name ? `<b><i>${linkify(e.name)}.</i></b> ` : ''}${linkify(lenySablon(c, e))}</p>`).join('') : '';
   return `<div class="sb">
     ${c.portrait ? `<img class="portrait" src="${esc(c.portrait)}" alt="" onerror="this.style.display='none'">` : ''}
     <h2>${esc(c.name)}</h2>
