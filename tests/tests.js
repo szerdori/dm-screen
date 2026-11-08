@@ -5625,6 +5625,40 @@ describe('Szerződés (szerzodes.js)', () => {
     const srcek = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => s !== 'firebase-config.js');
     ok(srcek.at(-1).startsWith('js/indulas.js?'), 'az utolsó: ' + srcek.at(-1));
   });
+  test('rétegek: a karakter.html-ben csak a VART_MODULOK maradt, a kód a js/lap/ fájlokban; csak a lap-indulas.js futtat kódot betöltéskor', async () => {
+    const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();
+    const html = await szoveg('karakter.html');
+    const inline = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1].replace(/^\s*\/\/.*$/gm, '').trim());
+    eq(inline.length, 1, 'egy sima <script> blokk');
+    ok(/^'use strict';\s*const VART_MODULOK = \{[^}]*\};$/.test(inline[0]), 'csak a VART_MODULOK: ' + inline[0].slice(0, 80));
+    const srcek = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => s !== 'firebase-config.js');
+    ok(srcek.at(-1).startsWith('js/lap/lap-indulas.js?'), 'az utolsó: ' + srcek.at(-1));
+    const fajlok = srcek.filter(s => s.startsWith('js/lap/')).map(s => s.split('?')[0]);
+    ok(fajlok.length >= 10, 'megtalálta a fájlokat: ' + fajlok.length);
+    // a többi fájl legfelső szintjén csak deklaráció: nincs figyelő, nincs hívás (a modul() bejelentésen kívül)
+    for (const f of fajlok.filter(f => !f.endsWith('lap-indulas.js'))) {
+      const fut = (await szoveg(f)).split(/\r?\n/).filter(l => /^[\w$.]+\(/.test(l) && !/^modul\(/.test(l));
+      eq(fut, [], f + ': a legfelső szinten csak deklaráció');
+      ok(!/^(document|window)\.addEventListener/m.test(await szoveg(f)), f + ': figyelő csak …Esemenyek() függvényben');
+    }
+  });
+  test('telefonos lap gombjai: minden data-act-hoz van LAP_AKCIOK-bejegyzés vagy módosítás-kezelő, és nincs gazdátlan bejegyzés', async () => {
+    const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();
+    const html = await szoveg('karakter.html');
+    const fajlok = [...html.matchAll(/<script src="(js\/lap\/[\w-]+\.js)\?v=\d+"><\/script>/g)].map(m => m[1]);
+    const kod = [html, ...await Promise.all(fajlok.map(szoveg))].join('\n').replace(/^\s*\/\/.*$/gm, '');
+    eq([...kod.matchAll(/data-act=(?!"\w+")[^\s>]*/g)].map(m => m[0]), [], 'összerakott data-act (a teszt csak a szó szerinti nevet látja)');
+    const nevek = new Set([...kod.matchAll(/data-act="(\w+)"/g)].map(m => m[1]));
+    const kulcsok = K.eval('Object.keys(LAP_AKCIOK)');
+    eq(kulcsok.filter(k => !nevek.has(k)), [], 'gazdátlan bejegyzés');
+    // a mezők (jelölőnégyzet, legördülő, szövegmező) a change-figyelőben, act === '…' alapján
+    const valtozas = [...nevek].filter(n => !kulcsok.includes(n)).sort();
+    eq(valtozas, ['attune', 'bBase', 'bBg', 'bRace', 'coin', 'csakBek', 'equip', 'itemCont', 'itemNote', 'lvHp', 'prep', 'todoDone']);
+    const akciok = await szoveg('js/lap/lap-akciok.js');
+    for (const n of valtozas) ok(akciok.includes(`act === '${n}'`), n + ': a change-figyelő kezeli');
+    ok(K.eval('LAP_NELKUL').size && [...K.eval('LAP_NELKUL')].every(k => kulcsok.includes(k)), 'a lap nélküli gombok is a táblázatban');
+    ok(!/switch \(act\)/.test(akciok), 'nincs nagy elágazás');
+  });
   test('gombok: minden data-act-hoz van AKCIOK-bejegyzés és viszont; mind szó szerinti név (docs/dontesek/0006)', async () => {
     const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();
     const html = await szoveg('index.html');
