@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 23;
+  const VERSION = 24;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -1561,9 +1561,36 @@ window.Sheet = (() => {
   // a varázsló Kész-e: a lap új inventory-ja és currency-je (a meglévők mellé)
   // a felszerelés módja: a DM által rögzített (csak csomag / csak arany), különben a játékos választása ('' = még nem választott)
   const seMod = nc => !nc ? '' : nc.equip && nc.equip !== 'any' ? nc.equip : nc.eq?.mode || '';
+  // ---------- arany mód: az osztály kezdőarany-dobása (PHB 143. o.), vásárlás a PHB-árakon ----------
+  const SE_CP = {pp: 1000, gp: 100, ep: 50, sp: 10, cp: 1};
+  // a szabálykönyv tárgyának ára rézben ('15 gp' → 1500); ár nélkül 0
+  const seAr = it => { const m = String(it?.v || '').replace(/,/g, '').match(/^([\d.]+)\s*(pp|gp|ep|sp|cp)$/); return m ? Math.round(parseFloat(m[1]) * SE_CP[m[2]]) : 0; };
+  // amit a kosárba lehet tenni: PHB-s, nem mágikus, áras tárgy (a tárgycsoport nem)
+  const boltCache = new WeakMap();
+  function seBolt(rb) {
+    if (!rb) return [];
+    if (boltCache.has(rb)) return boltCache.get(rb);
+    const seen = new Set(), list = [...(rb.baseItems || []), ...(rb.items || [])].filter(x => x.s === 'PHB' && !x.mag && !x.grp?.length && seAr(x) > 0 && !seen.has(x.n.toLowerCase()) && seen.add(x.n.toLowerCase()));
+    boltCache.set(rb, list);
+    return list;
+  }
+  // '5d4*10' → gp (a Monké '5d4'); rnd(n) 1..n
+  function seAranyDob(expr, rnd) {
+    const m = String(expr || '').match(/^(\d+)d(\d+)(?:\*(\d+))?$/);
+    if (!m) return 0;
+    let t = 0;
+    for (let i = 0; i < +m[1]; i++) t += rnd(+m[2]);
+    return t * (m[3] ? +m[3] : 1);
+  }
+  // a kosár feloldva: [{ref, n, q, ar}] és az összeg rézben (a szabálykönyvben nem szereplő tétel kimarad)
+  function seKosar(eq, rb) {
+    const bolt = seBolt(rb), list = arr(eq?.cart, 100).map(c => { const it = rbFind(bolt, c.r); return it ? {ref: refOf(it), n: it.n, q: Math.max(1, num(c.q, 1)), ar: seAr(it)} : null; }).filter(Boolean);
+    return {list, koltseg: list.reduce((t, x) => t + x.q * x.ar, 0)};
+  }
   function seEredmeny(s, rb) {
-    const eq = s.newChar?.eq || normSeEq(null), rows = seRows(s.build.levels[0]?.c, s.build.background, rb).rows;
-    const {list, cp} = seMod(s.newChar) === 'pack' ? seCsomag(rows, eq) : {list: [], cp: 0};
+    const eq = s.newChar?.eq || normSeEq(null), rows = seRows(s.build.levels[0]?.c, s.build.background, rb).rows, mod = seMod(s.newChar);
+    const kosar = mod === 'gold' && eq.gold != null ? seKosar(eq, rb) : null;
+    const {list, cp} = mod === 'pack' ? seCsomag(rows, eq) : kosar ? {list: kosar.list, cp: Math.max(0, eq.gold * 100 - kosar.koltseg)} : {list: [], cp: 0};
     const items = seLeltar(list, rb, s.inventory), cur = {...s.currency}, add = seErmek(cp);
     for (const k of Object.keys(add)) cur[k] = num(cur[k]) + add[k];
     return {inventory: normInventory([...s.inventory, ...items]), currency: cur, items, cp};
@@ -1996,7 +2023,7 @@ window.Sheet = (() => {
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
-    NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seMod, seEredmeny,
+    NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seMod, seAr, seBolt, seAranyDob, seKosar, seEredmeny,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine, ddbSablon, ddbSablonLap, ddbSkala, regiSorrend, atallithato, autoLap};

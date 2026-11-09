@@ -4552,17 +4552,19 @@ describe('Telefonos karakterlap (karakter.html)', () => {
   ktest('új karakter: Felszerelés lépés (TERV-kezdo-felszereles.md) – csomag mód: (a) / (b), két martial weapon legördülővel, holy symbol; összegzés AC-vel; Kész-kor a lapra; a DM rögzített módja; befecskendezés ellen', async () => {
     const rb = await W.buildRulebook(seGet), H = K.Sheet;
     rb.backgrounds[0].se.rows[0]._.push({sp: XSS});
+    rb.items.push({n: XSS + 'Bot', s: 'PHB', v: '1 gp', tc: 'G'});
     K.KApp.setRulebook({version: 'v', rb});
     const lap = () => K.eval('sheets.get("p1")'), lepes = () => kq('.lusteps span.on').textContent, tovabb = () => kclick('[data-act="ncNext"]');
     const uj = (equip = 'any') => ({...JSON.parse(JSON.stringify(H.ncBlank({owner: 'a@x.hu', equip}))), currency: {gp: 1},
       build: {levels: lv('Fighter', 1), spells: {}, race: 'Dwarf|PHB', subrace: 'Hill|PHB', background: 'Acolyte|PHB', base: {str: 15, dex: 14, con: 13, int: 10, wis: 12, cha: 8}}});
     openSheet({...uj(), newChar: {...uj().newChar, step: 'fel', method: 'manual'}});
     // a korábbi lépések kötelező választásai (a Kész csak akkor ment, ha minden lépés rendben)
-    for (let k = 0; k < 4; k++) {
+    const kitolt = () => { for (let k = 0; k < 4; k++) {
       const c = H.ncPlan(lap(), rb);
       for (const x of [...c.choices, ...c.spells].filter(y => y.missing))
         K.eval(`patch({build: Sheet.setChoice(sheets.get("p1").build, ${JSON.stringify(x.c)}, ${JSON.stringify(H.choiceOptions(x.c, c.cr, rb).opts.filter(y => !y.dis).slice(0, x.c.n).map(y => y.v))})})`);
-    }
+    } };
+    kitolt();
     eq(lepes(), 'Felszerelés');
     ok(kq('[data-act="ncNext"]').disabled, 'mód kell'); has(kq('#ncBaj').textContent, 'kezdő felszerelés vagy arany');
     kclick('[data-act="ncEqMode"][data-m="pack"]');
@@ -4606,9 +4608,45 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     has(kq('select[data-key="c1:b:0"] option[value="Longsword|PHB"]').textContent, '⚠ nem vagy jártas');
     ok(!kq('select[data-key="c1:b:0"] option[value="Longsword|PHB"]').disabled, 'választható');
     fx[wi] = {weapon: ['simple', 'martial']};
-    // arany mód (amíg a vásárlás nincs kész): nem zárható le üres kézzel
+    // arany mód: egyszeri dobás, kosár, a maradék pénzként; a csomagra a dobás után a játékos nem válthat
     openSheet({...uj(), newChar: {...uj().newChar, step: 'fel', method: 'manual', eq: {mode: 'gold'}}});
-    ok(kq('[data-act="ncNext"]').disabled, 'arany módban még nem lehet továbblépni');
+    kitolt();
+    ok(kq('[data-act="ncNext"]').disabled, 'dobás nélkül nem lehet továbblépni'); has(ktext(), '5d4 × 10 gp');
+    K.rnd = () => 1;
+    kclick('[data-act="ncEqGold"]');
+    eq(lap().newChar.eq.gold, 50); ok(!kq('[data-act="ncEqGoldRe"]'), 'újradobni csak a DM tud');
+    ok(!kq('[data-act="ncEqGold"]'), 'nem dobható újra');
+    ok(kq('[data-act="ncEqMode"][data-m="pack"]').disabled, 'a dobás után nem válthat csomagra');
+    ok(!kq('[data-act="ncNext"]').disabled, 'üres kosárral is mehet');
+    kset('#ncBolt', 'chain', 'input');
+    ok(kq('#ncBoltTalalat [data-act="ncKosar"][data-r="Chain Mail|PHB"]').disabled, 'a 75 gp-s páncélra nincs elég pénz');
+    kset('#ncBolt', 'longsw', 'input');
+    kclick('#ncBoltTalalat [data-act="ncKosar"][data-r="Longsword|PHB"]');
+    eq(lap().newChar.eq.cart, [{r: 'Longsword|PHB', q: 1}]);
+    kclick('[data-act="ncKosar"][data-r="Longsword|PHB"][data-d="1"]');
+    kclick('[data-act="ncKosar"][data-r="Longsword|PHB"][data-d="-1"]');
+    eq(lap().newChar.eq.cart, [{r: 'Longsword|PHB', q: 1}]);
+    has(ktext(), 'Maradt: 35 gp');
+    tovabb(); eq(lepes(), 'Összegzés'); eq(sor('Pénz'), '35 gp'); has(sor('Felszerelés'), 'Longsword');
+    klog.length = 0;
+    kclick('[data-act="ncDone"]');
+    await until(() => klog.some(l => l[0] === 'hist'), 2000, 'mentve (arany)');
+    const [, , pa] = klog.find(l => l[0] === 'hist');
+    eq([pa.inventory.map(i => i.name), pa.currency.gp], [['Longsword'], 1 + 35]);
+    // a DM újradobhat (a dobás és a kosár törlődik); a boltlista befecskendezés ellen; kezdőarany-kifejezés nélkül nincs dobás
+    openSheet({...uj(), newChar: {...uj().newChar, step: 'fel', method: 'manual', eq: {mode: 'gold', gold: 50, cart: [{r: 'Dagger|PHB', q: 1}]}}}, 'dm@x.hu', true);
+    kitolt();
+    kset('#ncBolt', 'bot', 'input');
+    ok(kq('#ncBoltTalalat [data-act="ncKosar"]'), 'a találat látszik');
+    eq(K.document.querySelectorAll('img[src="x"]').length, 0, 'HTML-befecskendezés a boltlistában'); ok(!K.__xss, 'lefutott a kód');
+    kclick('[data-act="ncEqGoldRe"]');
+    eq([lap().newChar.eq.gold, lap().newChar.eq.cart], [null, []]);
+    ok(kq('[data-act="ncEqGold"]'), 'újra dobható');
+    const aranyNelkul = rb.classes[0].se.gold; delete rb.classes[0].se.gold;
+    openSheet({...uj(), newChar: {...uj().newChar, step: 'fel', method: 'manual', eq: {mode: 'gold'}}});
+    ok(!kq('[data-act="ncEqGold"]'), 'kifejezés nélkül nincs dobás'); has(ktext(), 'nem adja meg a kezdőaranyat');
+    ok(kq('[data-act="ncNext"]').disabled, 'nem lehet továbblépni');
+    rb.classes[0].se.gold = aranyNelkul;
     // a régi (3-as) szabálykönyvben nincs kezdő felszerelés: a lépés kimarad, az összegzés szól
     const regi = structuredClone(rb); regi.classes.forEach(c => delete c.se); regi.backgrounds.forEach(b => delete b.se);
     K.KApp.setRulebook({version: 'v3', rb: regi});
@@ -6013,6 +6051,22 @@ describe('Kezdő felszerelés (TERV-kezdo-felszereles.md)', () => {
     const sor = H.seRows('Fighter', '', rb).rows.at(-1);
     eq(sor.opts.map(o => [o.k, o.items.map(t => t.n)]), [['a', ['Shield', 'Dagger']], ['b', ['Arrows (20)', 'Dagger']]]);
   });
+  test('arany mód: ár, bolt (PHB, nem mágikus, nem csoport), dobás (Monk × 10 nélkül), kosár; a háttér felszerelése és pénze nem jár, a maradék pénzként', async () => {
+    const rb = await seRb(), H = W.Sheet;
+    eq([H.seAr({v: '15 gp'}), H.seAr({v: '5 sp'}), H.seAr({v: '2 cp'}), H.seAr({v: '1,000 gp'}), H.seAr({v: ''}), H.seAr(null)], [1500, 50, 2, 100000, 0, 0]);
+    const bolt = H.seBolt(rb).map(H.refOf);
+    ok(bolt.includes('Longsword|PHB') && bolt.includes("Explorer's Pack|PHB"), 'fegyver és csomag');
+    ok(!bolt.some(r => /Holy Symbol|Copy Sword|XPHB/.test(r)), 'csoport, mágikus és 2024-es nincs');
+    eq([H.seAranyDob('5d4*10', () => 2), H.seAranyDob('5d4', () => 4), H.seAranyDob('rossz', () => 4)], [100, 20, 0]);
+    const s = ujFighter({mode: 'gold', gold: 50, cart: [{r: 'Longsword|PHB', q: 1}, {r: 'Dagger|PHB', q: 2}, {r: 'Kitalált|PHB', q: 3}], pick: {c0: 'a'}}, {currency: {gp: 1}});
+    eq(H.seKosar(s.newChar.eq, rb).koltseg, 1900, 'az ismeretlen tétel kimarad');
+    const e = H.seEredmeny(s, rb);
+    eq(e.items.map(i => [i.name, i.qty, i.equipped]), [['Longsword', 1, true], ['Dagger', 2, true]]);
+    eq(e.currency.gp, 1 + 31, 'a maradék 31 gp a meglévő mellé');
+    ok(!e.items.some(i => /Chain Mail|Pouch|vestments/.test(i.name)), 'sem a csomag, sem a háttér felszerelése');
+    eq(H.seEredmeny(ujFighter({mode: 'gold', gold: null}), rb).items, [], 'dobás nélkül semmi');
+    eq(H.seEredmeny(ujFighter({mode: 'gold'}, {newChar: {target: 1, step: 'sum', equip: 'pack', eq: {mode: 'gold', pick: {c0: 'a', c1: 'b'}, cat: {'c1:b:0': ['Longsword|PHB', 'Longsword|PHB'], 'h0:_:0': ['Amulet|PHB']}}}}), rb).cp, 1500, 'a DM rögzített módja (csomag) számít');
+  });
   test('nincs mód vagy arany mód: csomag nélkül semmi nem kerül a lapra; a newChar.eq tisztítása', async () => {
     const rb = await seRb(), H = W.Sheet;
     eq(H.seEredmeny(ujFighter({pick: {c0: 'a'}}), rb).items, []);
@@ -6262,13 +6316,15 @@ describe('Szerződés (szerzodes.js)', () => {
     const levelUpOk = fmt(nlu) === fmt(lu) || nlu == null || (lv(now) < lv(old) && nlu.to <= lv(old));
     const d = now.deleted ?? null, ownerOk = (now.owner === old.owner && fmt(d) === fmt(old.deleted ?? null)) || (now.owner === '' && d != null && d.owner === old.owner);
     const na = old.newChar ?? null, nb = now.newChar ?? null;
-    const newCharOk = nb == null || (na != null && nb.target === na.target && fmt(nb.methods) === fmt(na.methods) && (na.rolls == null || fmt(nb.rolls ?? null) === fmt(na.rolls)));
+    const newCharOk = nb == null || (na != null && nb.target === na.target && fmt(nb.methods) === fmt(na.methods) && (na.rolls == null || fmt(nb.rolls ?? null) === fmt(na.rolls))
+      && (nb.equip ?? 'any') === (na.equip ?? 'any') && ((na.eq ?? {}).gold == null || ((nb.eq ?? {}).gold ?? null) === na.eq.gold));
     return levelsOk && levelUpOk && ownerOk && newCharOk;
   };
   test('szabályok: új karakter: az üres motoros lapon legfeljebb 1 szint; a varázslót a játékos nem indíthatja, a kezdőszintet, a módszereket, a dobást nem írhatja át', async () => {
     const rules = await (await fetch('../firestore.rules', {cache: 'no-store'})).text();
     for (const sor of ["(old.get('auto', false) != true || buildLv(old) > 0 || buildLv(now) <= 1)", 'newCharOk(resource.data, request.resource.data)',
-      "b == null || (a != null && b.target == a.target && b.methods == a.methods && (a.get('rolls', null) == null || b.get('rolls', null) == a.rolls))"]) has(rules, sor, 'a tükör a szabály szövegét követi');
+      "b == null || (a != null && b.target == a.target && b.methods == a.methods && (a.get('rolls', null) == null || b.get('rolls', null) == a.rolls)",
+      "&& b.get('equip', 'any') == a.get('equip', 'any') && (a.get('eq', {}).get('gold', null) == null || b.get('eq', {}).get('gold', null) == a.eq.gold));"]) has(rules, sor, 'a tükör a szabály szövegét követi');
     const nc = (extra = {}) => ({target: 2, methods: ['array', 'roll'], rolls: null, ...extra});
     const L = (n, newChar) => ({auto: true, build: {levels: Array(n).fill({c: 'Rogue'})}, newChar});
     ok(szabalyTukor(L(0, nc()), L(1, nc())), 'az első osztály');
@@ -6282,6 +6338,13 @@ describe('Szerződés (szerzodes.js)', () => {
     ok(!szabalyTukor(L(1, nc({rolls: [10, 10, 10, 10, 10, 10]})), L(1, nc({rolls: [18, 18, 18, 18, 18, 18]}))), 'a dobás nem ismételhető');
     ok(!szabalyTukor(L(1, nc({rolls: [10, 10, 10, 10, 10, 10]})), L(1, nc())), 'nem is törölhető');
     ok(szabalyTukor(L(1, nc()), L(1, null)), 'lezárás');
+    // kezdő felszerelés (TERV-kezdo-felszereles.md): a DM beállítása és a megdobott kezdőarany
+    ok(szabalyTukor(L(1, nc()), L(1, nc({equip: 'any', eq: {mode: 'pack'}}))), 'a régi lapon nincs equip: az alapértelmezett any');
+    ok(!szabalyTukor(L(1, nc({equip: 'pack'})), L(1, nc({equip: 'any'}))), 'a DM beállítása nem írható át');
+    ok(szabalyTukor(L(1, nc({eq: {gold: null}})), L(1, nc({eq: {mode: 'gold', gold: 120}}))), 'az első aranydobás');
+    ok(!szabalyTukor(L(1, nc({eq: {gold: 120}})), L(1, nc({eq: {gold: 200}}))), 'az aranydobás nem ismételhető');
+    ok(!szabalyTukor(L(1, nc({eq: {gold: 120}})), L(1, nc({eq: {gold: null}}))), 'nem is törölhető');
+    ok(szabalyTukor(L(1, nc({eq: {gold: 120}})), L(1, nc({eq: {gold: 120, cart: [{r: 'Dagger|PHB', q: 1}]}}))), 'a kosár változhat');
     ok(!szabalyTukor(L(1, null), L(1, nc())), 'nem indítható újra');
     ok(szabalyTukor({levelUp: null}, L(5, null)), 'a kézi lap átállítása változatlan');
   });

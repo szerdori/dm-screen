@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-ujkarakter, a karakter.html része): az új karakter kezdő varázslója
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-ujkarakter', N) és a karakter.html-ben a lap-ujkarakter.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-ujkarakter', 2);
+modul('lap-ujkarakter', 3);
 
 // ---------- új karakter: a kezdő varázsló a lap helyén fut; a választások egyből a lapra íródnak (másik eszközön folytatható, a DM is látja) ----------
 const NC_LEPESEK = [['alap', 'Alapok'], ['faj', 'Faj'], ['oszt', 'Osztály'], ['kep', 'Képességek'], ['hat', 'Háttér'], ['val', 'Választások'], ['var', 'Varázslatok'], ['fel', 'Felszerelés'], ['sum', 'Összegzés']];
@@ -37,13 +37,14 @@ function ncBlocked(s, plan, step) {
 const ncSeMod = nc => H.seMod(nc);
 const ncSeRows = s => H.seRows(s.build.levels[0]?.c, s.build.background, RB());
 const ncSeBaj = s => { const m = ncSeMod(s.newChar); return !m ? 'Válassz: kezdő felszerelés vagy arany.' : m === 'pack' ? H.seHiany(ncSeRows(s).rows, s.newChar.eq) : ncAranyBaj(s); };
-// arany mód: a 3. lépésig nem zárható le (különben a karakter felszerelés és pénz nélkül maradna)
-const ncAranyBaj = () => 'Az arany helyetti vásárlás még nem érhető el: válaszd a kezdő felszerelést.';
+// arany mód: dobás nélkül nem zárható le; a kosár nem lehet drágább a dobásnál
+const ncMaradt = s => s.newChar.eq.gold == null ? 0 : s.newChar.eq.gold * 100 - H.seKosar(s.newChar.eq, RB()).koltseg;
+const ncAranyBaj = s => s.newChar.eq.gold == null ? 'Dobd meg a kezdőaranyat.' : ncMaradt(s) < 0 ? 'A kosár drágább, mint amennyi pénzed van.' : '';
 const ncTetelNev = t => `${t.q > 1 ? t.q + '× ' : ''}${t.kind === 'cat' ? t.label : t.n}${t.kind === 'item' && t.dn ? ` (${t.dn})` : ''}`;
 const ncPenz = cp => { const c = H.seErmek(cp); return ['gp', 'sp', 'cp'].filter(k => c[k]).map(k => c[k] + ' ' + k).join(' ') || '0 gp'; };
 function ncStepFel(s, cr) {
   const nc = s.newChar, eq = nc.eq, mod = ncSeMod(nc), rb = RB(), {rows} = ncSeRows(s);
-  const modok = nc.equip === 'any' ? `<div class="row">${[['pack', '📦 Kezdő felszerelés'], ['gold', '💰 Arany helyett']].map(([m, l]) => `<button class="${mod === m ? 'on' : ''}" data-act="ncEqMode" data-m="${m}">${l}</button>`).join('')}</div>
+  const modok = nc.equip === 'any' ? `<div class="row">${[['pack', '📦 Kezdő felszerelés'], ['gold', '💰 Arany helyett']].map(([m, l]) => `<button class="${mod === m ? 'on' : ''}" data-act="ncEqMode" data-m="${m}" ${m === 'pack' && eq.gold != null && !isDM ? 'disabled title="Már dobtál aranyat: a dobás érvényes"' : ''}>${l}</button>`).join('')}</div>
     <p class="hint">Kezdő felszerelés: az osztályod és a háttered felszerelése, és a háttered pénze. Arany helyett: az osztályod kezdőaranyából vásárolsz, ilyenkor a háttered felszerelését és pénzét sem kapod meg (PHB 143. o.).</p>` : '';
   if (!mod) return modok;
   if (mod === 'gold') return modok + ncStepArany(s);
@@ -60,8 +61,29 @@ function ncStepFel(s, cr) {
   return `${modok}${rows.map(sor).join('')}<p>Pénz: <b>${esc(ncPenz(H.seCsomag(rows, eq).cp))}</b> <span class="hint">(a háttered erszényéből)</span></p>
     <p class="hint">A páncél, a pajzs és a fegyverek felszerelve kerülnek a lapra; a csomagok tartalma külön tételekként, a csomagba téve.</p>`;
 }
-// arany mód (a 3. lépés tölti ki): az osztály kezdőarany-dobása és a kosár
-function ncStepArany() { return '<p class="hint">Az arany helyetti vásárlás hamarosan jön; addig válaszd a kezdő felszerelést.</p>'; }
+// arany mód: az osztály kezdőarany-dobása (egyszer, rögzítve; a DM újradobhat) és a kosár a PHB-árakon; a maradék pénzként kerül a lapra
+let ncBoltQ = '';
+const ncKocka = expr => String(expr || '').replace('*', ' × ');
+function ncBoltLista(s) {
+  const q = ncBoltQ.trim(), maradt = ncMaradt(s);
+  if (!q) return '<p class="hint">Írd be, mit vennél (angolul, pl. longsword, chain mail, explorer\'s pack).</p>';
+  const talalat = H.search(H.seBolt(RB()), q, 15);
+  return talalat.length ? `<div class="list">${talalat.map(it => { const ar = H.seAr(it); return `<div class="li"><span class="nm"><b>${esc(it.n)}</b><small>${esc(ncPenz(ar))}</small></span><button class="small" data-act="ncKosar" data-r="${esc(H.refOf(it))}" data-d="1" ${ar > maradt ? 'disabled title="Nincs rá elég pénzed"' : ''}>＋</button></div>`; }).join('')}</div>`
+    : '<p class="hint">Nincs ilyen megvásárolható tárgy.</p>';
+}
+function ncStepArany(s) {
+  const nc = s.newChar, eq = nc.eq, {gold} = ncSeRows(s);
+  if (eq.gold == null && !gold) return '<p class="warn">A szabálykönyv ennél az osztálynál nem adja meg a kezdőaranyat: válaszd a kezdő felszerelést, vagy kérd meg a DM-et, hogy töltse újra a szabálykönyvet.</p>';
+  if (eq.gold == null) return `<p>Kezdőarany: <b>${esc(ncKocka(gold))} gp</b> (az osztályod szerint)</p><p class="hint">Egyszer dobható, utána a dobás rögzül.</p><button class="primary" data-act="ncEqGold">🎲 Dobás</button>`;
+  const {list, koltseg} = H.seKosar(eq, RB()), maradt = eq.gold * 100 - koltseg;
+  return `<p>A dobásod: <b>${esc(eq.gold)} gp</b> (${esc(ncKocka(gold))})${isDM ? ' <button class="small" data-act="ncEqGoldRe">Újradobás (DM)</button>' : ''}</p>
+    <label>Vásárlás<input id="ncBolt" value="${esc(ncBoltQ)}" placeholder="keresés a tárgyak közt" autocomplete="off"></label>
+    <div id="ncBoltTalalat">${ncBoltLista(s)}</div>
+    <h3>Kosár</h3>${list.length ? `<div class="list">${list.map(x => `<div class="li"><span class="nm"><b>${x.q > 1 ? esc(x.q) + '× ' : ''}${esc(x.n)}</b><small>${esc(ncPenz(x.q * x.ar))}</small></span><button class="small" data-act="ncKosar" data-r="${esc(x.ref)}" data-d="-1">−</button><button class="small" data-act="ncKosar" data-r="${esc(x.ref)}" data-d="1" ${x.ar > maradt ? 'disabled' : ''}>＋</button></div>`).join('')}</div>` : '<p class="hint">Üres. Üresen is hagyhatod: akkor a teljes összeg pénzként kerül a lapra, és később vásárolsz.</p>'}
+    <p>Összesen: <b>${esc(ncPenz(koltseg))}</b> · Maradt: <b>${esc(maradt < 0 ? '−' + ncPenz(-maradt) : ncPenz(maradt))}</b></p>`;
+}
+// a keresés gépelés közben csak a találatokat rajzolja újra (a mező megtartja a fókuszt)
+function ncBoltKeres(t, s) { ncBoltQ = t.value; const el = $('#ncBoltTalalat'); if (el) el.innerHTML = ncBoltLista(s); }
 // az eredmény a faji bónusszal (az alapértékek átírásakor gépelés közben is frissül)
 function ncKepInfo(s, base) {
   const nc = s.newChar, cr = H.calc({...s, build: {...s.build, base}}, RB()), p = H.ncAbilityProblem(nc, base);
@@ -169,7 +191,16 @@ function ncAct(act, el, s) {
   }
   else if (act === 'ncRollDo') { if (!nc.rolls) patch({newChar: {...nc, method: 'roll', rolls: H.ncRoll(rnd), pick: {}}}); }  // egyszeri: előbb rögzül a lapon, csak utána látszik
   else if (act === 'ncReroll') { if (isDM && confirm('Új dobás: a mostani értékek elvesznek. Mehet?')) patch({newChar: {...nc, rolls: null, pick: {}}, build: {...s.build, base: Object.fromEntries(H.ABIL.map(a => [a, 10]))}}); }
-  else if (act === 'ncEqMode') { if (nc.equip === 'any' && SE_MODOK.includes(el.dataset.m)) patch({newChar: {...nc, eq: {...nc.eq, mode: el.dataset.m}}}); }
+  else if (act === 'ncEqMode') { if (nc.equip === 'any' && SE_MODOK.includes(el.dataset.m) && (isDM || nc.eq.gold == null || el.dataset.m === 'gold')) patch({newChar: {...nc, eq: {...nc.eq, mode: el.dataset.m}}}); }
+  else if (act === 'ncEqGold') { if (nc.eq.gold == null && ncSeRows(s).gold) { ncBoltQ = ''; patch({newChar: {...nc, eq: {...nc.eq, gold: H.seAranyDob(ncSeRows(s).gold, rnd), cart: []}}}); } }  // egyszeri: előbb rögzül a lapon
+  else if (act === 'ncEqGoldRe') { if (isDM && confirm('Új aranydobás: a mostani dobás és a kosár elvész. Mehet?')) patch({newChar: {...nc, eq: {...nc.eq, gold: null, cart: []}}}); }
+  else if (act === 'ncKosar') {
+    const d = +el.dataset.d, r = el.dataset.r, cart = nc.eq.cart.map(x => ({...x})), x = cart.find(y => y.r === r), it = H.seBolt(RB()).find(y => H.refOf(y) === r);
+    if (!it || nc.eq.gold == null) return;
+    if (d > 0) { if (H.seAr(it) > ncMaradt(s)) return; if (x) x.q++; else cart.push({r, q: 1}); }
+    else if (x) { x.q--; if (x.q < 1) cart.splice(cart.indexOf(x), 1); }
+    patch({newChar: {...nc, eq: {...nc.eq, cart}}});
+  }
   else if (act === 'ncEqPick') patch({newChar: {...nc, eq: {...nc.eq, pick: {...nc.eq.pick, [el.dataset.r]: el.dataset.k}}}});
   else if (act === 'ncNext') ncMove(s, 1);
   else if (act === 'ncBack') ncMove(s, -1);

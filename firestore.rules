@@ -53,11 +53,13 @@ service cloud.firestore {
         && (buildLv(old) == 0 || buildLv(now) <= buildLv(old) || (lu != null && buildLv(now) <= lu.to))
         && (old.get('auto', false) != true || buildLv(old) > 0 || buildLv(now) <= 1);
     }
-    // új karakter: a varázslót csak a DM indíthatja; a játékos legfeljebb lezárhatja, a kezdőszintet, a módszereket és a már megdobott értékeket nem írhatja át
+    // új karakter: a varázslót csak a DM indíthatja; a játékos legfeljebb lezárhatja, a kezdőszintet, a módszereket, a már megdobott értékeket,
+    // a DM kezdőfelszerelés-beállítását (equip) és a már megdobott kezdőaranyat (eq.gold) nem írhatja át
     function newCharOk(old, now) {
       let a = old.get('newChar', null);
       let b = now.get('newChar', null);
-      return b == null || (a != null && b.target == a.target && b.methods == a.methods && (a.get('rolls', null) == null || b.get('rolls', null) == a.rolls));
+      return b == null || (a != null && b.target == a.target && b.methods == a.methods && (a.get('rolls', null) == null || b.get('rolls', null) == a.rolls)
+        && b.get('equip', 'any') == a.get('equip', 'any') && (a.get('eq', {}).get('gold', null) == null || b.get('eq', {}).get('gold', null) == a.eq.gold));
     }
     // az engedélyt a játékos csak törölheti; visszavonásnál visszajöhet, de a korábbi szintnél magasabbra nem szólhat
     function levelUpOk(old, now) {
