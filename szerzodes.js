@@ -112,6 +112,8 @@ window.Szerzodes = (() => {
       const sh = isObj(c.share) ? c.share : {}, npc = o.kind === 'npc';
       o.share = {vis: VIS.includes(sh.vis) ? sh.vis : npc ? 'dm' : 'party', hp: ['exact', 'label'].includes(sh.hp) ? sh.hp : npc ? 'label' : 'exact', ac: typeof sh.ac === 'boolean' ? sh.ac : !npc};
     }
+    // NPC-ből lett játékos (a szerkesztő állítja be NPC → Játékos váltáskor): a 🎁 szinthez illő felszerelés gomb csak nála látszik (TERV-kezdo-felszereles.md); NPC-vé visszaváltva is megmarad
+    if (o.kind !== 'monster' && c.fromNpc === true) o.fromNpc = true; else delete o.fromNpc;
     return o;
   }
   function normCombatant(x) {
@@ -129,7 +131,7 @@ window.Szerzodes = (() => {
     return o;
   }
   // alap = a hiányzó beállítások helyére kerülő értékek (a DM Screen a mostani beállításait adja; alapból az ALAP_BEALLITASOK)
-  const ALAP_BEALLITASOK = Object.freeze({groupInit: true, rollHp: false, sources: Object.freeze(['MM','VGM','MTF','MPMM'])});
+  const ALAP_BEALLITASOK = Object.freeze({groupInit: true, rollHp: false, magic: 'std', sources: Object.freeze(['MM','VGM','MTF','MPMM'])});
   function sanitizeState(d, alap = ALAP_BEALLITASOK) {
     d = isObj(d) ? d : {};
     const enc = isObj(d.enc) ? d.enc : {}, st = isObj(d.settings) ? d.settings : {};
@@ -141,6 +143,8 @@ window.Szerzodes = (() => {
       settings: {
         groupInit: typeof st.groupInit === 'boolean' ? st.groupInit : alap.groupInit,
         rollHp: typeof st.rollHp === 'boolean' ? st.rollHp : alap.rollHp,
+        // a kampány mágiaszintje a DMG 38. o. táblázatához (szinthez illő felszerelés): low | std | high
+        magic: ['low', 'std', 'high'].includes(st.magic) ? st.magic : ['low', 'std', 'high'].includes(alap.magic) ? alap.magic : 'std',
         sources: Array.isArray(st.sources) ? st.sources.filter(s => typeof s === 'string' && /^[\w-]{1,30}$/.test(s)) : alap.sources,
         lastExport: typeof st.lastExport === 'string' && /^\d{4}-\d{2}-\d{2}/.test(st.lastExport) ? st.lastExport.slice(0, 10) : (alap.lastExport || ''),
         partyIds: Array.isArray(st.partyIds) ? [...new Set(st.partyIds.filter(id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id)))] : null
@@ -167,7 +171,7 @@ window.Szerzodes = (() => {
     };
   }
 
-  if (typeof modul === 'function') modul('szerzodes', 6);
+  if (typeof modul === 'function') modul('szerzodes', 7);
   return {UT, HELYI, MEGJELENITES, CSATORNA, SECTIONS, TEMPLATE, KINDS, SIDES, VIS, ALLAPOTOK, ALAP_BEALLITASOK, str, safeId, blankCreature, splitEntry,
     normInventory, normCreature, normCombatant, sanitizeState, normPublicChar};
 })();

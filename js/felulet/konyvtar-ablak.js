@@ -1,7 +1,7 @@
 // Könyvtár ablak (felület): a fülek (könyvtár, 5e.tools, D&D Beyond, tárgyak, JSON, mentett encounterek) és a fájlbetöltés.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('konyvtar-ablak', N) és az index.html-ben a konyvtar-ablak.js?v=N és a VART_MODULOK.
 'use strict';
-modul('konyvtar-ablak', 6);
+modul('konyvtar-ablak', 7);
 
 let libTab = 'lib';
 // ---------- könyvtár ----------
@@ -21,6 +21,7 @@ function renderLib() {
       <span class="grow"></span>
       <label class="hint"><input type="checkbox" data-setting="rollHp" ${S.settings.rollHp ? 'checked' : ''}> HP dobása formula alapján</label>
       <label class="hint"><input type="checkbox" data-setting="groupInit" ${S.settings.groupInit ? 'checked' : ''}> közös initiative csoportoknak</label>
+      <label class="hint" title="A DMG 38. o. táblázatához: az NPC-ből lett játékosok szinthez illő felszerelése">Mágiaszint <select data-setting="magic">${MAGIA.map(m => `<option value="${m}" ${(S.settings.magic || 'std') === m ? 'selected' : ''}>${esc(MAGIA_HU[m])}</option>`).join('')}</select></label>
     </div>${body}`;
   if (libTab === 'lib') filterLib();
 }
@@ -44,6 +45,7 @@ function filterLib() {
       <input type="number" min="1" value="1" class="cnt" title="Darabszám">
       <button class="primary" data-act="libAdd">＋ Encounterbe</button>
       ${c.kind === 'pc' ? `<button class="small ${SHEETS[c.id] ? 'on' : ''}" data-act="libSheet" title="${SHEETS[c.id] ? 'Van telefonos karakterlapja – kattints a megnyitáshoz' : 'Telefonos karakterlap létrehozása a könyvtári adatokból'}">📱</button>` : ''}
+      ${c.kind === 'pc' && c.fromNpc ? '<button class="small" data-act="libFelsz" title="Szinthez illő felszerelés (DMG 38. o.): arany, mágikus tárgyak, kezdő felszerelés – előnézettel">🎁</button>' : ''}
       ${szintlepesGomb(c.id, 'lib')}
       ${lapTorolt(c.id) ? '<button class="small" data-act="libVisszahoz" title="A játékos újra látja a karaktert">↩ Visszahozás</button>' : ''}
       <button class="small ${party.has(c.id) ? 'on' : ''}" data-act="libParty" title="${party.has(c.id) ? 'A csapatban van – kattints a kivételhez' : 'Betétel a csapatba (👥 Csapat nézet)'}">👥</button>

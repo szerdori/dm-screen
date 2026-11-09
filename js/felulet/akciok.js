@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 7);
+modul('akciok', 8);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -164,6 +164,20 @@ const AKCIOK = {
     }
   },
 
+  // 🎁 szinthez illő felszerelés (NPC-ből lett játékos, TERV-kezdo-felszereles.md)
+  libFelsz: el => openFelszereles(konyvtari(el).id),
+  felszArany: () => felszFrissit(t => felszerelesAranyUjra(t)),
+  felszUjra: el => felszFrissit(t => felszerelesUjra(t, felszI(el), felszAblak.rb)),
+  felszKi: el => felszFrissit(t => ({...t, items: t.items.filter((x, i) => i !== felszI(el))})),
+  felszStartKi: el => felszFrissit(t => ({...t, start: t.start.filter((x, i) => i !== felszI(el))})),
+  felszMegse: () => { felszAblak = null; closeModal(); },
+  felszMent: () => {
+    const t = felszAblak?.terv, c = t && S.library.find(x => x.id === t.id);
+    if (!c) return;
+    const db = felszerelesHozzaad(t, felszAblak.rb);
+    felszAblak = null; closeModal(); render(); log(`🎁 ${esc(c.name)}: ${esc(felszerelesSzoveg(t, db))}`);
+  },
+
   // szabálykönyv
   rulebook: () => openRulebook(),
   rbUpdate: async el => { el.disabled = true; await rulebookUpdate(); el.disabled = false; },
@@ -293,7 +307,8 @@ function akciokEsemenyek() {
 
   document.addEventListener('change', e => {
     const t = e.target;
-    if (t.dataset.setting) { S.settings[t.dataset.setting] = t.checked; save(); return; }
+    if (t.dataset.setting) { S.settings[t.dataset.setting] = t.type === 'checkbox' ? t.checked : t.value; save(); return; }
+    if (t.id === 'felszMagia') { if (felszAblak && MAGIA.includes(t.value)) { felszAblak.terv = felszerelesTerv(felszAblak.terv.id, felszAblak.rb, t.value); renderFelszereles(); } return; }
     if (t.dataset.src) {
       const s = new Set(S.settings.sources);
       t.checked ? s.add(t.dataset.src) : s.delete(t.dataset.src);

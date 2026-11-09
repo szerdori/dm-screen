@@ -6076,6 +6076,125 @@ describe('Kezdő felszerelés (TERV-kezdo-felszereles.md)', () => {
     eq(H.norm(H.norm({newChar: {target: 1, equip: 'gold', eq: {mode: 'gold', gold: 70}}})).newChar.equip, 'gold');
     eq(H.seErmek(1234), {gp: 12, sp: 3, cp: 4});
   });
+  // ---------- 🎁 szinthez illő felszerelés (NPC-ből lett játékos, DMG 38. o.) ----------
+  const genRb = async () => {
+    const rb = await seRb();
+    rb.items.push({n: 'Próbapálca', s: 'DMG', rar: 'uncommon', mag: true, att: 'requires attunement by a wizard', tc: 'WD'},
+      {n: 'Potion of Próba', s: 'DMG', rar: 'uncommon', mag: true, tc: 'P'}, {n: 'Törpeöv', s: 'DMG', rar: 'uncommon', mag: true, att: 'requires attunement by a dwarf', tc: ''});
+    W.__rb = rb; return rb;
+  };
+  const npcbol = (type, inv = [], extra = {}) => { const c = W.normCreature({kind: 'pc', name: 'Volt NPC', type, fromNpc: true, inventory: inv, ...extra}); A('S.library').push(c); return c; };
+  test('DMG 38. o. sávjai; a jelöltek a karakterhez illenek (saját fegyver +1-e, jártasság, attunement osztály / faj szerint, nincs potion), legfeljebb 3 attunement', async () => {
+    await genRb();
+    eq([A('dmg38(4)').std, A('dmg38(7)').std, A('dmg38(7)').gp, A('dmg38(12)').high, A('dmg38(20)').high.length, A('dmg38(20)').low], [[], ['uncommon'], 500, ['uncommon', 'uncommon', 'uncommon', 'rare'], 6, ['uncommon', 'uncommon']]);
+    const f = npcbol('Human — Fighter 7', [{name: 'Longsword', qty: 1, equipped: true, ref: 'Longsword|PHB'}, {name: 'Chain Mail', qty: 1, equipped: true, ref: 'Chain Mail|PHB'}]);
+    const nevek = (id, attSzabad = true) => { const j = A(`felszJeloltek('uncommon', felszKor('${id}', window.__rb), window.__rb, new Set(), ${attSzabad})`); return {own: j.own.map(x => x.n), other: j.other.map(x => x.n)}; };
+    const fj = nevek(f.id);
+    eq(fj.own, ['+1 Longsword'], 'a saját fegyver változata');
+    ok(fj.other.includes('Bag of Holding') && fj.other.includes('Cloak of Protection'), 'általános tárgyak');
+    ok(!fj.other.some(n => /Próbapálca|Potion|Törpeöv|\+1 Battleaxe/.test(n)), 'varázslónak szánt, potion, más fajnak szánt, nem saját fegyver kimarad: ' + fj.other);
+    ok(!nevek(f.id, false).other.includes('Cloak of Protection'), 'attunement-hely nélkül az attunementes kimarad');
+    const w = npcbol('Dwarf — Wizard 7');
+    const wj = nevek(w.id);
+    ok(wj.other.includes('Próbapálca') && wj.other.includes('Törpeöv'), 'varázslónak és törpének igen');
+    eq(wj.own, [], 'saját fegyver nélkül nincs +1-es változat');
+  });
+  test('a terv: arany, tárgy, a kezdő felszerelésből ami megvan kimarad; újradobás, hozzáadás a könyvtári lényhez (a lapra a szinkron viszi)', async () => {
+    const rb = await genRb();
+    const f = npcbol('Human — Fighter 7', [{name: 'Longsword', qty: 1, equipped: true, ref: 'Longsword|PHB'}, {name: 'Chain Mail', qty: 1, equipped: true, ref: 'Chain Mail|PHB'}], {currency: {gp: 3}});
+    stubRnd(1);
+    const t = W.felszerelesTerv(f.id, rb, 'std');
+    eq([t.L, t.fo, t.magia, t.gold, t.items.map(x => [x.rar, x.n])], [7, 'Fighter', 'std', 525, [['uncommon', '+1 Longsword']]]);
+    eq(t.start.map(x => x.n), ['Battleaxe', 'Shield', "Explorer's Pack"], 'a chain mail megvan (páncél), a többi az (a) lehetőségből');
+    stubRnd(2, 2, 1);
+    const t2 = W.felszerelesUjra(t, 0, rb);
+    ok(t2.items[0].n && t2.items[0].n !== '+1 Longsword' && t2.items[0].rar === 'uncommon', 'másik uncommon: ' + t2.items[0].n);
+    eq(W.felszerelesAranyUjra(t, () => 10).gold, 750);
+    eq(W.felszerelesTerv(f.id, rb, 'high').items.length, 2);
+    eq(W.felszerelesTerv(npcbol('Human — Fighter 3').id, rb, 'high').items, [], '1–4. szinten nincs mágikus tárgy');
+    const db = W.felszerelesHozzaad(t, rb), c = A(`S.library.find(x => x.id === '${f.id}')`);
+    eq(db, 1 + 3 + 2, 'a +1 Longsword, a 3 kezdő tétel és a csomag tartalma (2)');
+    const plus = c.inventory.find(i => i.name === '+1 Longsword');
+    eq([plus.magic, plus.rarity, plus.equipped], [true, 'uncommon', false]); has(plus.note, 'Generálva: DMG 38. o., 7. szint, normál mágia');
+    eq(c.inventory.filter(i => i.name === 'Chain Mail').length, 1, 'a páncél nem duplázódott');
+    eq(c.inventory.find(i => i.name === 'Shield').equipped, true);
+    eq(c.currency.gp, 3 + 525);
+    has(W.felszerelesSzoveg(t, db), '525 gp');
+  });
+  test('a szint az osztályokból (nem a régi CR-ből); fegyver nélkül a jártas fegyverek +1-e; pontos alapnév; attunement-korlát a meglévőkkel; a meglévő csomag-tartalom és lőszer nem duplázódik; a lap leltára számít', async () => {
+    const rb = await genRb();
+    const f = npcbol('Human — Fighter 7', [], {cr: '1/2'});
+    eq(A(`felszKor('${f.id}', window.__rb).L`), 7);
+    const own = A(`felszJeloltek('uncommon', felszKor('${f.id}', window.__rb), window.__rb, new Set(), true)`).own.map(x => x.n);
+    ok(own.includes('+1 Battleaxe') && own.includes('+1 Longsword') && !own.some(n => /Net/.test(n)), 'a jártas fegyverek változatai: ' + own);
+    eq([A("felszVariansA({n: '+1 Studded Leather Armor'}, 'leather armor')"), A("felszVariansA({n: '+1 Leather Armor'}, 'leather armor')"),
+      A("felszVariansA({n: 'Armor of Resistance (Leather Armor)'}, 'leather armor')"), A("felszVariansA({n: 'Longsword of Flame'}, 'longsword')")], [false, true, true, true]);
+    const harom = npcbol('Human — Fighter 17', [{name: 'Cloak of Protection', magic: true, ref: 'Cloak of Protection|DMG', attuned: true},
+      {name: 'Próbakesztyű', magic: true, ref: 'Próbakesztyű|DMG'}, {name: 'Absorbing Tattoo', magic: true, ref: 'Absorbing Tattoo|TCE'}]);
+    stubRnd(2);
+    const t = W.felszerelesTerv(harom.id, rb, 'high');
+    ok(t.items.length === 6 && t.items.every(x => !x.att), 'három attunementes van (hangolva vagy sem): több nem jön');
+    const p = npcbol('Human — Fighter 7', [{name: 'Backpack', qty: 1}, {name: 'Torch', qty: 5}, {name: 'Arrow', qty: 10}, {name: 'Leather Armor', qty: 1, ref: 'Leather Armor|PHB'}]);
+    stubRnd(2);
+    const s = W.felszerelesTerv(p.id, rb, 'std').start.map(x => x.n);
+    ok(!s.includes("Explorer's Pack") && !s.includes('Arrows (20)'), 'a csomag és a nyíl már megvan: ' + s);
+    ok(s.includes('Longbow'), 'a nem viselt páncél mellé jár a (b) lehetőség többi része: ' + s);
+    A(`SHEETS['${p.id}'] = Sheet.norm({classes: [{name: 'Fighter', level: 9}], inventory: [{name: 'Dagger', qty: 1}]})`);
+    eq([A(`felszKor('${p.id}', window.__rb).L`), A(`felszKor('${p.id}', window.__rb).inv`).map(i => i.name)], [9, ['Dagger']], 'a lap szintje és leltára');
+  });
+  test('🎁 gomb csak NPC-ből lett játékosnál; az ablak: kihagyás, mágiaszint, hozzáadás; a mágiaszint-beállítás és a fromNpc tisztítása', async () => {
+    await genRb();
+    A('rulebook = {version: "v", counts: {}, rb: window.__rb}');
+    const f = npcbol('Human — Fighter 7', [{name: 'Longsword', qty: 1, ref: 'Longsword|PHB'}]);
+    A('S.library').push(W.normCreature({kind: 'pc', name: 'Varázslós', type: 'Human — Fighter 7'}));
+    W.openLib('lib');
+    ok($(`[data-lib="${f.id}"] [data-act="libFelsz"]`), '🎁 a volt NPC-nél');
+    eq($$('[data-act="libFelsz"]').length, 1, 'a varázslóval / máshogy készült játékosnál nincs');
+    setVal('select[data-setting="magic"]', 'high'); eq(A('S.settings.magic'), 'high');
+    stubRnd(1);
+    click(`[data-lib="${f.id}"] [data-act="libFelsz"]`);
+    await until(() => $('#felszMagia'), 2000, 'az ablak');
+    eq($('#felszMagia').value, 'high', 'a kampány beállítása az alap');
+    eq($$('[data-act="felszUjra"]').length, 2, 'magas mágia: 2 uncommon');
+    setVal('#felszMagia', 'low'); eq($$('[data-act="felszUjra"]').length, 0, 'alacsony mágia 7. szinten: nincs tárgy');
+    setVal('#felszMagia', 'std'); eq($$('[data-act="felszUjra"]').length, 1);
+    eq(A('S.settings.magic'), 'high', 'az ablakbeli átírás csak erre a karakterre szól');
+    const n = $$('[data-act="felszStartKi"]').length;
+    click('[data-act="felszStartKi"][data-i="0"]'); eq($$('[data-act="felszStartKi"]').length, n - 1);
+    click('[data-act="felszKi"][data-i="0"]'); eq($$('[data-act="felszUjra"]').length, 0);
+    click('[data-act="felszMent"]');
+    ok(!$('#felszMagia'), 'bezárult'); has(lastLog(), '🎁'); has(lastLog(), 'Volt NPC');
+    ok(!A(`S.library.find(x => x.id === '${f.id}')`).inventory.some(i => i.magic), 'a kihagyott tárgy nem került fel');
+    // második generálásnál figyelmeztet; a Mégse nem ír semmit
+    W.openLib('lib');
+    click(`[data-lib="${f.id}"] [data-act="libFelsz"]`);
+    await until(() => $('#felszMagia'), 2000, 'az ablak újra');
+    hasNot($('#modalBox').textContent, 'már generáltál', 'tárgy nélkül még nem');
+    click('[data-act="felszMent"]');
+    W.openLib('lib');
+    click(`[data-lib="${f.id}"] [data-act="libFelsz"]`);
+    await until(() => $('#felszMagia'), 2000, 'az ablak harmadszor');
+    has($('#modalBox').textContent, 'már generáltál');
+    const gp = A(`S.library.find(x => x.id === '${f.id}')`).currency.gp;
+    click('[data-act="felszMegse"]'); ok(!$('#felszMagia'), 'bezárult');
+    eq(A(`S.library.find(x => x.id === '${f.id}')`).currency.gp, gp, 'a Mégse nem ad pénzt'); eq(A('felszAblak'), null);
+    const Sz = W.Szerzodes;
+    eq([Sz.sanitizeState({settings: {magic: 'x'}}).settings.magic, Sz.sanitizeState({settings: {magic: 'low'}}).settings.magic, Sz.sanitizeState({}).settings.magic], ['std', 'low', 'std']);
+    eq([W.normCreature({kind: 'npc', fromNpc: true}).fromNpc, W.normCreature({kind: 'monster', fromNpc: true}).fromNpc, W.normCreature({kind: 'pc', fromNpc: 'igen'}).fromNpc], [true, undefined, undefined]);
+  });
+  test('online: a generátor a valódi szabálykönyvvel minden osztályra, 17. szinten, magas mágiával tölt minden helyet; nincs egyszer használatos tárgy', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), hibak = [];
+    for (const cls of rb.classes.map(c => c.n)) {
+      const c = W.normCreature({kind: 'pc', name: cls, type: 'Human — ' + cls + ' 17', fromNpc: true, inventory: [{name: 'Longsword', qty: 1, ref: 'Longsword|PHB'}]});
+      A('S.library').push(c);
+      const t = W.felszerelesTerv(c.id, rb, 'high');
+      if (t.items.length !== 6 || t.items.some(x => !x.n)) hibak.push(`${cls}: ${t.items.map(x => x.rar + ' ' + (x.n || '–')).join(', ')}`);
+      if (t.items.some(x => /potion|scroll|arrow|bolt/i.test(x.n))) hibak.push(cls + ': egyszer használatos');
+      if (!t.start.length) hibak.push(cls + ': nincs kezdő felszerelés');
+      if (t.items.filter(x => x.att).length > 3) hibak.push(cls + ': 3-nál több attunement');
+    }
+    eq(hibak, []);
+  }, {online: true});
   test('online: mind a 13 osztály és minden PHB-háttér kezdő felszerelése feloldható a szabálykönyvből', async () => {
     const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet, hibak = [];
     eq(rb.classes.filter(c => c.se?.rows?.length).length, 13, 'osztály felszereléssel');
@@ -6509,4 +6628,4 @@ async function run() {
   document.title = (fail ? 'HIBA' : 'OK') + ' – DM Screen tesztek';
   document.body.dataset.done = '1';
 }
-run().catch(e => { document.getElementById('summary').textContent = 'A TESZTFUTTATÁS ELAKADT: ' + (e.message || e); document.getElementById('report').textContent += '\nÖSSZESEN: 0 sikeres, 1 hibás (elakadt: ' + (e.message || e) + ')'; });
+run().catch(e => { document.getElementById('summary').textContent = 'A TESZTFUTTATÁS ELAKADT: ' + (e.message || e); document.getElementById('report').textContent += '\nHIBA  a tesztfuttatás elakadt: ' + (e.message || e) + (appErrors.length ? ' – az app hibái: ' + appErrors.join(' | ') : '') + '\nÖSSZESEN: 0 sikeres, 1 hibás'; });

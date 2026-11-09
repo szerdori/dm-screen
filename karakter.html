@@ -329,14 +329,14 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on,button[data-act^="ncEq"
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
 <script src="sheet.js?v=24"></script>
-<script src="szerzodes.js?v=6"></script>
+<script src="szerzodes.js?v=7"></script>
 <script>
 'use strict';
 // Játékos app: belépés Google-fiókkal; a saját karakter teljes telefonos lapja (sheets/{id}) és a csapat nyilvános lapjai (characters/{id}).
 // A lapot a gazdája (és a DM) írja; minden változás mezőnként megy a felhőbe, a DM Screen élőben látja.
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 24, szerzodes: 6, 'lap-alap': 1, 'lap-dobas': 1, 'lap-rajz': 1, 'lap-felepites': 1, 'lap-szintlepes': 1, 'lap-ujkarakter': 3, 'lap-elozmenyek': 1, 'lap-fiok': 1, 'lap-iras': 1, 'lap-utvonal': 1, 'lap-gesztus': 1, 'lap-akciok': 3, 'lap-indulas': 1};
+const VART_MODULOK = {kozos: 3, sheet: 24, szerzodes: 7, 'lap-alap': 1, 'lap-dobas': 1, 'lap-rajz': 1, 'lap-felepites': 1, 'lap-szintlepes': 1, 'lap-ujkarakter': 3, 'lap-elozmenyek': 1, 'lap-fiok': 1, 'lap-iras': 1, 'lap-utvonal': 1, 'lap-gesztus': 1, 'lap-akciok': 3, 'lap-indulas': 1};
 </script>
 <script src="js/lap/lap-alap.js?v=1"></script>
 <script src="js/lap/lap-dobas.js?v=1"></script>
