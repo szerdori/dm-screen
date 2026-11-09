@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 12);
+modul('lapszinkron', 13);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -223,11 +223,11 @@ function lapAllapot(id) {
   return !s ? 'nincs' : s.deleted ? 'torolt' : s.newChar ? 'keszul' : !s.auto ? 'kezi' : s.build.levels.length === Sheet.level(s) ? 'motoros' : 'elter';
 }
 // új játékos: üres, motoros lap; a gazdája a telefonján a varázslóval állítja be (a gazda később is megadható)
-function ujJatekos({name = '', owner = '', vis = 'party', target = 1, methods} = {}) {
+function ujJatekos({name = '', owner = '', vis = 'party', target = 1, methods, equip = 'any'} = {}) {
   const at = new Date().toISOString(), by = authInfo.email || 'DM';
   const lib = normCreature({id: uid(), kind: 'pc', name: name.trim() || 'Új karakter', owner, share: {vis, hp: 'label', ac: false}, source: 'Karakterlap'});
   S.library.push(lib);
-  createSheet(lib.id, Sheet.ncBlank({name: lib.name, owner: lib.owner, target, methods, by, at}));
+  createSheet(lib.id, Sheet.ncBlank({name: lib.name, owner: lib.owner, target, methods, equip, by, at}));
   return lib;
 }
 // ---------- törlés: a játékos a telefonon törli (Sheet.torlesPatch), a lény itt marad; a DM visszahozhatja, vagy a Könyvtárban véglegesen törölheti ----------

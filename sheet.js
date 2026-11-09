@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 22;
+  const VERSION = 23;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -94,7 +94,7 @@ window.Sheet = (() => {
     return {at: isoTime(v.at), by: str(v.by, 200), owner: EMAIL_RE.test(owner) ? owner : '', vis: v.vis === 'party' ? 'party' : 'dm'};
   }
   // új karakter (a kezdő varázsló állása): amíg a lapon van, a tulajdonos a lap helyén a varázslót kapja
-  const NC_STEPS = ['alap', 'faj', 'oszt', 'kep', 'hat', 'val', 'var', 'sum'], NC_METHODS = ['array', 'buy', 'roll', 'manual'];
+  const NC_STEPS = ['alap', 'faj', 'oszt', 'kep', 'hat', 'val', 'var', 'fel', 'sum'], NC_METHODS = ['array', 'buy', 'roll', 'manual'];
   function normNewChar(v) {
     if (!isObj(v)) return null;
     const methods = NC_METHODS.filter(m => arr(v.methods, 4).includes(m)), rolls = arr(v.rolls, 6), pick = isObj(v.pick) ? v.pick : {};
@@ -1416,10 +1416,10 @@ window.Sheet = (() => {
   // ---------- új karakter: üres, motoros lap és a kezdő varázsló logikája (a felépítés a lapon van, a varázsló csak felület fölötte) ----------
   const NC_ARRAY = [15, 14, 13, 12, 10, 8], NC_BUY_POINTS = 27, NC_BUY_COST = {8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9};
   // az üres lap: nincs szintje; a kezdőszintig (ha 1 fölötti) a szintlépés-varázsló visz tovább
-  const ncBlank = ({name = '', owner = '', target = 1, methods = NC_METHODS, by = '', at = ''} = {}) => {
+  const ncBlank = ({name = '', owner = '', target = 1, methods = NC_METHODS, equip = 'any', by = '', at = ''} = {}) => {
     const to = int(target, 1, 1, 20);
     return norm({name: name || 'Új karakter', owner, auto: true, build: {levels: [], spells: {}, base: Object.fromEntries(ABIL.map(a => [a, 10]))},
-      newChar: {step: 'alap', target: to, methods, by, at}, levelUp: to > 1 ? {to, by, at, mc: false} : null, updatedBy: by, updatedAt: at});
+      newChar: {step: 'alap', target: to, methods, equip, by, at}, levelUp: to > 1 ? {to, by, at, mc: false} : null, updatedBy: by, updatedAt: at});
   };
   // 6 × 4d6, a legkisebb kocka nélkül (PHB 13. o.)
   const ncRoll = rnd => Array.from({length: 6}, () => { const k = Array.from({length: 4}, () => rnd(6)).sort((a, b) => a - b); return k[1] + k[2] + k[3]; });
@@ -1559,9 +1559,11 @@ window.Sheet = (() => {
   }
   const seErmek = cp => { cp = Math.max(0, Math.floor(num(cp))); return {gp: Math.floor(cp / 100), sp: Math.floor(cp % 100 / 10), cp: cp % 10}; };
   // a varázsló Kész-e: a lap új inventory-ja és currency-je (a meglévők mellé)
+  // a felszerelés módja: a DM által rögzített (csak csomag / csak arany), különben a játékos választása ('' = még nem választott)
+  const seMod = nc => !nc ? '' : nc.equip && nc.equip !== 'any' ? nc.equip : nc.eq?.mode || '';
   function seEredmeny(s, rb) {
     const eq = s.newChar?.eq || normSeEq(null), rows = seRows(s.build.levels[0]?.c, s.build.background, rb).rows;
-    const {list, cp} = eq.mode === 'pack' ? seCsomag(rows, eq) : {list: [], cp: 0};
+    const {list, cp} = seMod(s.newChar) === 'pack' ? seCsomag(rows, eq) : {list: [], cp: 0};
     const items = seLeltar(list, rb, s.inventory), cur = {...s.currency}, add = seErmek(cp);
     for (const k of Object.keys(add)) cur[k] = num(cur[k]) + add[k];
     return {inventory: normInventory([...s.inventory, ...items]), currency: cur, items, cp};
@@ -1994,7 +1996,7 @@ window.Sheet = (() => {
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
-    NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seEredmeny,
+    NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seMod, seEredmeny,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine, ddbSablon, ddbSablonLap, ddbSkala, regiSorrend, atallithato, autoLap};

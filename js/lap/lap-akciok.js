@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-akciok, a karakter.html része): a gombok nyilvántartása (LAP_AKCIOK: data-act → kezelő), módosítás, gépelés, billentyűk
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-akciok', N) és a karakter.html-ben a lap-akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-akciok', 1);
+modul('lap-akciok', 2);
 
 // ---------- nyilvántartás: data-act="nev" → LAP_AKCIOK.nev(el, s, i, act) ----------
 // Új gomb = új bejegyzés (s = a nyitott lap, i = a gomb data-i értéke). A kezelő maga ír és rajzol, ha kell.
@@ -34,7 +34,7 @@ const LAP_AKCIOK = {
   infoClose() { $('#infoPop').hidden = true; },
   ncPortre() { $('#ncPortreFile')?.click(); },
   ncPortreTorol(el, s) { if (s.newChar && canEdit(s)) patch({portrait: ''}); },
-  ncCls: ncGomb, ncMethod: ncGomb, ncRollDo: ncGomb, ncReroll: ncGomb, ncNext: ncGomb, ncBack: ncGomb, ncDone: ncGomb, ncSkip: ncGomb,
+  ncCls: ncGomb, ncEqMode: ncGomb, ncEqPick: ncGomb, ncMethod: ncGomb, ncRollDo: ncGomb, ncReroll: ncGomb, ncNext: ncGomb, ncBack: ncGomb, ncDone: ncGomb, ncSkip: ncGomb,
   luClose: luGomb, luCls: luGomb, luHow: luGomb, luNext: luGomb, luBack: luGomb, luSave: luGomb,
   histRestore: histGomb, histFull: histGomb, histDl: histGomb,
   histSave(el, s) { if (canEdit(s)) histMent(s); },
@@ -192,6 +192,7 @@ function akciokEsemenyek() {
       if (H.ABIL.every(a => base[a] >= 1 && base[a] <= 30)) write(view.id, {build: {...s.build, base}});
       return;
     }
+    if (act === 'ncEqCat') { if (s.newChar && canEdit(s)) ncEqCat(t, s); return; }
     if (act === 'csakBek') { csakBekeszitettAllit(t.checked); render(true); return; }
     if (t.dataset.ch != null) choicePicked(t);
     else if (t.dataset.ov != null) { const ov = {...s.ov}; if (t.value.trim() === '') delete ov[t.dataset.ov]; else ov[t.dataset.ov] = t.value.trim(); patch({ov}); }

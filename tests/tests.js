@@ -4057,8 +4057,10 @@ describe('Szintlépés-engedély a DM Screenben', () => {
     click('[data-act="ujJatekosMent"]'); has(msg, 'nem érvényes'); ok($('#njForm'), 'nyitva maradt');
     fm.elements.owner.value = 'Jatekos@X.hu'; fm.elements.target.value = '3'; fm.elements.name.value = '<img src=x onerror=alert(1)>';
     fm.elements.m_roll.checked = false;
+    eq(fm.elements.equip.value, 'any', 'kezdő felszerelés: alapból a játékos dönt'); fm.elements.equip.value = 'pack';
     click('[data-act="ujJatekosMent"]');
     const c = A('S.library').at(-1), s = A(`SHEETS['${c.id}']`);
+    eq(s.newChar.equip, 'pack', 'a DM beállítása a lapra');
     eq([c.kind, c.owner, c.share.vis, s.owner, s.auto, s.build.levels, s.newChar.target, s.newChar.methods, s.levelUp.to], ['pc', 'jatekos@x.hu', 'party', 'jatekos@x.hu', true, [], 3, ['array', 'buy', 'manual'], 3]);
     eq(A(`lapAllapot('${c.id}')`), 'keszul');
     eq(A(`szintlepesAllas('${c.id}')`), null, 'készülő lapra nincs engedélyadás');
@@ -4546,6 +4548,72 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     eq(lap().hp.cur, lap().hp.max, 'teli HP');
     await until(() => kq('.lusteps span.on')?.textContent === 'HP' || kq('.lusteps span.on')?.textContent === 'Osztály', 2000, 'jöhet a szintlépés');
     has(ktext(), '2. szint');
+  });
+  ktest('új karakter: Felszerelés lépés (TERV-kezdo-felszereles.md) – csomag mód: (a) / (b), két martial weapon legördülővel, holy symbol; összegzés AC-vel; Kész-kor a lapra; a DM rögzített módja; befecskendezés ellen', async () => {
+    const rb = await W.buildRulebook(seGet), H = K.Sheet;
+    rb.backgrounds[0].se.rows[0]._.push({sp: XSS});
+    K.KApp.setRulebook({version: 'v', rb});
+    const lap = () => K.eval('sheets.get("p1")'), lepes = () => kq('.lusteps span.on').textContent, tovabb = () => kclick('[data-act="ncNext"]');
+    const uj = (equip = 'any') => ({...JSON.parse(JSON.stringify(H.ncBlank({owner: 'a@x.hu', equip}))), currency: {gp: 1},
+      build: {levels: lv('Fighter', 1), spells: {}, race: 'Dwarf|PHB', subrace: 'Hill|PHB', background: 'Acolyte|PHB', base: {str: 15, dex: 14, con: 13, int: 10, wis: 12, cha: 8}}});
+    openSheet({...uj(), newChar: {...uj().newChar, step: 'fel', method: 'manual'}});
+    // a korábbi lépések kötelező választásai (a Kész csak akkor ment, ha minden lépés rendben)
+    for (let k = 0; k < 4; k++) {
+      const c = H.ncPlan(lap(), rb);
+      for (const x of [...c.choices, ...c.spells].filter(y => y.missing))
+        K.eval(`patch({build: Sheet.setChoice(sheets.get("p1").build, ${JSON.stringify(x.c)}, ${JSON.stringify(H.choiceOptions(x.c, c.cr, rb).opts.filter(y => !y.dis).slice(0, x.c.n).map(y => y.v))})})`);
+    }
+    eq(lepes(), 'Felszerelés');
+    ok(kq('[data-act="ncNext"]').disabled, 'mód kell'); has(kq('#ncBaj').textContent, 'kezdő felszerelés vagy arany');
+    kclick('[data-act="ncEqMode"][data-m="pack"]');
+    eq(lap().newChar.eq.mode, 'pack');
+    ok(kq('[data-act="ncNext"]').disabled, 'a sorok választása kell'); has(ktext(), 'chain mail'); has(ktext(), 'Pénz: 15 gp');
+    kclick('[data-act="ncEqPick"][data-r="c0"][data-k="a"]');
+    kclick('[data-act="ncEqPick"][data-r="c1"][data-k="b"]');
+    eq(kqa('select[data-act="ncEqCat"]').length, 3, 'két martial weapon + a holy symbol');
+    kset('select[data-act="ncEqCat"][data-key="c1:b:0"][data-n="0"]', 'Longsword|PHB');
+    ok(kq('[data-act="ncNext"]').disabled, 'a második fegyver hiányzik');
+    kset('select[data-act="ncEqCat"][data-key="c1:b:0"][data-n="1"]', 'Battleaxe|PHB');
+    eq(lap().newChar.eq.cat['c1:b:0'], ['Longsword|PHB', 'Battleaxe|PHB']);
+    kset('select[data-act="ncEqCat"][data-key="h0:_:0"][data-n="0"]', 'Amulet|PHB');
+    ok(!kq('[data-act="ncNext"]').disabled, 'minden megvan');
+    eq(K.document.querySelectorAll('img[src="x"]').length, 0, 'HTML-befecskendezés'); ok(!K.__xss, "lefutott a befecskendezett kód");
+    K.frameElement.width = 320; await wait(50);
+    ok(K.document.documentElement.scrollWidth <= 320, '320 px-en nincs vízszintes görgetés: ' + K.document.documentElement.scrollWidth);
+    K.frameElement.width = 420;
+    tovabb(); eq(lepes(), 'Összegzés');
+    const sor = l => [...kqa('.lutab tr')].find(tr => tr.cells[0].textContent === l)?.cells[1].textContent;
+    eq(sor('AC'), '16'); has(sor('Felszerelés'), 'Chain Mail'); has(sor('Támadások'), 'Longsword'); eq(sor('Pénz'), '15 gp');
+    eq(K.document.querySelectorAll('img[src="x"]').length, 0, 'HTML-befecskendezés az összegzésben');
+    klog.length = 0;
+    kclick('[data-act="ncDone"]');
+    await until(() => klog.some(l => l[0] === 'hist'), 2000, 'mentve');
+    const [, , p] = klog.find(l => l[0] === 'hist');
+    eq([p.newChar, p.currency.gp], [null, 16], 'a meglévő 1 gp + 15 gp');
+    const by = n => p.inventory.find(i => i.name === n);
+    eq([by('Chain Mail').equipped, by('Longsword').equipped, by('Battleaxe').equipped, by('Amulet').note, by("Explorer's Pack").container, by('Torch').container],
+      [true, true, true, 'holy symbol (a gift)', '', "Explorer's Pack"]);
+    ok(by(XSS), 'a szöveges tétel is a lapra kerül');
+    await until(() => !lap().newChar, 2000, 'lezárva');
+    eq(lap().inventory.length, p.inventory.length);
+    // a DM csak csomagot engedett: nincs módválasztó, a sorok rögtön látszanak
+    openSheet({...uj('pack'), newChar: {...uj('pack').newChar, step: 'fel'}});
+    ok(!kq('[data-act="ncEqMode"]'), 'nincs módválasztó'); ok(kq('[data-act="ncEqPick"]'), 'a sorok látszanak');
+    // jártasság nélkül ⚠ a fegyver mellett (de választható)
+    const fx = rb.classes[0].fx, wi = fx.findIndex(x => x.weapon);
+    fx[wi] = {weapon: ['simple']};
+    kclick('[data-act="ncEqPick"][data-r="c1"][data-k="b"]');
+    has(kq('select[data-key="c1:b:0"] option[value="Longsword|PHB"]').textContent, '⚠ nem vagy jártas');
+    ok(!kq('select[data-key="c1:b:0"] option[value="Longsword|PHB"]').disabled, 'választható');
+    fx[wi] = {weapon: ['simple', 'martial']};
+    // arany mód (amíg a vásárlás nincs kész): nem zárható le üres kézzel
+    openSheet({...uj(), newChar: {...uj().newChar, step: 'fel', method: 'manual', eq: {mode: 'gold'}}});
+    ok(kq('[data-act="ncNext"]').disabled, 'arany módban még nem lehet továbblépni');
+    // a régi (3-as) szabálykönyvben nincs kezdő felszerelés: a lépés kimarad, az összegzés szól
+    const regi = structuredClone(rb); regi.classes.forEach(c => delete c.se); regi.backgrounds.forEach(b => delete b.se);
+    K.KApp.setRulebook({version: 'v3', rb: regi});
+    openSheet({...uj(), newChar: {...uj().newChar, step: 'fel'}});
+    eq(lepes(), 'Összegzés'); has(ktext(), 'újra kell töltenie a szabálykönyvet');
   });
   ktest('új karakter: dobás egyszer, rögzül; a DM újradobhat; point buy és kézi érték ellenőrzése; a tilos módszer nem látszik; a DM kihagyhatja; szabálykönyv nélkül üzenet', async () => {
     const rb = rbVarazs(), H = K.Sheet;
@@ -6057,7 +6125,7 @@ describe('Szerződés (szerzodes.js)', () => {
     eq(kulcsok.filter(k => !nevek.has(k)), [], 'gazdátlan bejegyzés');
     // a mezők (jelölőnégyzet, legördülő, szövegmező) a change-figyelőben, act === '…' alapján
     const valtozas = [...nevek].filter(n => !kulcsok.includes(n)).sort();
-    eq(valtozas, ['attune', 'bBase', 'bBg', 'bRace', 'coin', 'csakBek', 'equip', 'itemCont', 'itemNote', 'lvHp', 'prep', 'todoDone']);
+    eq(valtozas, ['attune', 'bBase', 'bBg', 'bRace', 'coin', 'csakBek', 'equip', 'itemCont', 'itemNote', 'lvHp', 'ncEqCat', 'prep', 'todoDone']);
     const akciok = await szoveg('js/lap/lap-akciok.js');
     for (const n of valtozas) ok(akciok.includes(`act === '${n}'`), n + ': a change-figyelő kezeli');
     ok(K.eval('LAP_NELKUL').size && [...K.eval('LAP_NELKUL')].every(k => kulcsok.includes(k)), 'a lap nélküli gombok is a táblázatban');

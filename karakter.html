@@ -182,7 +182,8 @@ details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:var(--text2
 .chopts label{display:flex;align-items:center;gap:6px;font-size:14px}
 .chopts label[hidden]{display:none}
 .lubar{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--accent);border-radius:8px;padding:8px 10px;margin:8px 0}
-button[data-act^="lu"].on,button[data-act="ncMethod"].on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
+button[data-act^="lu"].on,button[data-act="ncMethod"].on,button[data-act^="ncEq"].on{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:700}
+.ncse{display:flex;flex-direction:column;gap:6px;margin:6px 0} .ncse button{white-space:normal;text-align:left;width:100%} .ncbody .box>label{display:block;margin-top:6px} .ncbody .box select{width:100%;box-sizing:border-box;margin-top:3px}
 .lusteps{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 12px}
 .lusteps span{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--panel);color:var(--muted)}
 .lusteps span.on{background:var(--accent);color:var(--on-accent);font-weight:700}
@@ -327,7 +328,7 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on{background:var(--accent
 <div id="keresPop" hidden role="dialog" aria-label="Dobáskérés a DM-től"></div>
 <div id="gate"><div class="muted">Betöltés…</div></div>
 <script src="kozos.js?v=3"></script>
-<script src="sheet.js?v=22"></script>
+<script src="sheet.js?v=23"></script>
 <script src="szerzodes.js?v=6"></script>
 <script>
 'use strict';
@@ -335,20 +336,20 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on{background:var(--accent
 // A lapot a gazdája (és a DM) írja; minden változás mezőnként megy a felhőbe, a DM Screen élőben látja.
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 22, szerzodes: 6, 'lap-alap': 1, 'lap-dobas': 1, 'lap-rajz': 1, 'lap-felepites': 1, 'lap-szintlepes': 1, 'lap-ujkarakter': 1, 'lap-elozmenyek': 1, 'lap-fiok': 1, 'lap-iras': 1, 'lap-utvonal': 1, 'lap-gesztus': 1, 'lap-akciok': 1, 'lap-indulas': 1};
+const VART_MODULOK = {kozos: 3, sheet: 23, szerzodes: 6, 'lap-alap': 1, 'lap-dobas': 1, 'lap-rajz': 1, 'lap-felepites': 1, 'lap-szintlepes': 1, 'lap-ujkarakter': 2, 'lap-elozmenyek': 1, 'lap-fiok': 1, 'lap-iras': 1, 'lap-utvonal': 1, 'lap-gesztus': 1, 'lap-akciok': 2, 'lap-indulas': 1};
 </script>
 <script src="js/lap/lap-alap.js?v=1"></script>
 <script src="js/lap/lap-dobas.js?v=1"></script>
 <script src="js/lap/lap-rajz.js?v=1"></script>
 <script src="js/lap/lap-felepites.js?v=1"></script>
 <script src="js/lap/lap-szintlepes.js?v=1"></script>
-<script src="js/lap/lap-ujkarakter.js?v=1"></script>
+<script src="js/lap/lap-ujkarakter.js?v=2"></script>
 <script src="js/lap/lap-elozmenyek.js?v=1"></script>
 <script src="js/lap/lap-fiok.js?v=1"></script>
 <script src="js/lap/lap-iras.js?v=1"></script>
 <script src="js/lap/lap-utvonal.js?v=1"></script>
 <script src="js/lap/lap-gesztus.js?v=1"></script>
-<script src="js/lap/lap-akciok.js?v=1"></script>
+<script src="js/lap/lap-akciok.js?v=2"></script>
 <script src="js/lap/lap-indulas.js?v=1"></script>
 <script src="firebase-config.js"></script>
 <script type="module">
