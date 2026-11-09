@@ -33,7 +33,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 | `docs/mukodes.md` | mit tud az app: a funkciók elfogadott viselkedése |
 | `docs/kulso-forrasok.md` | 5e.tools, D&D Beyond: elérés és buktatók – olvasd el, mielőtt az importhoz vagy a szabálykönyvhöz nyúlsz |
 | `docs/dontesek/NNNN-*.md` | technikai döntések (háttér, döntés, következmény); számozott, nem törlődik |
-| `TERV-*.md` | tervek: `TERV-jatekos-app.md` (0–5. fázis), `TERV-2-fazis.md`, `TERV-3-4-fazis.md`, `TERV-refaktor.md`, `TERV-olvashato-mod.md`, `TERV-dobaskeres.md`, `TERV-flavour.md` |
+| `TERV-*.md` | tervek: `TERV-jatekos-app.md` (0–5. fázis), `TERV-2-fazis.md`, `TERV-3-4-fazis.md`, `TERV-refaktor.md`, `TERV-olvashato-mod.md`, `TERV-dobaskeres.md`, `TERV-flavour.md`, `TERV-featek-tce.md` |
 | `README.md` | a felhasználónak: mi ez, hogyan indul |
 
 ## Felépítés
@@ -62,7 +62,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 ## Nyitott / félretett ügyek (2026-10-29)
 - **Sorrend (a felhasználó döntése, 2026-11-08):**
   1. Azonos forrású ✋ teendők javítása – kész 2026-11-08 (a forrás első teendőjének kulcsa a régi `'✋ ' + src`, a többié `'✋ ' + src + ' – ' + szöveg`, 200 karakterre vágva; `Sheet.VERSION` 20).
-  2. **Featek és TCE** (`TERV-3-4-fazis.md` 4. fázis 3–5. lépése): multiclass most **nem** lesz, de szintlépéskor featet lehessen választani (előfeltételekkel, a featek saját választásaival); utána TCE opcionális feature-ök, lezárás. Új beszélgetésben.
+  2. **Featek és TCE** – terv és döntések: `TERV-featek-tce.md` (elfogadva 2026-11-08, folyamatban). Multiclass most **nem** lesz.
   3. **Utána szólj a felhasználónak:** a kezdő felszerelésről akar beszélni, ezzel folytatnánk. Kibővítve (tervezni kell): magasabb szintű karakter létrehozása, a szinthez illő véletlen felszereléssel, akár véletlen builddel is.
   - Menet közben: a refaktor 6. lépése után nyitva maradt apróságok (`TERV-refaktor.md`), ha egy feladat amúgy is azokhoz a fájlokhoz nyúl.
 - **Ráér később (a felhasználó döntése, 2026-11-08):** multiclass (4. fázis 1–2. lépés); flavour text bővítése (HP-hoz mért súlyosság, halálos csapás, mellétalálás); homebrew-szerkesztő; wishlist: egy érték kinagyítása hosszú nyomásra (`TERV-olvashato-mod.md`).

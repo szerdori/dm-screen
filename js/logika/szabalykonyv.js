@@ -1,7 +1,7 @@
 // Szabálykönyv a játékos appnak (logika, DOM nélkül): az 5e.tools adatainak letöltése, átalakítása (fx hatáslisták), feltöltése, és a tárgykeresés.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('szabalykonyv', N) és az index.html-ben a szabalykonyv.js?v=N és a VART_MODULOK.
 'use strict';
-modul('szabalykonyv', 3);
+modul('szabalykonyv', 4);
 
 // ---------- szabálykönyv a játékos appnak (rules/*) ----------
 // Az 5e.tools-tükörből letölti a PHB / XGE / TCE varázslatait és featjeit, a PHB / DMG / XGE / TCE tárgyait (2024-es könyvek nélkül),
@@ -49,6 +49,18 @@ function featPre(pre) {
       : k === 'race' ? v.map(r => r.name + (r.subrace ? ` (${r.subrace})` : '')).join(' or ')
       : /^spellcasting/.test(k) ? 'spellcasting' : k === 'proficiency' ? v.map(p => Object.entries(p).map(([a, b]) => b + ' ' + a).join(', ')).join(' or ')
       : k === 'level' ? 'level ' + (v.level ?? v) : k === 'other' ? String(v) : k).join(', ')).join(' / ');
+}
+// a feat feltétele szerkezetben (a motor ellenőrzi: Sheet.featOk): a lista elemei közül egynek kell teljesülnie, egy elemen belül mindennek;
+// ab / race / prof: vagy-lista; cast: true = bármilyen varázslás (PHB), 'class' = osztály-varázslás vagy Pact Magic (TCE: spellcasting2020);
+// a többi feltétel (pl. 'other', 'level') csak a pre szövegben van, nem ellenőrzött: az ilyen elem üres marad, és teljesültnek számít
+function featPq(pre) {
+  const pq = (pre || []).map(o => compact({
+    ab: (o.ability || []).map(a => Object.fromEntries(Object.entries(a).filter(([k, v]) => ABIL.includes(k) && typeof v === 'number'))).filter(a => Object.keys(a).length),
+    race: (o.race || []).map(r => compact({n: String(r.name || '').toLowerCase(), sub: String(r.subrace || '').toLowerCase()})).filter(r => r.n),
+    cast: o.spellcasting2020 ? 'class' : Object.keys(o).some(k => /^spellcasting/.test(k)),
+    prof: (o.proficiency || []).flatMap(p => Object.entries(p).map(([k, v]) => k + ':' + String(v).toLowerCase()))
+  }));
+  return pq.some(x => Object.keys(x).length) ? pq : [];
 }
 // a featek képességérték-növelése külön mezőben van, nem a leírásban
 const featAbility = ab => (ab || []).map(a => 'Ability Score Increase: ' + (a.choose
@@ -276,7 +288,7 @@ async function buildRulebook(get = rbFetch) {
       att: h.reqAttune === true ? 'requires attunement' : typeof h.reqAttune === 'string' ? 'requires attunement ' + tagStrip(h.reqAttune) : '',
       pre: h.namePrefix || '', suf: h.nameSuffix || '', req: v.requires || [], exc: v.excludes || null,
       tx: rbText(h.entries).replace(/\{=(\w+)[^}]*\}/g, (m, k) => h[k] ?? '')}); }),
-    feats: (feats.feat || []).filter(f => RB_FEAT.includes(f.source)).map(f => compact({n: f.name, s: f.source, pre: featPre(f.prerequisite), fx: profFx(f),
+    feats: (feats.feat || []).filter(f => RB_FEAT.includes(f.source)).map(f => compact({n: f.name, s: f.source, pre: featPre(f.prerequisite), pq: featPq(f.prerequisite), fx: profFx(f),
       tx: [featAbility(f.ability), rbText(f.entries)].filter(Boolean).join('\n')})),
     conditions: (conds.condition || []).filter(c => c.source === 'PHB').map(c => ({n: c.name, s: c.source, tx: rbText(c.entries)})),
     ...cls, races: rc.races, subraces: rc.subraces, backgrounds: convBackgrounds(bgs), optfeatures: convOptFeatures(opts)

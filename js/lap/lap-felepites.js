@@ -40,7 +40,7 @@ const lockedFn = (c, lock) => {
 };
 // egy választási hely szerkesztője (a szintlépés-varázsló is ezt használja)
 function choiceBox(c, cr, lock = null) {
-  const o = H.choiceOptions(c, cr, RB()), K = esc(c.key), zar = lockedFn(c, lock);
+  const o = H.choiceOptions(c, cr, RB(), sheets.get(view.id)), K = esc(c.key), zar = lockedFn(c, lock);
   const head = `<div class="chhead"><b>${esc(c.src)}</b><span class="hint">${esc(c.label || H.FX_LABEL[c.kind] || c.kind)}${c.n > 1 ? ` (${c.ok.length} / ${c.n})` : ''}</span><span class="grow"></span>${c.done ? '<span class="okk">✓</span>' : '<span class="warn">⚠</span>'}</div>`;
   let body;
   if (c.kind === 'asi') {

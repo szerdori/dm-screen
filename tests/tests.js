@@ -2321,6 +2321,45 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     eq(H.calc(H.norm({...r, todoDone: ['✋ Favored Enemy (Ranger 1)']}), rb).todos, []);
   });
 
+  test('feat-előfeltétel (featOk): képesség vagy-lista, faj + alfaj, Small faj, varázslás, jártasság; a választóban ⚠ és az ok, de választható; feltétel nélkül ✓', () => {
+    const H = W.Sheet, rb = rb3();
+    rb.races.push({n: 'Halfling', s: 'PHB', size: 'S', sp: {walk: 25}, fx: []}, {n: 'Elf', s: 'PHB', size: 'M', sp: {walk: 30}, fx: [], subs: 1});
+    rb.subraces.push({n: 'Drow', race: 'Elf', s: 'PHB', fx: []});
+    rb.feats.push({n: 'Ritual Caster', s: 'PHB', pre: 'INT 13 or WIS 13', pq: [{ab: [{int: 13}, {wis: 13}]}]},
+      {n: 'Drow High Magic', s: 'XGE', pq: [{race: [{n: 'elf', sub: 'drow'}]}]}, {n: 'Squat Nimbleness', s: 'XGE', pq: [{race: [{n: 'dwarf'}, {n: 'small race'}]}]},
+      {n: 'War Caster', s: 'PHB', pq: [{cast: true}]}, {n: 'Heavy Armor Master', s: 'PHB', pq: [{prof: ['armor:heavy']}]}, {n: 'Fighting Initiate', s: 'TCE', pq: [{prof: ['weapon:martial']}]});
+    const f = n => rb.feats.find(x => x.n === n);
+    const fighter = mkS({race: 'Dwarf|PHB', base: {str: 15, int: 8, wis: 12}, levels: lv('Fighter', 4)});
+    const cf = H.calc(fighter, rb);
+    eq(H.featOk(f('Ritual Caster'), cf, rb, fighter), {ok: false, hiany: ['INT 13 vagy WIS 13']});
+    eq(H.featOk(f('War Caster'), cf, rb, fighter), {ok: false, hiany: ['varázsolni kell tudni']});
+    ok(H.featOk(f('Heavy Armor Master'), cf, rb, fighter).ok && H.featOk(f('Fighting Initiate'), cf, rb, fighter).ok, 'a Fighter jártas heavy armorban és martial fegyverben');
+    ok(H.featOk(f('Squat Nimbleness'), cf, rb, fighter).ok, 'Dwarf');
+    eq(H.featOk(f('Drow High Magic'), cf, rb, fighter), {ok: false, hiany: ['faj: Elf (drow)']});
+    eq(H.featOk(f('Alert'), cf, rb, fighter), {ok: true, hiany: []}, 'feltétel nélkül');
+    const cleric = mkS({race: 'Halfling|PHB', base: {wis: 14}, levels: lv('Cleric', 4)}), cc = H.calc(cleric, rb);
+    ok(H.featOk(f('Ritual Caster'), cc, rb, cleric).ok && H.featOk(f('War Caster'), cc, rb, cleric).ok && H.featOk(f('Squat Nimbleness'), cc, rb, cleric).ok, 'WIS 13, varázsol, Small');
+    eq(H.featOk(f('Heavy Armor Master'), cc, rb, cleric), {ok: false, hiany: ['heavy armor jártasság']});
+    eq(H.featOk(f('Fighting Initiate'), cc, rb, cleric), {ok: false, hiany: ['martial weapons jártasság']});
+    const drow = mkS({race: 'Elf|PHB', subrace: 'Drow|PHB', levels: [{c: 'Fighter'}]});
+    ok(H.featOk(f('Drow High Magic'), H.calc(drow, rb), rb, drow).ok, 'Elf (Drow)');
+    ok(H.featOk(f('Drow High Magic'), cf, rb, null).ok, 'lap nélkül a fajt nem nézi');
+    // TCE: osztály-varázslás vagy Pact Magic kell, a faji varázslat nem elég; Paladin 1. szinten még nem varázsol; üres (nem ellenőrizhető) ág teljesül
+    const ea = {n: 'Eldritch Adept', s: 'TCE', pq: [{cast: 'class'}]}, faji = {...cf, always: [{name: 'Light', level: 0, ref: ''}]};
+    eq(H.featOk(ea, faji, rb, fighter), {ok: false, hiany: ['Spellcasting vagy Pact Magic kell']});
+    ok(H.featOk(f('War Caster'), faji, rb, fighter).ok, 'a PHB-s feltételhez a faji varázslat is elég');
+    ok(H.featOk(ea, cc, rb, cleric).ok, 'Cleric');
+    const pal = mkS({race: 'Dwarf|PHB', levels: [{c: 'Paladin'}]});
+    eq(H.featOk(f('War Caster'), H.calc(pal, rb), rb, pal).ok, false, 'Paladin 1. szinten még nem varázsol');
+    ok(H.featOk({n: 'X', pq: [{ab: [{int: 13}]}, {}]}, cf, rb, fighter).ok, 'az üres ág teljesül');
+    ok(H.featOk({n: 'Y', pq: [{ab: [null, {str: 13}], race: [null]}]}, cf, rb, fighter).ok, 'hibás elem nem dob');
+    // a választóban: ⚠ a név előtt, az ok a megjegyzésben, és nem tiltott
+    const asi = cf.choices.find(c => c.kind === 'asi');
+    const o = H.choiceOptions(asi, cf, rb, fighter).opts, rc = o.find(x => x.v === 'Ritual Caster|PHB'), hm = o.find(x => x.v === 'Heavy Armor Master|PHB');
+    eq([rc.l, rc.note, rc.warn, rc.dis], ['⚠ Ritual Caster', 'nem teljesül: INT 13 vagy WIS 13', true, false]);
+    eq([hm.l, hm.warn], ['Heavy Armor Master', false]);
+  });
+
   test('azonos forrású ✋ teendők: mind látszik, külön pipálható; az első kulcsa a régi (a kipipált megmarad); azonos szöveg csak egyszer', () => {
     const H = W.Sheet, rb = rb3();
     rb.races.push({n: 'Kettősfaj', s: 'HB', sp: {walk: 30}, fx: [{todo: 'Válassz színt'}, {todo: 'Válassz elemet'}, {todo: 'Válassz színt'}]});
@@ -3199,6 +3238,15 @@ describe('Szabálykönyv és tárgy-import', () => {
     eq(rb.variants.map(v => v.n), ['+1 Weapon', 'Flame Tongue', 'Armor of Resistance']);
     eq(rb.variants[0].tx, 'You have a +1 bonus to attack and damage rolls.');
     eq(rb.feats.map(f => [f.n, f.pre || '']), [['Alert', ''], ['Elven Accuracy', 'Elf or Half-Elf'], ['Grappler', 'STR 13'], ['Próbafeat', '']]);
+    eq(rb.feats.map(f => f.pq), [undefined, [{race: [{n: 'elf'}, {n: 'half-elf'}]}], [{ab: [{str: 13}]}], undefined], 'a feltétel szerkezetben is (v3)');
+    // a valódi 5e.tools-alakok: varázslás (PHB / TCE), jártasság, alfaj, csak szöveges feltétel (teljesültnek számít, a vagy-listát nem szigorítja)
+    eq(W.featPq([{spellcasting: true}]), [{cast: true}]);
+    eq(W.featPq([{spellcasting2020: true}]), [{cast: 'class'}]);
+    eq(W.featPq([{proficiency: [{armor: 'medium'}]}, {proficiency: [{weapon: 'martial'}]}]), [{prof: ['armor:medium']}, {prof: ['weapon:martial']}]);
+    eq(W.featPq([{race: [{name: 'elf', subrace: 'drow'}]}]), [{race: [{n: 'elf', sub: 'drow'}]}]);
+    eq(W.featPq([{ability: [{int: 13}, {wis: 13}]}]), [{ab: [{int: 13}, {wis: 13}]}]);
+    eq(W.featPq([{other: 'Valami'}]), [], 'csak nem ellenőrizhető feltétel: nincs pq');
+    eq(W.featPq([{ability: [{str: 13}]}, {level: 4}]), [{ab: [{str: 13}]}, {}], 'a nem ellenőrizhető ág üres marad, nem esik ki');
     eq(rb.feats.map(f => f.tx), ['+5 initiative.', 'Ability Score Increase: DEX, INT, WIS, CHA +1 (1 választható).\nAccuracy.', 'Ability Score Increase: STR +1.\nGrapple.', 'Ability Score Increase: STR, DEX +1 (1 választható).\nPróba.'], 'a képességnövelés is a leírásba kerül');
     eq(rb.conditions, [{n: 'Prone', s: 'PHB', tx: 'On the ground.'}]);
   });
@@ -3265,11 +3313,11 @@ describe('Szabálykönyv és tárgy-import', () => {
     W.__fdb = f.db; A('Tar.kapcsol(window.__fdb)');
     const meta = await W.uploadRulebook(rb);
     eq(f.log.at(-1), 'set rules/meta'); ok(f.log.includes('del rules/old-0'));
-    eq([meta.counts.spells, meta.counts.items, meta.counts.variants, meta.counts.classes, meta.counts.races, meta.format], [4, 6, 3, 1, 3, 2]);
+    eq([meta.counts.spells, meta.counts.items, meta.counts.variants, meta.counts.classes, meta.counts.races, meta.format], [4, 6, 3, 1, 3, 3]);
     const cache = {}, c = {get: async k => cache[k], set: async (k, v) => { cache[k] = v; }};
     let gets = 0; const db2 = {get: p => { gets++; return f.db.get(p); }};
     const r1 = await H.loadRulebook(db2, c);
-    eq([r1.rb.spells.length, r1.format, gets], [4, 2, 1 + meta.chunks.length]);
+    eq([r1.rb.spells.length, r1.format, gets], [4, 3, 1 + meta.chunks.length]);
     gets = 0; await H.loadRulebook(db2, c); eq(gets, 1, 'változatlan verziónál csak a metát nézi');
     const r3 = await H.loadRulebook({get: async () => { throw new Error('offline'); }}, c);
     ok(r3.offline && r3.rb.items.length === 6 && r3.rb.classes.length === 1, 'internet nélkül a tárolt példány');

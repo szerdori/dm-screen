@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 20;
+  const VERSION = 21;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -1071,12 +1071,35 @@ window.Sheet = (() => {
   // PHB 2014 nyelvei: [név, egzotikus]
   const LANGS = [['Common', false], ['Dwarvish', false], ['Elvish', false], ['Giant', false], ['Gnomish', false], ['Goblin', false], ['Halfling', false], ['Orc', false],
     ['Abyssal', true], ['Celestial', true], ['Draconic', true], ['Deep Speech', true], ['Infernal', true], ['Primordial', true], ['Sylvan', true], ['Undercommon', true]];
-  function choiceOptions(c, cr, rb) {
+  // feat-előfeltétel (szabálykönyv v3: feats[].pq, lásd szabalykonyv.js featPq) → {ok, hiany: [ok szövege]}; s nélkül a fajt nem nézi.
+  // A felhasználó döntése (TERV-featek-tce.md): csak figyelmeztet, a nem teljesülő feat is választható.
+  function featOk(f, cr, rb, s = null) {
+    const pq = arr(f?.pq, 10).filter(isObj);
+    if (!pq.length) return {ok: true, hiany: []};
+    const lista = t => String(t || '').toLowerCase().split(',').map(x => x.trim().replace(/ (armor|weapons?)$/, '')).filter(Boolean);
+    const prof = {armor: lista(cr?.profs?.armor), weapon: lista(cr?.profs?.weapons)};
+    const b = s?.build, faj = refName(b?.race).toLowerCase(), alfaj = refName(b?.subrace).toLowerCase(), kicsi = /S/.test(rbFind(rb?.races, b?.race)?.size || '');
+    // osztály-varázslás: van már varázslata (a Paladin / Ranger 1. szinten még nem); a faji varázslat csak a PHB-s „spellcasting” feltételhez elég
+    const osztaly = (cr?.casting || []).some(x => num(x.maxSpell) > 0 || num(x.cantrips) > 0), tud = c => osztaly || (c !== 'class' && (cr?.always || []).length > 0);
+    const ab = p => arr(p.ab, 6).filter(isObj), race = p => arr(p.race, 10).filter(r => isObj(r) && r.n);
+    const fajOk = r => r.n === 'small race' ? kicsi : faj === r.n && (!r.sub || alfaj.includes(r.sub));
+    const fajNev = r => r.n === 'small race' ? 'Small faj' : r.n.replace(/(^|[\s-])\S/g, m => m.toUpperCase()) + (r.sub ? ` (${r.sub})` : '');
+    const hiany = p => [
+      ...(ab(p).length && !ab(p).some(o => Object.entries(o).every(([k, v]) => num(cr?.abilities?.[k]?.v) >= num(v))) ? [ab(p).map(o => Object.entries(o).map(([k, v]) => k.toUpperCase() + ' ' + num(v)).join(' és ')).join(' vagy ')] : []),
+      ...(race(p).length && b && !race(p).some(fajOk) ? ['faj: ' + race(p).map(fajNev).join(' vagy ')] : []),
+      ...(p.cast && !tud(p.cast) ? [p.cast === 'class' ? 'Spellcasting vagy Pact Magic kell' : 'varázsolni kell tudni'] : []),
+      ...(arr(p.prof, 6).length && !p.prof.some(x => { const [k, v] = String(x).split(':'); return (prof[k] || []).includes(v); }) ? [p.prof.map(x => String(x).split(':').reverse().join(' ').replace(/ weapon$/, ' weapons')).join(' vagy ') + ' jártasság'] : [])
+    ];
+    const l = pq.map(hiany);
+    return l.some(x => !x.length) ? {ok: true, hiany: []} : {ok: false, hiany: l[0]};
+  }
+  function choiceOptions(c, cr, rb, s = null) {
     const others = kind => (cr?.choices || []).filter(x => x.kind === kind && x.key !== c.key).flatMap(x => x.ok);
     const has = new Set(arr(c.value, 30).map(x => isObj(x) ? '' : String(x)));
     // egy featet csak egyszer lehet felvenni (faj, ASI, más feat választása)
     const featsTaken = new Set((cr?.choices || []).filter(x => x.key !== c.key).flatMap(x => x.kind === 'feat' ? x.ok : x.kind === 'asi' ? x.ok.map(v => v.feat).filter(Boolean) : []));
-    const refs = list => (list || []).map(x => { const v = x.n + '|' + x.s; return {v, l: x.n, note: x.pre || '', dis: featsTaken.has(v) && !has.has(v)}; });
+    // a nem teljesülő előfeltétel ⚠ jelet kap, de választható marad
+    const refs = list => (list || []).map(x => { const v = x.n + '|' + x.s, f = featOk(x, cr, rb, s); return {v, l: (f.ok ? '' : '⚠ ') + x.n, note: f.ok ? x.pre || '' : 'nem teljesül: ' + f.hiany.join(', '), warn: !f.ok, dis: featsTaken.has(v) && !has.has(v)}; });
     let opts = [], multi = false, free = false;
     if (c.kind === 'ability' || c.kind === 'saves') { multi = true; opts = ABIL_OPTS.filter(o => !Array.isArray(c.from) || c.from.includes(o.v)); }
     else if (c.kind === 'skills') {
@@ -1386,8 +1409,8 @@ window.Sheet = (() => {
     const fele = {
       subclass: () => 'Válaszd ki az alosztályt a listából. Lehet, hogy utána újabb választások jelennek meg, és a varázslatlista is bővülhet.',
       subrace: () => 'Válaszd ki az alfajt: Alapadatok fül → Felépítés → Faj lista.',
-      asi: () => 'Válassz: +2 egy képességre, +1 két képességre, vagy egy feat.',
-      feat: () => 'Válassz egy featet a listából. Az előfeltételeket a program nem ellenőrzi: nézd meg a könyvben, vagy kérdezd meg a DM-et.',
+      asi: () => 'Válassz: +2 egy képességre, +1 két képességre, vagy egy feat. A ⚠ jelű feat előfeltétele most nem teljesül: választható, de előbb beszéld meg a DM-mel.',
+      feat: () => 'Válassz egy featet a listából. A program a képességértéket, a fajt, a jártasságot és a varázslást nézi (a szabálykönyv újratöltése után): a ⚠ jelű feat feltétele most nem teljesül; választható, de előbb beszéld meg a DM-mel. A többi feltételt nézd meg a könyvben.',
       ability: () => `Válassz képességet, amit növel: még ${marad} darabot.`,
       saves: () => `Válassz mentő-jártasságot: még ${marad} darabot.`,
       skills: () => `Válassz skillt: még ${marad} darabot${Array.isArray(c?.from) ? ', ezek közül: ' + lista(c.from.map(k => skillLabel(skillKey(k)))) : ''}. Ami máshonnan már jár, az nem választható.`,
@@ -1582,7 +1605,7 @@ window.Sheet = (() => {
   // ---------- szabálykönyv (rules/meta + rules/{darab}); a DM Screen tölti fel, a telefon egyszer letölti ----------
   // darab: {data: '{"k":"spells","a":[...]}'}; a meta: {version, format, chunks: [...], counts}
   // 2-es formátum (2. fázis): osztályok, alosztályok, feature-szövegek, fajok, alfajok, hátterek, optional feature-ök, és hatáslisták (fx)
-  const RB_FORMAT = 2, RB_KINDS = ['spells', 'items', 'baseItems', 'variants', 'feats', 'conditions', 'classes', 'subclasses', 'features', 'races', 'subraces', 'backgrounds', 'optfeatures'];
+  const RB_FORMAT = 3, RB_KINDS = ['spells', 'items', 'baseItems', 'variants', 'feats', 'conditions', 'classes', 'subclasses', 'features', 'races', 'subraces', 'backgrounds', 'optfeatures'];
   const emptyRulebook = () => Object.fromEntries(RB_KINDS.map(k => [k, []]));
   function joinChunks(chunks) {
     const rb = emptyRulebook();
@@ -1784,7 +1807,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, CALC_LEPESEK, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
+    FEATURE_FX, classInfo, calc, CALC_LEPESEK, featOk, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,
