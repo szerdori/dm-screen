@@ -62,12 +62,22 @@ function featPq(pre) {
   }));
   return pq.some(x => Object.keys(x).length) ? pq : [];
 }
+// a feat optional feature-választása (Martial Adept: 2 maneuver, Metamagic Adept, Eldritch Adept, Fighting Initiate) → optChoose (sheet.js: „opt” választás)
+function featOptFx(f) {
+  return (f.optionalfeatureProgression || []).map(o => ({optChoose: {label: o.name, from: o.featureType || [], n: num1(o.progression?.["*"] ?? Object.values(o.progression || {})[0])}}));
+}
 // a featek képességérték-növelése külön mezőben van, nem a leírásban
 const featAbility = ab => (ab || []).map(a => 'Ability Score Increase: ' + (a.choose
   ? `${(a.choose.from || []).map(x => x.toUpperCase()).join(', ')} +${a.choose.amount || 1} (${a.choose.count || 1} választható)`
   : Object.entries(a).filter(([k]) => ABIL.includes(k)).map(([k, v]) => `${k.toUpperCase()} +${v}`).join(', ')) + '.').join('\n');
 // ---- 2. fázis: a szabálymotor hatáslistái (fx, lásd sheet.js) az 5e.tools géppel olvasható mezőiből ----
 const RB_CLASS = ['PHB', 'TCE'], RB_SUB = ['PHB', 'XGE', 'TCE'];
+// PHB 154. o. eszközei (a feat-választókhoz: Artificer Initiate, Skilled); kisbetűvel, ahogy a többi eszköz-jártasság
+const ARTISAN_TOOLS = ["alchemist's supplies", "brewer's supplies", "calligrapher's supplies", "carpenter's tools", "cartographer's tools", "cobbler's tools", "cook's utensils",
+  "glassblower's tools", "jeweler's tools", "leatherworker's tools", "mason's tools", "painter's supplies", "potter's tools", "smith's tools", "tinker's tools", "weaver's tools", "woodcarver's tools"];
+const PHB_TOOLS = [...ARTISAN_TOOLS, 'disguise kit', 'forgery kit', 'herbalism kit', "navigator's tools", "poisoner's kit", "thieves' tools",
+  'dice set', 'dragonchess set', 'playing card set', 'three-dragon ante set', 'bagpipes', 'drum', 'dulcimer', 'flute', 'lute', 'lyre', 'horn', 'pan flute', 'shawm', 'viol', 'vehicles (land)', 'vehicles (water)'];
+const num1 = v => typeof v === 'number' && v > 0 ? v : 1;
 const refClean = s => tagStrip(String(s).split('|')[0]).replace(/#.*$/, '').trim();
 const cap1 = s => String(s).replace(/(^|[\s(-])\S/g, m => m.toUpperCase());
 const first = v => Array.isArray(v) ? v[0] : v;
@@ -101,17 +111,29 @@ function profFx(o, featNev = '') {
     if (fixed.length) fx.push({tool: fixed});
     if (tl.any) fx.push({toolChoose: {n: tl.any}});
     if (tl.choose) fx.push({toolChoose: {from: (tl.choose.from || []).map(refClean), n: tl.choose.count || 1}});
+    if (featNev && tl.anyArtisansTool) fx.push({toolChoose: {from: ARTISAN_TOOLS, n: num1(tl.anyArtisansTool)}});
   }
   const wp = first(o.weaponProficiencies);
-  if (wp) { const fixed = keysTrue(wp).map(refClean); if (fixed.length) fx.push({weapon: fixed}); if (wp.choose) fx.push({todo: 'Fegyver-jártasság választása'}); }
+  if (wp) {
+    const fixed = keysTrue(wp).map(refClean);
+    if (fixed.length) fx.push({weapon: fixed});
+    // featnél (Weapon Master) választó: fegyvertípusok szabad szöveggel, mint a Kensei
+    if (wp.choose) fx.push(featNev ? {pickChoose: {label: 'Fegyverek', n: wp.choose.count || 1, weapon: true, help: {mit: 'Mezőnként egy fegyvertípus, amiben jártas leszel (simple vagy martial).', sablon: 'A fegyver angol neve, ahogy a szabálykönyvben áll, egyes számban, mezőnként egy.', pelda: 'Longsword'}}}
+      : {todo: 'Fegyver-jártasság választása'});
+  }
   const ar = first(o.armorProficiencies);
   if (ar) { const fixed = keysTrue(ar).map(refClean); if (fixed.length) fx.push({armor: fixed}); }
   const sv = first(o.savingThrowProficiencies);
   if (sv) { const fixed = keysTrue(sv).filter(a => ABIL.includes(a)); if (fixed.length) fx.push({save: fixed}); if (sv.choose) fx.push({saveChoose: {from: sv.choose.from || ABIL, n: sv.choose.count || 1}}); }
   const ex = first(o.expertise);
   if (ex?.anyProficientSkill) fx.push({expertise: {n: ex.anyProficientSkill}});
-  const stl = first(o.skillToolLanguageProficiencies);
-  if (stl) fx.push({todo: 'Skill / eszköz / nyelv választása (' + ((first(stl.choose)?.count) || 1) + ')'});
+  const stl = first(o.skillToolLanguageProficiencies), stlc = first(stl?.choose);
+  // featnél (Skilled: 3 skill vagy eszköz, vegyesen) választó; a választott skill / eszköz a then-ből jön
+  if (featNev && stlc && (stlc.from || []).every(x => ['anySkill', 'anyTool'].includes(x))) {
+    const sk = (stlc.from || []).includes('anySkill') ? Object.keys(Sheet.SKILLS).map(k => [Sheet.skillLabel(k), [{skill: {[k]: 1}}]]) : [];
+    const tools = (stlc.from || []).includes('anyTool') ? PHB_TOOLS.map(t => [t, [{tool: [t]}]]) : [];
+    fx.push({pickChoose: {label: 'Skill vagy eszköz', n: stlc.count || 1, from: [...sk, ...tools].map(([k]) => k), then: Object.fromEntries([...sk, ...tools])}});
+  } else if (stl) fx.push({todo: 'Skill / eszköz / nyelv választása (' + (stlc?.count || 1) + ')'});
   const ft = first(o.feats);
   if (ft?.any) fx.push({feat: {n: ft.any}});
   if (o.darkvision) fx.push({dv: o.darkvision});
@@ -332,7 +354,7 @@ async function buildRulebook(get = rbFetch) {
       att: h.reqAttune === true ? 'requires attunement' : typeof h.reqAttune === 'string' ? 'requires attunement ' + tagStrip(h.reqAttune) : '',
       pre: h.namePrefix || '', suf: h.nameSuffix || '', req: v.requires || [], exc: v.excludes || null,
       tx: rbText(h.entries).replace(/\{=(\w+)[^}]*\}/g, (m, k) => h[k] ?? '')}); }),
-    feats: (feats.feat || []).filter(f => RB_FEAT.includes(f.source)).map(f => compact({n: f.name, s: f.source, pre: featPre(f.prerequisite), pq: featPq(f.prerequisite), fx: profFx(f, f.name),
+    feats: (feats.feat || []).filter(f => RB_FEAT.includes(f.source)).map(f => compact({n: f.name, s: f.source, pre: featPre(f.prerequisite), pq: featPq(f.prerequisite), fx: [...profFx(f, f.name), ...featOptFx(f)],
       tx: [featAbility(f.ability), rbText(f.entries)].filter(Boolean).join('\n')})),
     conditions: (conds.condition || []).filter(c => c.source === 'PHB').map(c => ({n: c.name, s: c.source, tx: rbText(c.entries)})),
     ...cls, races: rc.races, subraces: rc.subraces, backgrounds: convBackgrounds(bgs), optfeatures: convOptFeatures(opts)

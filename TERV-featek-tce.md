@@ -1,6 +1,6 @@
 # Terv: featek előfeltétellel és saját választásokkal, TCE opcionális feature-ök
 
-*Készült: 2026-11-08. Állapot: elfogadva 2026-11-08 (döntések a végén), folyamatban; kész: 1–2. lépés. Előzmény: `TERV-3-4-fazis.md` 4. fázis 3–5. lépése; a multiclass (1–2. lépés) a felhasználó döntése szerint később.*
+*Készült: 2026-11-08. Állapot: elfogadva 2026-11-08 (döntések a végén), folyamatban; kész: 1–3. lépés. Előzmény: `TERV-3-4-fazis.md` 4. fázis 3–5. lépése; a multiclass (1–2. lépés) a felhasználó döntése szerint később.*
 
 ## Cél
 - Szintlépéskor (ASI helyett) és a Variant Human / új karakter featjénél a választóban **látszik, melyik feat választható** (✓), és melyik nem (az ok: „DEX 13 kell”, „csak Elf”, „varázsolni kell tudni”, „medium armor jártasság kell”).
@@ -26,7 +26,7 @@
 ## Lépések (mindegyik után működő, tesztelt, élesíthető állapot)
 1. **Szabálykönyv v3 – feat-feltétel szerkezetben** (`RB_FORMAT = 3`, `feats[].pq`: `[{ab: [{dex: 13}], race: [{n, sub?}], cast: true | 'class', prof: ['armor:medium']}]`, részletek: `SZERZODES.md`), a meglévő `pre` szöveg marad. `Sheet.featOk(feat, cr, rb, lap)` → `{ok, hiany: [...]}`. A választóban a nem teljesülő feat neve előtt ⚠, a megjegyzésben az ok; *(kód kész 2026-11-09)* a nem teljesülő is választható (1. döntés). A régi (v2) szabálykönyvvel minden választható, mint most. *Élesítéskor a felhasználó újratölti a szabálykönyvet.*
 2. **Feat-választások I. – varázslatok:** a letöltő a `choose` varázslat-feltételt (szint, osztály, iskola, ritual, támadó) `spellChoose`-zá alakítja; osztályt választó featnél (Magic Initiate, Ritual Caster, Spell Sniper) előbb osztály-választás (`pickChoose` + `then`). A választott varázslat a lapra kerül (ingyenes napi egyszerinél erőforrással).
-3. **Feat-választások II. – egyéb:** optional feature featből (maneuver, metamagic, invocation, fighting style – a meglévő `opt` választó), Skilled (skill vagy eszköz), Weapon Master (fegyverlista), Elemental Adept (sebzéstípus), artisan's tool; erőforrások a `FEATURE_FX`-ben. Online teszt: minden feat választható és kitölthető, ✋ teendő csak ott marad, ahol tényleg nincs mit számolni.
+3. **Feat-választások II. – egyéb:** optional feature featből (maneuver, metamagic, invocation, fighting style – a meglévő `opt` választó), Skilled (skill vagy eszköz), Weapon Master (fegyverlista), Elemental Adept (sebzéstípus), artisan's tool; erőforrások a `FEATURE_FX`-ben. Online teszt: minden feat választható és kitölthető, ✋ teendő csak ott marad, ahol tényleg nincs mit számolni. *(kód kész 2026-11-09; a Skilled eszközlistája: a PHB eszközei, `szabalykonyv.js` `PHB_TOOLS`)*
 4. **TCE opcionális feature-ök:** kézi tábla `TCE_CSERE` (mi mit cserél), a választás a felépítésben (`build.tce`), a döntés szerinti engedéllyel (2. kérdés). A szintlépés-varázslóban az adott szinten: „Elfogadod a TCE változatot?”; a már elhagyott szintekét a Teendők közt, nem kötelezően. A bővített varázslatlista a 3. kérdés szerint.
 5. **Lezárás:** robot-teszt (minden osztály 1 → 20, featekkel és TCE-vel), online teszt a valódi szabálykönyvvel, `docs/mukodes.md`, `SZERZODES.md`, élesítés; a felhasználó: szabálykönyv újratöltése.
 

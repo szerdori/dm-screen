@@ -338,7 +338,7 @@ window.Sheet = (() => {
   //   {hpPerLevel: 1}  {hpPerClassLevel: 1}  {init: 5}  {speed: {v: 10 | 'col:Oszlop', if: 'noHeavy' | 'noArmor'}}  {heavyOk: true}
   //   {acBase: {base: 10, add: ['dex', 'con'], noShield}}  {acBonus: 1} (páncélban)  {mamCap: 3}  {rangedAtk: 2}  {duelDmg: 2}  {martialArts: true}
   //   {res: {n, max: szám | 'col:Oszlop' | 'mod:cha' | 'lvl' | 'lvl*5' | 'pb' | {lv: {szint: érték}}, add, min, reset, shortAt}}
-  //   {spells: [{t: prepared|known|innate|expanded, lvl, sp: [...]}], ab}  {spellChoose: {from: {list?: 'Wizard', l: 0, ri?: true, sch?: ['divination'], atk?: true}, n, label?}}  {spellList: ['Cleric']}  {pickChoose: {label, from?, n?, then?: {érték: [hatások]}, weapon?}}  {feat: {n}}  {todo: 'szöveg'} (✋ nem automatizálható)
+  //   {spells: [{t: prepared|known|innate|expanded, lvl, sp: [...]}], ab}  {spellChoose: {from: {list?: 'Wizard', l: 0, ri?: true, sch?: ['divination'], atk?: true}, n, label?}}  {spellList: ['Cleric']}  {pickChoose: {label, from?, n?, then?: {érték: [hatások]}, weapon?}}  {optChoose: {label, from: [featureType], n}}  {feat: {n}}  {todo: 'szöveg'} (✋ nem automatizálható)
   // A választást kérő hatások kulcsa: '<forrás>:<fajta>' (pl. 'race:ability', 'Rogue:1:skills', 'Rogue:6:expertise', 'Fighter:4:asi',
   // 'feat:Alert|PHB:skills', 'Fighter:opt:Fighting Style'); az érték a build.ch-ban van. Ha egy kulcs már foglalt, számot kap (…:skills2).
   const refName = r => String(r || '').split('|')[0];
@@ -370,7 +370,7 @@ window.Sheet = (() => {
     }
     return out;
   }
-  const CHOICE_KIND = {abChoose: 'ability', skillChoose: 'skills', expertise: 'expertise', feat: 'feat', saveChoose: 'saves', langChoose: 'lang', toolChoose: 'tool', spellChoose: 'spell', pickChoose: 'pick'};
+  const CHOICE_KIND = {abChoose: 'ability', skillChoose: 'skills', expertise: 'expertise', feat: 'feat', saveChoose: 'saves', langChoose: 'lang', toolChoose: 'tool', spellChoose: 'spell', pickChoose: 'pick', optChoose: 'opt'};
   const FX_LABEL = {spell: 'varázslat', pick: 'választás', ability: 'képességérték-növelés', skills: 'skill-jártasság', expertise: 'expertise', feat: 'feat', asi: 'ASI vagy feat', subclass: 'alosztály',
     saves: 'mentő-jártasság', lang: 'nyelv', tool: 'eszköz-jártasság', subrace: 'alfaj', opt: 'választás', cantrips: 'cantrip', known: 'ismert varázslat', book: 'spellbook'};
 
@@ -449,6 +449,9 @@ window.Sheet = (() => {
     'feat|Observant': [{passive: {perception: 5, investigation: 5}}],
     'feat|Lucky': [{res: {n: 'Lucky', max: 3, reset: 'long'}}],
     'feat|Medium Armor Master': [{mamCap: 3}],
+    'feat|Martial Adept': [{res: {n: 'Superiority Die (Martial Adept, d6)', max: 1, reset: 'short'}}],
+    'feat|Metamagic Adept': [{res: {n: 'Sorcery Points (Metamagic Adept)', max: 2, reset: 'long'}}],
+    'feat|Elemental Adept': [{pickChoose: {label: 'Sebzéstípus', from: ['Acid', 'Cold', 'Fire', 'Lightning', 'Thunder']}}],
     'opt|Defense': [{acBonus: 1}],
     'opt|Archery': [{rangedAtk: 2}],
     'opt|Dueling': [{duelDmg: 2}],
@@ -538,7 +541,7 @@ window.Sheet = (() => {
       for (const [t, kind] of Object.entries(CHOICE_KIND)) {
         if (!fx[t]) continue;
         const o = isObj(fx[t]) ? fx[t] : {}, key = keyOf(ctx, `${prefix}:${kind}`);
-        const c = {key, kind, src, n: Math.max(1, isObj(o.n) ? evalMax(o.n, {lvl: kor.lvl || 1}) : num(o.n, 1)), amt: num(o.amt, 1), from: o.from, value: b.ch[key], ...(o.label ? {label: o.label} : {}), ...(o.help ? {help: o.help} : {})};
+        const c = {key, kind, src, n: Math.max(1, isObj(o.n) ? evalMax(o.n, {lvl: kor.lvl || 1}) : num(o.n, 1)), amt: num(o.amt, 1), from: o.from, value: b.ch[key], ...(o.label ? {label: o.label} : {}), ...(o.help ? {help: o.help} : {}), ...(kind === 'opt' ? {ctx: kor} : {})};
         choices.push(c); rec.ch[kind] = c;
         if (t === 'feat' && depth < 2) for (const ref of arr(b.ch[key], c.n)) featFx(ctx, ref, depth);
         // a választott lehetőség saját hatásai (pl. Circle of the Land: a terep varázslatai)
@@ -651,7 +654,7 @@ window.Sheet = (() => {
         ok = arr(c.value, 10).filter(x => typeof x === 'string' && x.trim() && (!Array.isArray(c.from) || c.from.includes(x)));
       } else if (c.kind === 'spell') ok = arr(c.value, 10).filter(ref => { const sp = typeof ref === 'string' && rbFind(rb?.spells, ref); return sp && spellChooseFit(sp, c.from); });
       else if (c.kind === 'opt') {
-        ok = arr(c.value, 30).filter(ref => { const o = rbFind(rb?.optfeatures, ref); return o && (o.t || []).some(t => c.from.includes(t)) && (!o.lv || o.lv <= c.ctx.lvl); });
+        ok = arr(c.value, 30).filter(ref => { const o = rbFind(rb?.optfeatures, ref); return o && (o.t || []).some(t => c.from.includes(t)) && (!o.lv || o.lv <= c.ctx.lvl) && (c.ctx.cls || (!o.pre && !o.pact)); });
       }
       c.ok = [...new Set(ok.map(x => isObj(x) ? JSON.stringify(x) : x))].slice(0, c.n).map(x => c.kind === 'asi' && typeof x === 'string' ? JSON.parse(x) : x);
       if (c.kind === 'pick') for (const v of c.ok) features.push({name: `${c.label || c.src}: ${v}`, text: '', src: c.src});
@@ -1126,7 +1129,8 @@ window.Sheet = (() => {
     } else if (c.kind === 'feat') opts = refs(rb?.feats);
     else if (c.kind === 'opt') {
       const taken = new Set(others('opt'));
-      opts = (rb?.optfeatures || []).filter(o => (o.t || []).some(t => (c.from || []).includes(t)) && (!o.lv || o.lv <= (c.ctx?.lvl || 20)))
+      // osztály nélküli helyen (feat: Eldritch Adept) az előfeltételes (szint, pact, egyéb) nem választható, mint a számolásban (RAW: csak Warlocknak)
+      opts = (rb?.optfeatures || []).filter(o => (o.t || []).some(t => (c.from || []).includes(t)) && (!o.lv || o.lv <= (c.ctx?.lvl || 0)) && (c.ctx?.cls || (!o.pre && !o.pact)))
         .map(o => { const v = o.n + '|' + o.s; return {v, l: o.n, note: o.pre || '', dis: taken.has(v) && !has.has(v)}; });
     } else if (c.kind === 'subclass') opts = subclassesOf(c.key.replace(/:sub$/, ''), rb).map(x => ({v: x.n + '|' + x.s, l: x.n}));
     else if (c.kind === 'subrace') {

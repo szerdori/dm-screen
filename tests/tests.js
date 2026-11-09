@@ -1258,8 +1258,33 @@ describe('Online (csak  .\\teszt.ps1 -Online  esetén)', () => {
     const lista = rb.feats.flatMap(f => valasztok(f.fx, f.n));
     ok(lista.length >= 20, 'feat varázslat-választók: ' + lista.length);
     const ures = lista.filter(([, sc]) => !H.choiceOptions({key: 'x', kind: 'spell', n: sc.n, ok: [], from: sc.from}, null, rb).opts.length).map(([h]) => h);
-    eq(ures, [], 'üres választó');
+    // a Bard és a Cleric listáján nincs támadó cantrip (PHB / XGE / TCE), az 5e.tools mégis felkínálja: ott a választó üres, a játékos másik listát választ
+    eq(ures, ['Spell Sniper / Bard', 'Spell Sniper / Cleric'], 'üres választó');
     eq(rb.feats.filter(f => (f.fx || []).some(x => /varázslat választása/.test(x.todo || ''))).map(f => f.n), [], 'maradt teendő');
+  }, {online: true});
+  test('featek a valódi szabálykönyvben: egy 8. szintű Fighter ASI-jén mind felvehető; minden saját választásuk kitölthető; ✋ teendő egyiknél sem marad', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet, hibak = [], teendo = [];
+    for (const f of rb.feats) {
+      let s = H.norm({auto: true, build: {race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {str: 15, dex: 13, con: 14, int: 13, wis: 13, cha: 13}, levels: Array.from({length: 8}, () => ({c: 'Fighter'})), ch: {'Fighter:4:asi': {feat: f.n + '|' + f.s}}}});
+      // a feat választásait sorban kitölti az első szabad lehetőségekkel (a then-láncok miatt többször számol)
+      for (let i = 0; i < 6; i++) {
+        const c = H.calc(s, rb), nyitott = c.choices.filter(x => x.key.startsWith('feat:') && !x.done);
+        if (!nyitott.length) break;
+        const ch = {...s.build.ch};
+        for (const x of nyitott) {
+          const o = H.choiceOptions(x, c, rb, s);
+          if (o.free) ch[x.key] = Array.from({length: x.n}, (_, j) => x.kind === 'pick' ? 'Longsword ' + j : "smith's tools");
+          else if (x.label === 'Varázslatlista' && o.opts.some(y => y.v === 'Wizard')) ch[x.key] = ['Wizard'];   // a Bard / Cleric listán a Spell Snipernek nincs cantripje
+          else ch[x.key] = o.opts.filter(y => !y.dis).slice(0, x.n).map(y => y.v);
+        }
+        s = H.norm({...s, build: {...s.build, ch}});
+      }
+      const c = H.calc(s, rb), maradt = c.choices.filter(x => x.key.startsWith('feat:') && !x.done);
+      if (maradt.length) hibak.push(f.n + ': ' + maradt.map(x => x.key).join(', '));
+      teendo.push(...c.todos.filter(t => t.kind === 'manual' && /^✋ Feat:/.test(t.key)).map(t => t.text));
+    }
+    eq(hibak, [], 'kitölthetetlen');
+    eq(teendo, [], 'maradt ✋ teendő');
   }, {online: true});
   test('a tokenkép elérhető', async () => {
     const mm = await ORIG.loadFiveSource('MM');
@@ -2411,6 +2436,59 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     // Spell Sniper: csak támadó cantrip; Ritual Caster: csak ritual
     eq(H.choiceOptions({key: 'x', kind: 'spell', n: 1, ok: [], from: {list: 'Wizard', atk: true}}, c, rb).opts.map(o => o.l), ['Fire Bolt']);
     eq(H.choiceOptions({key: 'y', kind: 'spell', n: 2, ok: [], from: {list: 'Wizard', l: 1, ri: true}}, c, rb).opts.map(o => o.l), ['Detect Magic']);
+  });
+
+  test('feat egyéb választásai: optional feature (Martial Adept, Fighting Initiate), Skilled (skill vagy eszköz), Weapon Master (fegyverek), Artificer Initiate (artisan\'s tool), Elemental Adept; erőforrások', () => {
+    const H = W.Sheet, rb = rb3();
+    // a szabálykönyv-letöltő a valódi 5e.tools-alakból
+    eq(W.featOptFx({optionalfeatureProgression: [{name: 'Maneuvers', featureType: ['MV:B'], progression: {'*': 2}}]}), [{optChoose: {label: 'Maneuvers', from: ['MV:B'], n: 2}}]);
+    const skilled = W.profFx({skillToolLanguageProficiencies: [{choose: [{from: ['anySkill', 'anyTool'], count: 3}]}]}, 'Skilled')[0].pickChoose;
+    eq([skilled.label, skilled.n, skilled.from.length, skilled.then.Athletics, skilled.then['Sleight of Hand'], skilled.then["thieves' tools"]],
+      ['Skill vagy eszköz', 3, 18 + 39, [{skill: {athletics: 1}}], [{skill: {'sleight-of-hand': 1}}], [{tool: ["thieves' tools"]}]]);
+    eq(W.profFx({weaponProficiencies: [{choose: {fromFilter: 'type=martial weapon', count: 4}}]}, 'Weapon Master')[0].pickChoose.n, 4);
+    eq(W.profFx({weaponProficiencies: [{choose: {fromFilter: 'x', count: 4}}]}), [{todo: 'Fegyver-jártasság választása'}], 'nem featnél a régi teendő');
+    eq(W.profFx({toolProficiencies: [{anyArtisansTool: 1}]}, 'Artificer Initiate')[0].toolChoose.n, 1);
+    eq(W.profFx({toolProficiencies: [{anyArtisansTool: 1}]}), [], 'nem featnél (háttér) nem változik');
+    eq(W.profFx({skillToolLanguageProficiencies: [{choose: [{from: ['anySkill', 'anyTool'], count: 3}]}]}), [{todo: 'Skill / eszköz / nyelv választása (3)'}], 'nem featnél a régi teendő');
+    // a motor
+    rb.optfeatures.push({n: 'Riposte', s: 'PHB', t: ['MV:B'], tx: 'R'}, {n: 'Parry', s: 'PHB', t: ['MV:B'], tx: 'P'}, {n: 'Trip Attack', s: 'PHB', t: ['MV:B'], tx: 'T'});
+    rb.feats.push({n: 'Martial Adept', s: 'PHB', fx: W.featOptFx({optionalfeatureProgression: [{name: 'Maneuvers', featureType: ['MV:B'], progression: {'*': 2}}]})},
+      {n: 'Fighting Initiate', s: 'TCE', fx: W.featOptFx({optionalfeatureProgression: [{name: 'Fighting Style', featureType: ['FS:F'], progression: {'*': 1}}]})},
+      {n: 'Skilled', s: 'PHB', fx: W.profFx({skillToolLanguageProficiencies: [{choose: [{from: ['anySkill', 'anyTool'], count: 3}]}]}, 'Skilled')},
+      {n: 'Weapon Master', s: 'PHB', fx: W.profFx({weaponProficiencies: [{choose: {fromFilter: 'x', count: 4}}]}, 'Weapon Master')}, {n: 'Elemental Adept', s: 'PHB'});
+    const base = {race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {str: 15, con: 14}, levels: lv('Fighter', 8)};
+    let s = mkS({...base, ch: {'Fighter:4:asi': {feat: 'Martial Adept|PHB'}, 'Fighter:6:asi': {feat: 'Fighting Initiate|TCE'}, 'Fighter:opt:Fighting Style': ['Archery|PHB'], 'Fighter:8:asi': {feat: 'Skilled|PHB'}}});
+    let c = H.calc(s, rb);
+    const mv = c.choices.find(x => x.key === 'feat:Martial Adept|PHB:opt'), fs = c.choices.find(x => x.key === 'feat:Fighting Initiate|TCE:opt');
+    eq([mv.n, mv.label, fs.n], [2, 'Maneuvers', 1]);
+    eq(H.choiceOptions(mv, c, rb).opts.map(o => o.l), ['Riposte', 'Parry', 'Trip Attack']);
+    eq(H.choiceOptions(fs, c, rb).opts.map(o => [o.l, o.dis]), [['Defense', false], ['Archery', true]], 'az osztály stílusa nem választható újra');
+    ok(c.resources.some(r => r.name === 'Superiority Die (Martial Adept, d6)' && r.max === 1 && r.reset === 'short'), 'erőforrás');
+    s = mkS({...base, ch: {...s.build.ch, 'feat:Martial Adept|PHB:opt': ['Riposte|PHB', 'Parry|PHB'], 'feat:Fighting Initiate|TCE:opt': ['Defense|PHB'], 'feat:Skilled|PHB:pick': ['Stealth', "thieves' tools", 'Arcana']}},
+      {inventory: inv('Chain Mail')});
+    c = H.calc(s, rb);
+    ok(['Riposte', 'Parry', 'Defense'].every(n => c.features.some(f => f.name === n)), 'a választott optional feature-ök a jellemzők közt');
+    eq(c.ac.v, 17, 'Chain Mail 16 + Defense 1');
+    eq([c.skills.stealth.prof, c.skills.arcana.prof, /thieves' tools/.test(c.profs.tools)], [1, 1, true], 'Skilled: skill és eszköz');
+    ok(c.choices.filter(x => x.key.startsWith('feat:')).every(x => x.done), 'minden kész');
+    s = mkS({...base, ch: {'Fighter:4:asi': {feat: 'Weapon Master|PHB'}, 'feat:Weapon Master|PHB:pick': ['Whip', 'Net'], 'Fighter:6:asi': {feat: 'Elemental Adept|PHB'}, 'feat:Elemental Adept|PHB:pick': ['Fire']}});
+    c = H.calc(s, rb);
+    ok(/whip/i.test(c.profs.weapons) && /net/i.test(c.profs.weapons), 'Weapon Master: fegyver-jártasság');
+    eq(c.choices.find(x => x.key === 'feat:Weapon Master|PHB:pick').done, false, 'a 4-ből 2 még hiányzik');
+    ok(c.features.some(f => f.name === 'Sebzéstípus: Fire'), 'Elemental Adept');
+    // Eldritch Adept: előfeltételes invocation (szint, pact, egyéb) csak Warlocknak; az osztály helyén a szintfeltételes is megjelenik
+    rb.optfeatures.push({n: 'Armor of Shadows', s: 'PHB', t: ['EI'], tx: 'A'}, {n: 'Thirsting Blade', s: 'XGE', t: ['EI'], lv: 5, pact: 'Blade', pre: 'level 5, Pact of the Blade'},
+      {n: 'Book of Ancient Secrets', s: 'PHB', t: ['EI'], pact: 'Tome', pre: 'Pact of the Tome'}, {n: 'Agonizing Blast', s: 'PHB', t: ['EI'], pre: 'eldritch blast cantrip'}, {n: 'Mask of Many Faces', s: 'PHB', t: ['EI']});
+    rb.feats.push({n: 'Eldritch Adept', s: 'TCE', fx: W.featOptFx({optionalfeatureProgression: [{name: 'Eldritch Invocations', featureType: ['EI'], progression: {'*': 1}}]})});
+    s = mkS({...base, ch: {'Fighter:4:asi': {feat: 'Eldritch Adept|TCE'}, 'feat:Eldritch Adept|TCE:opt': ['Agonizing Blast|PHB']}}); c = H.calc(s, rb);
+    const ea = c.choices.find(x => x.key === 'feat:Eldritch Adept|TCE:opt');
+    eq(H.choiceOptions(ea, c, rb).opts.map(o => o.l), ['Armor of Shadows', 'Mask of Many Faces'], 'feltétel nélküliek');
+    eq([ea.ok, ea.done], [[], false], 'a feltételes a számolásban sem érvényes');
+    eq(H.choiceOptions({key: 'w', kind: 'opt', n: 2, ok: [], from: ['EI'], ctx: {cls: 'Warlock', lvl: 5}}, c, rb).opts.map(o => o.l),
+      ['Armor of Shadows', 'Thirsting Blade', 'Book of Ancient Secrets', 'Agonizing Blast', 'Mask of Many Faces'], 'Warlock 5: a szintfeltételes is');
+    // fordítva: a Fighting Initiate stílusa a Fighter saját helyén tiltott
+    s = mkS({...base, ch: {'Fighter:4:asi': {feat: 'Fighting Initiate|TCE'}, 'feat:Fighting Initiate|TCE:opt': ['Archery|PHB']}}); c = H.calc(s, rb);
+    eq(H.choiceOptions(c.choices.find(x => x.key === 'Fighter:opt:Fighting Style'), c, rb).opts.map(o => [o.l, o.dis]), [['Defense', false], ['Archery', true]]);
   });
 
   test('azonos forrású ✋ teendők: mind látszik, külön pipálható; az első kulcsa a régi (a kipipált megmarad); azonos szöveg csak egyszer', () => {
