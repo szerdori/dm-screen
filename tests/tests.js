@@ -1286,6 +1286,23 @@ describe('Online (csak  .\\teszt.ps1 -Online  esetén)', () => {
     eq(hibak, [], 'kitölthetetlen');
     eq(teendo, [], 'maradt ✋ teendő');
   }, {online: true});
+  test('TCE a valódi szabálykönyvben: a TCE_FX és a TCE_CSERE kulcsai léteznek; XGE-varázslat az osztálylistán (clx), TCE bővített lista külön (clt)', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet;
+    const tceFeat = (cls, n, lvl) => rb.classes.find(c => c.n === cls)?.feats.some(f => f.n === n && f.opt && (lvl == null || f.lvl === lvl)) || rb.features.some(f => f.cls === cls && f.n === n && f.opt && (lvl == null || f.lvl === lvl));
+    eq(Object.keys(H.TCE_FX).filter(k => { const [cls, n, lvl] = k.split('|'); return !tceFeat(cls, n, +lvl); }), [], 'TCE_FX: nem létező');
+    const phb = (cls, sb, n) => sb === '*' ? rb.features.some(f => f.cls === cls && f.sub && f.n === n) : sb ? rb.features.some(f => f.cls === cls && f.sub === sb && f.n === n) : rb.classes.find(c => c.n === cls)?.feats.some(f => f.n === n && !f.opt);
+    eq(Object.entries(H.TCE_CSERE).filter(([k, l]) => { const p = k.split('|'), n = p.at(-1), sb = p.length === 3 ? p[1] : ''; return !phb(p[0], sb, n) || !l.every(t => tceFeat(p[0], t)); }).map(([k]) => k), [], 'TCE_CSERE: nem létező');
+    const sp = n => rb.spells.find(s => s.n === n);
+    eq([sp('Toll the Dead').cl, sp('Toll the Dead').clx], [['Cleric', 'Warlock', 'Wizard'], ['Cleric', 'Warlock', 'Wizard']], 'XGE-cantrip a listákon');
+    ok(sp('Aura of Vitality').cl.includes('Paladin') && sp('Aura of Vitality').clt?.includes('Cleric'), 'TCE: Aura of Vitality a Cleric bővített listáján');
+    ok(rb.spells.filter(s => s.clt?.length).length >= 30, 'TCE bővített listák: ' + rb.spells.filter(s => s.clt?.length).length);
+    // Ranger 6: minden TCE-t elfogadva nincs ✋ teendő a Favored Enemy / Natural Explorer miatt
+    const ch = {'Ranger:tce:Favored Foe': 'igen', 'Ranger:tce:Deft Explorer': 'igen', 'Ranger:tce:Primal Awareness': 'igen'};
+    const c = H.calc(H.norm({auto: true, build: {race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {dex: 15, wis: 14}, levels: Array.from({length: 6}, () => ({c: 'Ranger'})), ch}}), rb);
+    ok(!c.features.some(f => /^(Favored Enemy|Natural Explorer|Primeval Awareness)/.test(f.name)), 'kiváltva: ' + c.features.map(f => f.name));
+    ok(['Favored Foe', 'Deft Explorer', 'Primal Awareness', 'Deft Explorer Improvement'].every(n => c.features.some(f => f.name === n)), 'TCE-jellemzők');
+    ok(c.always.some(a => a.name === 'Speak with Animals') && c.always.some(a => a.name === 'Beast Sense'), 'Primal Awareness varázslatai');
+  }, {online: true});
   test('a tokenkép elérhető', async () => {
     const mm = await ORIG.loadFiveSource('MM');
     const r = await fetch(W.convert5e(mm.find(m => m.name === 'Goblin')).portrait);
@@ -1937,8 +1954,8 @@ const FAKE5E = {
   'spells/spells-xge.json': {spell: [{name: 'Toll the Dead', source: 'XGE', level: 0, school: 'N', spellAttack: ['R'], time: [{number: 1, unit: 'action'}], range: {type: 'point', distance: {type: 'feet', amount: 60}},
     components: {v: true, s: true}, duration: [{type: 'instant'}], entries: ['{@damage 1d8} necrotic.']}]},
   'spells/spells-tce.json': {spell: []},
-  'generated/gendata-spell-source-lookup.json': {phb: {fireball: {class: {PHB: {Sorcerer: true, Wizard: true}, XPHB: {Bard: true}}}, 'burning hands': {class: {PHB: {Wizard: true}}}},
-    xge: {'toll the dead': {class: {XGE: {Cleric: true, Warlock: true, Wizard: true}}}}},
+  'generated/gendata-spell-source-lookup.json': {phb: {fireball: {class: {PHB: {Sorcerer: true, Wizard: true}, XPHB: {Bard: true}}, classVariant: {PHB: {Cleric: {definedInSources: ['TCE']}}, XPHB: {Druid: {definedInSources: ['TCE']}}}}, 'burning hands': {class: {PHB: {Wizard: true}}}},
+    xge: {'toll the dead': {classVariant: {PHB: {Cleric: {definedInSources: ['XGE']}, Warlock: {definedInSources: ['XGE']}, Wizard: {definedInSources: ['XGE']}}}}}},
   'items.json': {item: [
     {name: 'Bag of Holding', source: 'DMG', rarity: 'uncommon', wondrous: true, weight: 15, entries: ['Bigger inside.']},
     {name: 'Cloak of Protection', source: 'DMG', rarity: 'uncommon', reqAttune: true, wondrous: true, entries: ['+1 AC.']},
@@ -2489,6 +2506,58 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     // fordítva: a Fighting Initiate stílusa a Fighter saját helyén tiltott
     s = mkS({...base, ch: {'Fighter:4:asi': {feat: 'Fighting Initiate|TCE'}, 'feat:Fighting Initiate|TCE:opt': ['Archery|PHB']}}); c = H.calc(s, rb);
     eq(H.choiceOptions(c.choices.find(x => x.key === 'Fighter:opt:Fighting Style'), c, rb).opts.map(o => [o.l, o.dis]), [['Defense', false], ['Archery', true]]);
+  });
+
+  test('TCE opcionális feature-ök: igen / nem választás; csere (Ranger, Life Cleric 8), követő (Deft Explorer Improvement), hatások; bővített varázslatlista; XGE / TCE jelölés', () => {
+    const H = W.Sheet, rb = rb3();
+    const ranger = rb.classes.find(c => c.n === 'Ranger');
+    ranger.feats.push({n: 'Favored Foe', lvl: 1, opt: true}, {n: 'Natural Explorer', lvl: 1}, {n: 'Deft Explorer', lvl: 1, opt: true}, {n: 'Deft Explorer Improvement', lvl: 6, opt: true});
+    rb.features.push({n: 'Favored Foe', cls: 'Ranger', lvl: 1, s: 'TCE', opt: true, tx: 'Foe.'}, {n: 'Divine Strike', cls: 'Cleric', sub: 'Life', ss: 'PHB', lvl: 8, s: 'PHB', tx: 'DS.'},
+      {n: 'Blessed Strikes', cls: 'Cleric', sub: 'Life', ss: 'PHB', lvl: 8, s: 'TCE', opt: true, tx: 'BS.'});
+    const base = {race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {str: 10, dex: 15, wis: 14}, levels: lv('Ranger', 6)};
+    let c = H.calc(mkS(base), rb);
+    eq(c.choices.filter(x => x.kind === 'tce').map(x => [x.key, x.done]), [['Ranger:tce:Favored Foe', false], ['Ranger:tce:Deft Explorer', false]], 'a követőnek nincs külön választása');
+    ok(['Favored Enemy', 'Natural Explorer'].every(n => c.features.some(f => f.name === n)) && !c.features.some(f => /Favored Foe|Deft Explorer/.test(f.name)), 'alapból a PHB');
+    eq(H.choiceOptions(c.choices.find(x => x.key === 'Ranger:tce:Favored Foe'), c, rb).opts.map(o => o.v), ['igen', 'nem']);
+    let s = mkS({...base, ch: {'Ranger:tce:Favored Foe': 'igen', 'Ranger:tce:Deft Explorer': 'igen', 'Ranger:tce:Deft Explorer:1:lang': ['Elvish', 'Orc']}}); c = H.calc(s, rb);
+    eq(c.features.filter(f => /Favored|Explorer/.test(f.name)).map(f => [f.name, f.src]), [['Favored Foe', 'Ranger 1 (TCE)'], ['Deft Explorer', 'Ranger 1 (TCE)'], ['Deft Explorer Improvement', 'Ranger 6 (TCE)']], 'csere + követő');
+    eq(c.features.find(f => f.name === 'Favored Foe').text, 'Foe.');
+    ok(c.resources.some(r => r.name === 'Favored Foe' && r.max === 3), 'Favored Foe: PB-szer');
+    eq(c.speed.v, '35 ft.', 'Deft Explorer Improvement (6.): +5 ft');
+    ok(c.choices.some(x => x.key === 'Ranger:tce:Deft Explorer:1:expertise') && c.choices.find(x => x.key === 'Ranger:tce:Deft Explorer:1:lang').done, 'Deft Explorer választásai');
+    ok(!c.todos.some(t => /Favored Enemy/.test(t.text)), 'a PHB-feature ✋ teendője is eltűnik');
+    s = mkS({...base, ch: {'Ranger:tce:Favored Foe': 'nem', 'Ranger:tce:Deft Explorer': 'nem'}}); c = H.calc(s, rb);
+    ok(c.choices.filter(x => x.kind === 'tce').every(x => x.done) && c.features.some(f => f.name === 'Favored Enemy'), 'nem: kész, marad a PHB');
+    // alosztály: Life Cleric 8 – Divine Strike vagy Blessed Strikes
+    const cb = {race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {wis: 15}, levels: lv('Cleric', 8), sub: {Cleric: 'Life|PHB'}};
+    c = H.calc(mkS(cb), rb);
+    eq([c.features.some(f => f.name === 'Divine Strike'), c.features.some(f => f.name === 'Blessed Strikes'), c.choices.some(x => x.key === 'Cleric:tce:Blessed Strikes')], [true, false, true]);
+    c = H.calc(mkS({...cb, ch: {'Cleric:tce:Blessed Strikes': 'igen'}}), rb);
+    eq([c.features.some(f => f.name === 'Divine Strike'), c.features.find(f => f.name === 'Blessed Strikes')?.src], [false, 'Life 8 (TCE)']);
+    // bővített varázslatlista és jelölés (Wizard: XGE cantrip a listán, TCE-s csak elfogadva)
+    rb.spells.push({n: 'Toll the Dead', s: 'XGE', l: 0, sc: 'necromancy', cl: ['Cleric', 'Wizard'], clx: ['Cleric', 'Wizard']}, {n: 'Fire Bolt', s: 'PHB', l: 0, sc: 'evocation', cl: ['Wizard']},
+      {n: 'Mind Whip', s: 'TCE', l: 2, sc: 'enchantment', cl: ['Sorcerer'], clt: ['Wizard']}, {n: 'Magic Missile', s: 'PHB', l: 1, sc: 'evocation', cl: ['Wizard']});
+    const wb = {race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {int: 16}, levels: lv('Wizard', 3)};
+    c = H.calc(mkS(wb), rb);
+    const lista = c.choices.find(x => x.key === 'Wizard:tce:' + H.TCE_LISTA);
+    eq([lista?.label, lista?.done], ['TCE bővített varázslatlista', false]);
+    const opt = (cc, k) => H.choiceOptions(cc.choices.find(x => x.key === k), cc, rb).opts;
+    eq(opt(c, 'Wizard:cantrips').filter(o => o.l !== 'Light').map(o => [o.l, o.note]), [['Fire Bolt', ''], ['Toll the Dead', 'XGE']], 'XGE jelölés');
+    ok(!opt(c, 'Wizard:book').some(o => o.l === 'Mind Whip'), 'a TCE-s alapból nem');
+    c = H.calc(mkS({...wb, ch: {['Wizard:tce:' + H.TCE_LISTA]: 'igen'}}), rb);
+    eq(opt(c, 'Wizard:book').find(o => o.l === 'Mind Whip')?.note, 'TCE', 'elfogadva: választható, TCE jelöléssel');
+    ok(H.spellOnList({cl: ['Sorcerer'], clt: ['Wizard']}, 'Wizard', true) && !H.spellOnList({cl: ['Sorcerer'], clt: ['Wizard']}, 'Wizard', false), 'spellOnList');
+    // szintlépés: csak az ezen a szinten nyíló TCE-kérdés (kötelező), a korábbi nyitott nem; új karakter: nem kötelező
+    ranger.feats.push({n: 'Primal Awareness', lvl: 3, opt: true});
+    const r2 = mkS({...base, levels: lv('Ranger', 2)}), p = H.levelUpPlan(r2, rb, H.levelUpBuild(r2, 'Ranger')), pk = p.choices.map(x => x.c.key);
+    ok(pk.includes('Ranger:tce:Primal Awareness') && !pk.includes('Ranger:tce:Favored Foe') && !pk.includes('Ranger:tce:Deft Explorer'), 'szintlépés: ' + pk);
+    eq(p.choices.find(x => x.c.key === 'Ranger:tce:Primal Awareness').missing, 1, 'az ezen a szinten nyíló kérdés kötelező');
+    const np = H.ncPlan(mkS({...base, levels: [{c: 'Ranger'}]}), rb), tceK = np.choices.filter(x => x.c.kind === 'tce');
+    eq([tceK.length, tceK.every(x => x.missing === 0)], [2, true], 'új karakter: a TCE-kérdés látszik, de nem kötelező');
+    // Primal Knowledge: 3. szinten 1, 10. szinten 2 skill
+    rb.classes.find(c => c.n === 'Barbarian').feats.push({n: 'Primal Knowledge', lvl: 3, opt: true});
+    const pkn = l => H.calc(mkS({race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {str: 15}, levels: lv('Barbarian', l), ch: {'Barbarian:tce:Primal Knowledge': 'igen'}}), rb).choices.find(x => x.key === 'Barbarian:tce:Primal Knowledge:3:skills')?.n;
+    eq([pkn(3), pkn(10)], [1, 2]);
   });
 
   test('azonos forrású ✋ teendők: mind látszik, külön pipálható; az első kulcsa a régi (a kipipált megmarad); azonos szöveg csak egyszer', () => {
@@ -3357,6 +3426,8 @@ describe('Szabálykönyv és tárgy-import', () => {
     eq(Object.keys(sp), ['Fireball', 'Bless', 'Burning Hands', 'Toll the Dead']);
     eq([sp.Fireball.l, sp.Fireball.sc, sp.Fireball.t, sp.Fireball.r, sp.Fireball.c, sp.Fireball.d, sp.Fireball.cl], [3, 'evocation', '1 action', '150 feet', 'V, S, M (a tiny ball of bat guano)', 'Instantaneous', ['Sorcerer', 'Wizard']]);
     eq([sp.Fireball.atk, sp['Toll the Dead'].atk], [undefined, true], 'támadó varázslat (Spell Sniper): a spellAttack mezőből');
+    eq([sp['Toll the Dead'].cl, sp['Toll the Dead'].clx, sp.Fireball.cl, sp.Fireball.clt, sp.Fireball.clx], [['Cleric', 'Warlock', 'Wizard'], ['Cleric', 'Warlock', 'Wizard'], ['Sorcerer', 'Wizard'], ['Cleric'], undefined],
+      'a XGE osztálylistája a cl-ben (clx: jelöléshez), a TCE bővített listája külön (clt); a 2024-es (XPHB) nem');
     has(sp.Fireball.tx, '8d6 fire'); has(sp.Fireball.tx, '+1d6 per slot');
     eq([sp.Bless.k, sp.Bless.d, sp.Bless.c, sp['Burning Hands'].r, sp['Toll the Dead'].cl, sp['Toll the Dead'].l], [true, 'Concentration, up to 1 minute', 'V, S, M (a sprinkling of holy water)', 'Self (15-foot cone)', ['Cleric', 'Warlock', 'Wizard'], undefined]);
     const it = Object.fromEntries(rb.items.map(i => [i.n, i]));
@@ -3421,7 +3492,7 @@ describe('Szabálykönyv és tárgy-import', () => {
       ch: {'Fighter:4:asi': {feat: 'Próbafeat|TCE'}, 'feat:Próbafeat|TCE:ability': ['dex'], 'feat:Próbafeat|TCE:saves': ['dex'], 'feat:Próbafeat|TCE:skills': ['stealth'], 'feat:Próbafeat|TCE:expertise': ['stealth']}}});
     const c = H.calc(s, rb);
     eq([c.abilities.con.v, c.abilities.wis.v, c.abilities.dex.v, c.saves.dex.prof, c.saves.str.prof, c.skills.stealth.prof], [16, 11, 13, 1, 1, 2]);
-    eq(c.todos.map(t => t.key), ['race:tool', 'Fighter:1:skills', 'Fighter:sub', 'Fighter:opt:Fighting Style']);
+    eq(c.todos.map(t => t.key), ['race:tool', 'Fighter:1:skills', 'Fighter:sub', 'Fighter:tce:Martial Versatility', 'Fighter:opt:Fighting Style'], 'a TCE-választás (Martial Versatility) is teendő, nem kötelező');
   });
   test('variánsok kibontása az alaptárgyakra (feltétel, kizárás, név) és keresés', async () => {
     const H = W.Sheet, all = H.allItems(await fakeRb()), names = all.map(i => i.n);

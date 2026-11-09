@@ -164,7 +164,9 @@ function spellResults(s) {
   const q = $('#spellQ')?.value || '', mine = $('#spellMine')?.checked;
   const cls = s.classes.map(c => H.findClass(c.name)).filter(Boolean);
   let list = H.search(RB().spells, q, 400);
-  if (mine && cls.length) list = list.filter(sp => (sp.cl || []).some(c => cls.includes(c)));
+  // a TCE bővített listája csak akkor, ha a karakter elfogadta (Felépítés: TCE bővített varázslatlista)
+  const tce = c => H.tceIgen(s.build, c, H.TCE_LISTA);
+  if (mine && cls.length) list = list.filter(sp => cls.some(c => H.spellOnList(sp, c, tce(c))));
   $('#spellRes').innerHTML = list.slice(0, 30).map(sp => `<div class="li"><span class="nm"><b>${esc(sp.n)}</b><small>${esc(H.spellLine(sp))} · ${esc((sp.cl || []).join(', '))} · ${esc(sp.s)}</small></span>
     ${s.spells.some(x => x.name === sp.n) ? '<span class="hint">✓ megvan</span>' : `<button class="small" data-act="spellAdd" data-ref="${esc(H.refOf(sp))}">＋</button>`}</div>`).join('')
     || (q.trim() ? `<p class="hint">Nincs találat${mine && cls.length ? ' az osztályaid listáján (vedd ki a pipát a teljes listához)' : ''}.</p>` : '');

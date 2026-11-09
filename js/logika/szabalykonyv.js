@@ -27,10 +27,13 @@ const spellComp = c => !c ? '' : [c.v && 'V', c.s && 'S', c.m && 'M' + (c.m === 
 const spellDur = d => (d || []).map(x => x.type === 'instant' ? 'Instantaneous' : x.type === 'permanent' ? 'Until dispelled' : x.type === 'special' ? 'Special'
   : x.type === 'timed' ? `${x.concentration ? 'Concentration, up to ' : ''}${x.duration.amount} ${x.duration.type}${x.duration.amount > 1 ? 's' : ''}` : '').filter(Boolean).join(' or ');
 function convSpell(sp, lookup) {
-  const cl = lookup?.[sp.source.toLowerCase()]?.[sp.name.toLowerCase()]?.class || {};
-  const classes = [...new Set(Object.entries(cl).filter(([src]) => RB_SPELL.includes(src)).flatMap(([, o]) => Object.keys(o)))].sort();
+  const lk = lookup?.[sp.source.toLowerCase()]?.[sp.name.toLowerCase()] || {}, cl = lk.class || {}, cv = lk.classVariant || {};
+  const alap = [...new Set(Object.entries(cl).filter(([src]) => RB_SPELL.includes(src)).flatMap(([, o]) => Object.keys(o)))];
+  // a XGE és a TCE osztálylistái a classVariant-ban (definedInSources): a XGE-é mindig a listán (clx: a jelöléshez), a TCE bővített listája külön (clt: csak ha a karakter elfogadja)
+  const valt = forras => [...new Set(Object.entries(cv).filter(([src]) => RB_SPELL.includes(src)).flatMap(([, o]) => Object.entries(o).filter(([, v]) => (v?.definedInSources || []).includes(forras)).map(([k]) => k)))];
+  const clx = valt('XGE').filter(k => !alap.includes(k)).sort(), classes = [...alap, ...clx].sort(), clt = valt('TCE').filter(k => !classes.includes(k)).sort();
   return compact({n: sp.name, s: sp.source, l: sp.level, sc: SCHOOL[sp.school] || '', t: spellTime(sp.time), r: spellRange(sp.range), c: spellComp(sp.components),
-    d: spellDur(sp.duration), k: (sp.duration || []).some(x => x.concentration), ri: !!sp.meta?.ritual, atk: !!sp.spellAttack?.length, cl: classes,
+    d: spellDur(sp.duration), k: (sp.duration || []).some(x => x.concentration), ri: !!sp.meta?.ritual, atk: !!sp.spellAttack?.length, cl: classes, clx, clt,
     tx: rbText([...(sp.entries || []), ...(sp.entriesHigherLevel || [])])});
 }
 function convItem(it, types, props) {

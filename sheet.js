@@ -316,7 +316,7 @@ window.Sheet = (() => {
   }
   // egy varázslat egy választási helyre: 'list' = a rendes listáról, 'off' = csak kivételként, '' = nem tanulható
   function spellFit(sp, kind, k) {
-    const l = num(sp.l), inList = !k.list || (sp.cl || []).includes(k.list) || (k.lists || []).some(x => (sp.cl || []).includes(x)) || (k.expanded || []).includes(String(sp.n).toLowerCase());
+    const l = num(sp.l), inList = !k.list || (sp.cl || []).includes(k.list) || (!!k.tce && (sp.clt || []).includes(k.list)) || (k.lists || []).some(x => (sp.cl || []).includes(x)) || (k.expanded || []).includes(String(sp.n).toLowerCase());
     if (kind === 'cantrips') return l === 0 && inList ? 'list' : '';
     if (l === 0) return kind === 'known' && k.offAny && k.off ? 'off' : '';
     if (l > k.max) return '';
@@ -372,7 +372,7 @@ window.Sheet = (() => {
   }
   const CHOICE_KIND = {abChoose: 'ability', skillChoose: 'skills', expertise: 'expertise', feat: 'feat', saveChoose: 'saves', langChoose: 'lang', toolChoose: 'tool', spellChoose: 'spell', pickChoose: 'pick', optChoose: 'opt'};
   const FX_LABEL = {spell: 'varázslat', pick: 'választás', ability: 'képességérték-növelés', skills: 'skill-jártasság', expertise: 'expertise', feat: 'feat', asi: 'ASI vagy feat', subclass: 'alosztály',
-    saves: 'mentő-jártasság', lang: 'nyelv', tool: 'eszköz-jártasság', subrace: 'alfaj', opt: 'választás', cantrips: 'cantrip', known: 'ismert varázslat', book: 'spellbook'};
+    saves: 'mentő-jártasság', lang: 'nyelv', tool: 'eszköz-jártasság', subrace: 'alfaj', opt: 'választás', tce: 'TCE opcionális feature', cantrips: 'cantrip', known: 'ismert varázslat', book: 'spellbook'};
 
   // Circle of the Land: a terep varázslatai 3., 5., 7., 9. druidaszinten (PHB 68–69. o.)
   const LAND_SPELLS = {
@@ -498,6 +498,38 @@ window.Sheet = (() => {
   // a szabálykönyv hatásai, amelyeket a fenti tábla vált ki: 'all' = az 5e.tools több változatából csak az első került be (pl. Land: az Arctic), 'todo' = az általános ✋ teendő helyett van választás
   const RB_FX_OFF = {'Druid|Land': 'all', 'Sorcerer|Divine Soul': 'all', 'Fighter|Arcane Archer': 'all', 'Warlock|Genie': 'all', 'Bard|Lore': 'todo', 'Cleric|Nature': 'todo',
     'subrace|High': 'todo', 'opt|Pact of the Tome': 'todo', 'opt|Book of Ancient Secrets': 'todo', 'opt|Blessed Warrior': 'todo', 'opt|Druidic Warrior': 'todo'};
+  // ---------- TCE opcionális osztály-feature-ök (TERV-featek-tce.md 4. lépés) ----------
+  // A szabálykönyvben az osztály feats[] / features[] elemén opt: true. Mindegyik egy igen / nem választás ('Osztály:tce:Név'), a játékos dönt (nincs kampánykapcsoló).
+  // TCE_CSERE: a PHB-feature kimarad, ha a felsorolt TCE-változatok mind el vannak fogadva ('*' = bármely alosztály). TCE_KOVET: nincs külön választás, a szülővel jár.
+  // Vigyázat: a kimaradó PHB-feature hatásai sem kerülnek be; ha egyszer választásos PHB-feature (FEATURE_FX) kerül ide, a vele azonos előtagú (Osztály:szint) választások számozása (keyOf) eltolódhat.
+  const TCE_LISTA = 'Expanded Spell List';
+  const TCE_CSERE = {'Ranger|Favored Enemy': ['Favored Foe'], 'Ranger|Favored Enemy improvement': ['Favored Foe'], 'Ranger|Natural Explorer': ['Deft Explorer'],
+    'Ranger|Natural Explorer improvement': ['Deft Explorer'], 'Ranger|Favored Enemy and Natural Explorer improvements': ['Favored Foe', 'Deft Explorer'],
+    'Ranger|Primeval Awareness': ['Primal Awareness'], "Ranger|Beast Master|Ranger's Companion": ['Primal Companion'],
+    'Cleric|*|Divine Strike': ['Blessed Strikes'], 'Cleric|*|Potent Spellcasting': ['Blessed Strikes']};
+  const TCE_KOVET = {'Ranger|Deft Explorer Improvement': 'Deft Explorer'};
+  // a TCE-feature-ök mechanikája, szintenként (ugyanaz a név több szinten mást ad); kulcs: 'Osztály|Név|szint'. Az online teszt ellenőrzi, hogy létezik.
+  const TCE_FX = {
+    'Barbarian|Primal Knowledge|3': [{skillChoose: {from: ['animal-handling', 'athletics', 'intimidation', 'nature', 'perception', 'survival'], n: {lv: {3: 1, 10: 2}}}}],   // 3. és 10. szinten egy-egy
+    'Cleric|Channel Divinity: Harness Divine Power|2': [{res: {n: 'Harness Divine Power', max: {lv: {2: 1, 6: 2, 18: 3}}, reset: 'long'}}],
+    'Ranger|Deft Explorer|1': [{expertise: {n: 1}}, {langChoose: {n: 2}}],
+    'Ranger|Deft Explorer Improvement|6': [{speed: {v: 5}}],
+    'Ranger|Deft Explorer Improvement|10': [{res: {n: 'Tireless', max: 'pb', reset: 'long'}}],
+    'Ranger|Favored Foe|1': [{res: {n: 'Favored Foe', max: 'pb', reset: 'long'}}],
+    'Ranger|Primal Awareness|3': [{spells: [{t: 'known', lvl: 3, sp: ['speak with animals']}, {t: 'known', lvl: 5, sp: ['beast sense']}, {t: 'known', lvl: 9, sp: ['speak with plants']},
+      {t: 'known', lvl: 13, sp: ['locate creature']}, {t: 'known', lvl: 17, sp: ['commune with nature']}]}],
+    "Ranger|Nature's Veil|10": [{res: {n: "Nature's Veil", max: 'pb', reset: 'long'}}]
+  };
+  const tceKey = (cls, n) => `${cls}:tce:${n}`;
+  // az érték szöveg ('igen' / 'nem') vagy egyelemű lista (a választó-modul így is írhatja)
+  const tceErtek = v => Array.isArray(v) ? v[0] : v;
+  const tceIgen = (b, cls, n) => tceErtek(b?.ch?.[tceKey(cls, n)]) === 'igen';
+  // a PHB-feature-t kiváltja-e egy elfogadott TCE-változat (sb: alosztály rövid neve vagy '')
+  const tceKivaltja = (b, cls, sb, n) => { const l = TCE_CSERE[sb ? `${cls}|${sb}|${n}` : `${cls}|${n}`] || (sb ? TCE_CSERE[`${cls}|*|${n}`] : null); return !!l && l.every(t => tceIgen(b, cls, t)); };
+  // egy varázslat rajta van-e az osztály listáján (a XGE-é benne a cl-ben; a TCE bővített listája csak elfogadva)
+  const spellOnList = (sp, cls, tce) => (sp?.cl || []).includes(cls) || (!!tce && (sp?.clt || []).includes(cls));
+  // a választóban a forrás jelölése: „XGE” (a XGE osztálylistájáról), „TCE” (a bővített listáról) – a felhasználó kérése, 2026-11-09
+  const listaJel = (sp, cls) => !cls ? '' : (sp?.clx || []).includes(cls) ? 'XGE' : !(sp?.cl || []).includes(cls) && (sp?.clt || []).includes(cls) ? 'TCE' : '';
   const rbFx = (kulcs, list) => RB_FX_OFF[kulcs] === 'all' ? [] : RB_FX_OFF[kulcs] === 'todo' ? (list || []).filter(f => !/varázslat választása/.test(f?.todo || '')) : list || [];
   // class table oszlop értéke az adott osztályszinten (pl. Ki Points, Martial Arts 1d6, Unarmored Movement +10)
   function colOf(cols, label, lvl) {
@@ -614,15 +646,30 @@ window.Sheet = (() => {
         else if (isObj(v)) { const inc = asiInc(v); if (inc) fxs.push({fx: {ab: inc}, src, ctx: kor, ch: {}}); }
       }
       const featText = (n, lvl, sb) => (rb?.features || []).find(x => x.cls === c.name && x.n === n && x.lvl === lvl && (sb ? x.sub === sb.short && x.ss === sb.s : !x.sub))?.tx || '';
+      // TCE opcionális feature: igen / nem választás; elfogadva jellemző és hatás (a hatások kulcsa 'Osztály:tce:Név:…', így a meglévő kulcsok nem tolódnak el)
+      const tceValaszt = (f, sb, text) => {
+        const szulo = TCE_KOVET[`${c.name}|${f.n}`], key = tceKey(c.name, f.n);
+        if (!szulo && !choices.some(x => x.key === key)) choices.push({key, kind: 'tce', src: `${f.n} (${sb || c.name} ${f.lvl}, TCE)`, n: 1, ctx: kor, value: b.ch[key] || ''});
+        if (!tceIgen(b, c.name, szulo || f.n)) return;
+        features.push({name: f.n, text, src: `${sb || c.name} ${f.lvl} (TCE)`});
+        addFx(ctx, TCE_FX[`${c.name}|${f.n}|${f.lvl}`], `${f.n} (${c.name} ${f.lvl})`, `${key}:${f.lvl}`, kor);
+      };
       for (const f of rc?.feats || []) {
         // az ASI-t a választás kezeli, az alosztály-helyőrzőt (pl. „Martial Archetype feature”) az alosztály feature-jei váltják ki
-        if (f.lvl > c.level || f.opt || f.n === 'Ability Score Improvement' || (f.sub && f.lvl > ci.subLvl)) continue;
+        if (f.lvl > c.level || f.n === 'Ability Score Improvement' || (f.sub && f.lvl > ci.subLvl)) continue;
+        if (f.opt) { tceValaszt(f, '', featText(f.n, f.lvl)); continue; }
+        if (tceKivaltja(b, c.name, '', f.n)) continue;
         features.push({name: f.n, text: featText(f.n, f.lvl), src: `${c.name} ${f.lvl}`});
         addFx(ctx, FEATURE_FX[`${c.name}|${f.n}`], `${f.n} (${c.name} ${f.lvl})`, `${c.name}:${f.lvl}`, kor);
       }
+      // TCE bővített varázslatlista: osztályonként egy választás, ha a szabálykönyvben van ilyen varázslat (3-as formátum: spells[].clt)
+      if ((rb?.spells || []).some(sp => (sp.clt || []).includes(c.name)))
+        choices.push({key: tceKey(c.name, TCE_LISTA), kind: 'tce', src: `TCE bővített varázslatlista (${c.name})`, label: 'TCE bővített varázslatlista', n: 1, ctx: kor, value: b.ch[tceKey(c.name, TCE_LISTA)] || ''});
       if (sub) {
         addFx(ctx, rbFx(`${c.name}|${sub.short}`, sub.fx), sub.n, `${c.name}:${sub.short}`, kor);
         for (const f of (rb.features || []).filter(x => x.cls === c.name && x.sub === sub.short && x.ss === sub.s && x.lvl <= c.level)) {
+          if (f.opt) { tceValaszt(f, sub.short, f.tx || ''); continue; }
+          if (tceKivaltja(b, c.name, sub.short, f.n)) continue;
           features.push({name: f.n, text: f.tx || '', src: `${sub.short} ${f.lvl}`});
           addFx(ctx, FEATURE_FX[`${c.name}|${sub.short}|${f.n}`], `${f.n} (${sub.short} ${f.lvl})`, `${c.name}:${f.lvl}`, kor);
         }
@@ -653,6 +700,7 @@ window.Sheet = (() => {
       } else if (c.kind === 'pick') {
         ok = arr(c.value, 10).filter(x => typeof x === 'string' && x.trim() && (!Array.isArray(c.from) || c.from.includes(x)));
       } else if (c.kind === 'spell') ok = arr(c.value, 10).filter(ref => { const sp = typeof ref === 'string' && rbFind(rb?.spells, ref); return sp && spellChooseFit(sp, c.from); });
+      else if (c.kind === 'tce') ok = ['igen', 'nem'].includes(tceErtek(c.value)) ? [tceErtek(c.value)] : [];
       else if (c.kind === 'opt') {
         ok = arr(c.value, 30).filter(ref => { const o = rbFind(rb?.optfeatures, ref); return o && (o.t || []).some(t => c.from.includes(t)) && (!o.lv || o.lv <= c.ctx.lvl) && (c.ctx.cls || (!o.pre && !o.pact)); });
       }
@@ -911,7 +959,7 @@ window.Sheet = (() => {
       const lvl = classes.find(c => c.name === cast.cls).level, sub = subclassOf(b, cast.cls, rb), rule = spellRule(cast.cls, lvl, sub);
       const expanded = A.spells.filter(x => x.t === 'expanded' && x.ctx.cls === cast.cls).flatMap(x => arr(x.sp, 30).map(n => String(n).toLowerCase()));
       const lists = A.lists.filter(x => x.cls === cast.cls).map(x => x.l);
-      const kor = {cls: cast.cls, lvl, max: cast.maxSpell, list: rule.list, schools: rule.schools, off: rule.off, offAny: !!rule.offAny, expanded, ...(lists.length ? {lists} : {})};
+      const kor = {cls: cast.cls, lvl, max: cast.maxSpell, list: rule.list, schools: rule.schools, off: rule.off, offAny: !!rule.offAny, expanded, ...(lists.length ? {lists} : {}), ...(tceIgen(b, cast.cls, TCE_LISTA) ? {tce: true} : {})};
       const helyek = [['cantrips', cast.cantrips, 'Cantrip'], ['known', cast.known ? cast.known + rule.extra : 0, 'Ismert varázslatok'], ['book', cast.cls === BOOK_CLASS ? 6 + 2 * (lvl - 1) : 0, 'Spellbook']];
       for (const [kind, n, label] of helyek) {
         if (!n) continue;
@@ -1138,10 +1186,11 @@ window.Sheet = (() => {
       opts = (rb?.subraces || []).filter(x => x.race === race).map(x => ({v: x.n + '|' + x.s, l: /\(alap\)$/.test(x.n) ? race + ' (alap)' : x.n}));
     } else if (c.kind === 'asi') opts = refs(rb?.feats);
     else if (c.kind === 'pick') { if (Array.isArray(c.from)) opts = c.from.map(x => ({v: x, l: x})); else free = true; }
+    else if (c.kind === 'tce') opts = [{v: 'igen', l: c.key.endsWith(':' + TCE_LISTA) ? 'Igen, a bővített lista is' : 'Igen, a TCE változat'}, {v: 'nem', l: c.key.endsWith(':' + TCE_LISTA) ? 'Nem, csak az alap lista' : 'Nem, marad a PHB'}];
     else if (c.kind === 'spell') {
       // ami máshonnan már megvan (osztály, más faji varázslat), az nem választható
       const megvan = new Set([...(cr?.choices || []).filter(x => SPELL_KINDS.includes(x.kind)).flatMap(x => x.ok).map(refName), ...(cr?.always || []).map(x => x.name)].map(x => String(x).toLowerCase()));
-      opts = (rb?.spells || []).filter(sp => spellChooseFit(sp, c.from)).sort((x, y) => x.n.localeCompare(y.n)).map(sp => { const v = sp.n + '|' + sp.s, got = megvan.has(sp.n.toLowerCase()) && !has.has(v); return {v, l: sp.n, note: got ? 'már megvan' : '', dis: got}; });
+      opts = (rb?.spells || []).filter(sp => spellChooseFit(sp, c.from)).sort((x, y) => x.n.localeCompare(y.n)).map(sp => { const v = sp.n + '|' + sp.s, got = megvan.has(sp.n.toLowerCase()) && !has.has(v); return {v, l: sp.n, note: got ? 'már megvan' : listaJel(sp, c.from?.list), dis: got}; });
     }
     else if (SPELL_KINDS.includes(c.kind)) {
       multi = true;
@@ -1149,7 +1198,7 @@ window.Sheet = (() => {
       const offUsed = arr(c.ok, 120).filter(ref => { const sp = rbFind(rb?.spells, ref); return sp && spellFit(sp, c.kind, c.ctx) === 'off'; }).length;
       opts = (rb?.spells || []).map(sp => ({sp, f: spellFit(sp, c.kind, c.ctx)})).filter(x => x.f).sort((x, y) => num(x.sp.l) - num(y.sp.l) || x.sp.n.localeCompare(y.sp.n)).map(({sp, f}) => {
         const v = sp.n + '|' + sp.s, mine = arr(c.ok, 120).includes(v), got = taken.has(sp.n.toLowerCase());
-        return {v, l: sp.n, lvl: num(sp.l), note: got ? 'már megvan' : f === 'off' ? 'kivétel' : '', off: f === 'off', dis: !mine && (got || (f === 'off' && offUsed >= c.ctx.off))};
+        return {v, l: sp.n, lvl: num(sp.l), note: got ? 'már megvan' : f === 'off' ? 'kivétel' : listaJel(sp, c.ctx?.list), off: f === 'off', dis: !mine && (got || (f === 'off' && offUsed >= c.ctx.off))};
       });
     }
     return {multi, free, n: c.n, opts, ...(c.kind === 'book' ? {over: true} : {})};
@@ -1273,7 +1322,7 @@ window.Sheet = (() => {
   // kulcssorrendtől független szöveg (a Firestore más sorrendben adja vissza a mezőket, mint ahogy beírtuk)
   const stableJson = v => JSON.stringify(v, (_, x) => isObj(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x);
   const levelUpBuild = (s, cls) => normBuild({...s.build, levels: [...s.build.levels, {c: cls, hp: null}]});
-  const LU_ORDER = {subclass: 0, asi: 1, feat: 2, ability: 2, saves: 2, skills: 3, expertise: 3, lang: 3, tool: 3, opt: 4};
+  const LU_ORDER = {subclass: 0, tce: 1, asi: 1, feat: 2, ability: 2, saves: 2, skills: 3, expertise: 3, lang: 3, tool: 3, opt: 4};
   // a felülírás a számolt érték változásával együtt mozdul, különben a max HP nem nőne, és az ASI nem hatna (a többi felülírás marad)
   function levelUpOv(s, rb, build) {
     const a = calc(s, rb), ov = {...s.ov}, b0 = calc({...s, build}, rb);
@@ -1299,7 +1348,8 @@ window.Sheet = (() => {
       return {c, uj, locked: r ? r.ok.filter(v => typeof v === 'string') : [], csere: !!r && (known || inv || man), missing: uj || ((known || inv) && r.ok.length > c.ok.length) ? choiceMissing(c, nw, rb) : 0};
     };
     const all = nw.choices.filter(c => c.kind !== 'subrace').map(item);
-    const shown = all.filter(x => x.uj || x.csere || !x.c.done);
+    // a korábbi szintek nyitott TCE-választása nem kerül a varázslóba, csak a Teendők közé (TERV-featek-tce.md)
+    const shown = all.filter(x => x.uj || x.csere || (!x.c.done && x.c.kind !== 'tce'));
     const key = f => `${f.name}|${f.src}`, oldF = new Set(old.features.map(key)), oldT = new Set(old.todos.map(t => t.key));
     const hd = classInfo(cls, rb).hd, l = build.levels.at(-1), die = l.hp ?? hd / 2 + 1, gain = nw.hpMax.calc - old.hpMax.calc;
     return {old, nw, cls, ov, classLevel: nw.classes.find(c => c.name === cls).level,
@@ -1385,7 +1435,8 @@ window.Sheet = (() => {
   }
   // a varázsló választási helyei: a felépítés minden nyitott helye (az alfaj a faj-listában van); missing: hány kötelező hiányzik
   function ncPlan(s, rb) {
-    const cr = calc(s, rb), item = c => ({c, missing: choiceMissing(c, cr, rb)}), all = cr.choices.filter(c => c.kind !== 'subrace').map(item);
+    const cr = calc(s, rb), item = c => ({c, missing: c.kind === 'tce' ? 0 : choiceMissing(c, cr, rb)}),   // a TCE-kérdés az új karakternél nem kötelező (Teendő marad)
+      all = cr.choices.filter(c => c.kind !== 'subrace').map(item);
     return {cr, choices: all.filter(x => !SPELL_KINDS.includes(x.c.kind)).sort((a, b) => (LU_ORDER[a.c.kind] ?? 9) - (LU_ORDER[b.c.kind] ?? 9)), spells: all.filter(x => SPELL_KINDS.includes(x.c.kind))};
   }
 
@@ -1426,6 +1477,7 @@ window.Sheet = (() => {
       opt: () => `Válassz a listából: még ${marad} darabot.`,
       pick: () => `Válassz: még ${marad} darabot${Array.isArray(c?.from) ? ', ezek közül: ' + lista(c.from) : ' (a mezőnél lévő i gomb mutat példát)'}.`,
       spell: () => `Válassz varázslatot: még ${marad} darabot.`,
+      tce: () => c?.key?.endsWith(':' + TCE_LISTA) ? 'A TCE (Tasha\'s Cauldron of Everything) bővített varázslatlistája: igen esetén ezek a varázslatok is választhatók (a választóban „TCE” jelöléssel). Szintlépéskor az azon a szinten nyíló kérdésre felelni kell, egyébként (új karakter, korábbi szintek) nem kötelező; bármikor átállítható.' : 'A TCE (Tasha\'s Cauldron of Everything) opcionális változata. Igen: ez a jellemző jár, és ha egy PHB-jellemzőt helyettesít, az kimarad. Nem: marad a PHB. Szintlépéskor az azon a szinten nyíló kérdésre felelni kell, egyébként (új karakter, korábbi szintek) nem kötelező; bármikor átállítható (Alapadatok fül → Felépítés).',
       cantrips: () => `Válassz cantripet: még ${marad} darabot.`,
       known: () => `Válassz ismert varázslatot: még ${marad} darabot. Ha az osztályod alosztálya bővíti a listát, előbb azt válaszd ki.`,
       book: () => `Válassz varázslatot a spellbookba: még ${marad} darabot.`
@@ -1813,7 +1865,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, classInfo, calc, CALC_LEPESEK, featOk, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
+    FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,
