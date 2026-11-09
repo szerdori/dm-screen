@@ -51,7 +51,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 - Böngészős előnézethez a `.claude\launch.json`-ba (git-ignorált) egy statikus szerver kell; a régi PowerShell-szerver (`server.ps1`) már nincs meg.
 
 ## Állapot
-- **Játékos app:** a 0–3. fázis a `main`-en (a 3.: szintlépés-varázsló, előzmények; feltöltve 2026-10-30; a `firestore.rules` a konzolban, a szabálykönyv újratöltve, a játékosok lapjai létrehozva és átállítva – a felhasználó szerint kész, 2026-11-08) – `TERV-jatekos-app.md`. Következik a 4. fázis (multiclass). Szintén a `main`-en (feltöltve 2026-10-31): átállítás-jelvény, backup (3 mentés, teljes visszaállítás, letöltés), karakter törlése, üres játékos és az 5. fázis szűkített kezdő varázslója (`docs/mukodes.md`).
+- **Játékos app:** a 0–3. fázis a `main`-en (a 3.: szintlépés-varázsló, előzmények; feltöltve 2026-10-30; a `firestore.rules` a konzolban, a szabálykönyv újratöltve, a játékosok lapjai létrehozva és átállítva – a felhasználó szerint kész, 2026-11-08) – `TERV-jatekos-app.md`. A 4. fázisból a featek és a TCE kész (2026-11-09); a multiclass a felhasználó döntése szerint később. Szintén a `main`-en (feltöltve 2026-10-31): átállítás-jelvény, backup (3 mentés, teljes visszaállítás, letöltés), karakter törlése, üres játékos és az 5. fázis szűkített kezdő varázslója (`docs/mukodes.md`).
 - **Megjelenítés a telefonos lapon** (Fiók menü: betűméret, sötét/világos): élesben (a `main`-en, feltöltve 2026-11-05) – `TERV-olvashato-mod.md`, `docs/mukodes.md`, `docs/dontesek/0007`. A próba a játékosok telefonján kész (2026-11-08); hátra: döntés a wishlistről (nagyítás hosszú nyomásra).
 - **Játékosok dobásai a DM Screen naplójában** (a lap `rolls` mezője, `docs/mukodes.md`): élesben (a `main`-en, feltöltve 2026-11-06), telefonon kipróbálva (2026-11-08).
 - **Dobáskérés** (`TERV-dobaskeres.md`, a lap `rollReq` mezője, `js/logika/dobaskeres.js`): élesben (a `main`-en, feltöltve 2026-11-07), telefonon kipróbálva (2026-11-08).
@@ -62,7 +62,7 @@ Ha adatformátum, gyűjtemény, mező vagy jogosultság változik:
 ## Nyitott / félretett ügyek (2026-10-29)
 - **Sorrend (a felhasználó döntése, 2026-11-08):**
   1. Azonos forrású ✋ teendők javítása – kész 2026-11-08 (a forrás első teendőjének kulcsa a régi `'✋ ' + src`, a többié `'✋ ' + src + ' – ' + szöveg`, 200 karakterre vágva; `Sheet.VERSION` 20).
-  2. **Featek és TCE** – terv és döntések: `TERV-featek-tce.md` (elfogadva 2026-11-08, folyamatban). Multiclass most **nem** lesz.
+  2. **Featek és TCE** – kész és élesben (2026-11-09, `TERV-featek-tce.md`): feat-előfeltétel ⚠ jellel, a featek minden választása, TCE opcionális feature-ök és bővített lista, XGE-varázslatok jelölve. A felhasználó teendője: szabálykönyv újratöltése (3-as formátum); szólni a játékosoknak az új, nem kötelező TCE-kérdésekről és a featek most kitölthető választásairól. Multiclass most **nem**.
   3. **Utána szólj a felhasználónak:** a kezdő felszerelésről akar beszélni, ezzel folytatnánk. Kibővítve (tervezni kell): magasabb szintű karakter létrehozása, a szinthez illő véletlen felszereléssel, akár véletlen builddel is.
   - Menet közben: a refaktor 6. lépése után nyitva maradt apróságok (`TERV-refaktor.md`), ha egy feladat amúgy is azokhoz a fájlokhoz nyúl.
 - **Ráér később (a felhasználó döntése, 2026-11-08):** multiclass (4. fázis 1–2. lépés); flavour text bővítése (HP-hoz mért súlyosság, halálos csapás, mellétalálás); homebrew-szerkesztő; wishlist: egy érték kinagyítása hosszú nyomásra (`TERV-olvashato-mod.md`).

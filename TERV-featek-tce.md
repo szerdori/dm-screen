@@ -1,6 +1,6 @@
 # Terv: featek előfeltétellel és saját választásokkal, TCE opcionális feature-ök
 
-*Készült: 2026-11-08. Állapot: elfogadva 2026-11-08 (döntések a végén), folyamatban; kész: 1–4. lépés. Előzmény: `TERV-3-4-fazis.md` 4. fázis 3–5. lépése; a multiclass (1–2. lépés) a felhasználó döntése szerint később.*
+*Készült: 2026-11-08. Állapot: kész és élesben 2026-11-09 (1–5. lépés; döntések a végén). Ismert hiányok: a Paladin Harness Divine Power nem választható (az 5e.tools a Channel Divinity szövegében hivatkozza), a Deft Explorer climb / swim speedje nincs leképezve, a Ritual Caster ritualjai közönséges ismert varázslatként látszanak, a Spell Sniper Bard / Cleric listáján nincs mit választani. Előzmény: `TERV-3-4-fazis.md` 4. fázis 3–5. lépése; a multiclass (1–2. lépés) a felhasználó döntése szerint később.*
 
 ## Cél
 - Szintlépéskor (ASI helyett) és a Variant Human / új karakter featjénél a választóban **látszik, melyik feat választható** (✓), és melyik nem (az ok: „DEX 13 kell”, „csak Elf”, „varázsolni kell tudni”, „medium armor jártasság kell”).
