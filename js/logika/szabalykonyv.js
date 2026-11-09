@@ -1,7 +1,7 @@
 // Szabálykönyv a játékos appnak (logika, DOM nélkül): az 5e.tools adatainak letöltése, átalakítása (fx hatáslisták), feltöltése, és a tárgykeresés.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('szabalykonyv', N) és az index.html-ben a szabalykonyv.js?v=N és a VART_MODULOK.
 'use strict';
-modul('szabalykonyv', 4);
+modul('szabalykonyv', 5);
 
 // ---------- szabálykönyv a játékos appnak (rules/*) ----------
 // Az 5e.tools-tükörből letölti a PHB / XGE / TCE varázslatait és featjeit, a PHB / DMG / XGE / TCE tárgyait (2024-es könyvek nélkül),
@@ -44,7 +44,34 @@ function convItem(it, types, props) {
     rar: magic ? it.rarity : '', att: it.reqAttune === true ? 'requires attunement' : typeof it.reqAttune === 'string' ? 'requires attunement ' + tagStrip(it.reqAttune) : '',
     mag: magic || !!it.wondrous, w: it.weight || 0, v, dmg: it.dmg1 ? `${it.dmg1} ${DMG_TYPE[it.dmgType] || ''}`.trim() : '', d2: it.dmg2 || '',
     pr: (it.property || []).map(p => props[propOf(p)] || propOf(p)).join(', '), rg: it.range || '', ac: it.ac || 0, str: it.strength || '', st: !!it.stealth,
-    tx: [rbText(it.entries), pack.length ? 'Tartalom: ' + pack.join(', ') : '', it.items ? 'Változatok: ' + it.items.map(x => String(x).split('|')[0]).join(', ') : ''].filter(Boolean).join('\n')});
+    tx: [rbText(it.entries), pack.length ? 'Tartalom: ' + pack.join(', ') : '', it.items ? 'Változatok: ' + it.items.map(x => String(x).split('|')[0]).join(', ') : ''].filter(Boolean).join('\n'),
+    // a kezdő felszereléshez: a csomag tartalma szerkezetben (kibontáshoz), a tárgycsoport tagjai (pl. Holy Symbol → Amulet, Emblem, Reliquary)
+    pk: (it.packContents || []).map(seTetel).filter(Boolean), grp: (it.items || []).map(String)});
+}
+// ---------- kezdő felszerelés (startingEquipment, TERV-kezdo-felszereles.md) ----------
+// sor: {_: [tételek]} (fix) vagy {a: […], b: […], …} (választás); tétel: {r: 'Név|FORRÁS', q, dn, cp} | {cat: equipmentType, q} | {sp: 'szöveges tárgy', q, cp} | {cp: réz}
+function seTetel(x) {
+  if (typeof x === 'string') return {r: x};
+  if (!x || typeof x !== 'object') return null;
+  const q = x.quantity > 1 ? x.quantity : 0, cp = x.containsValue || 0;
+  if (x.item) return compact({r: String(x.item), q, dn: x.displayName ? tagStrip(String(x.displayName)) : '', cp});
+  if (x.equipmentType) return compact({cat: String(x.equipmentType), q});
+  if (x.special) return compact({sp: tagStrip(String(x.special)), q, cp});
+  if (x.value) return {cp: x.value};
+  return null;
+}
+const seSorok = d => (Array.isArray(d) ? d : d ? [d] : []).filter(r => r && typeof r === 'object')
+  .map(r => Object.fromEntries(Object.entries(r).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, v.map(seTetel).filter(Boolean)]))).filter(r => Object.keys(r).length);
+// '{@dice 5d4 × 10|5d4 × 10|Starting Gold}' → '5d4*10'; a Monké '5d4'
+const seArany = g => (String(g || '').match(/\{@dice ([^|}]+)/)?.[1] || '').replace(/\s*[×x]\s*/g, '*').replace(/\s+/g, '');
+// a refek a szabálykönyv tárgyainak pontos nevére és forrására ('chain mail|phb' → 'Chain Mail|PHB'); ami nincs a szabálykönyvben, marad (a lapon szöveges tárgy lesz)
+function seRefek(rb) {
+  const idx = new Map();
+  for (const x of [...rb.baseItems, ...rb.items]) { const k = x.n.toLowerCase() + '|' + x.s.toLowerCase(); if (!idx.has(k)) idx.set(k, x.n + '|' + x.s); }
+  const fix = r => { const [n, s = 'phb'] = String(r).split('|'); return idx.get(n.toLowerCase() + '|' + s.toLowerCase()) || n + '|' + s.toUpperCase(); };
+  const tetel = t => { if (t.r) t.r = fix(t.r); };
+  for (const o of [...rb.classes, ...rb.backgrounds]) for (const row of o.se?.rows || []) Object.values(row).forEach(l => l.forEach(tetel));
+  for (const it of rb.items) { (it.pk || []).forEach(tetel); if (it.grp) it.grp = it.grp.map(fix); }
 }
 function featPre(pre) {
   return (pre || []).map(o => Object.entries(o).map(([k, v]) =>
@@ -269,7 +296,9 @@ function convClassFile(file, out) {
     prep: String(cls.preparedSpells || '').replace(/<\$level\$>/g, 'lvl').replace(/<\$(\w+)_mod\$>/g, '$1').replace(/\s+/g, ''),
     cols: (cls.classTableGroups || []).filter(g => g.rows).flatMap(g => (g.colLabels || []).map((l, i) => ({l: tagStrip(l), v: g.rows.map(r => colVal(r[i]))}))),
     feats, subLvl, asi: feats.filter(f => f.n === 'Ability Score Improvement').map(f => f.lvl), subTitle: cls.subclassTitle || '',
-    opt: (cls.optionalfeatureProgression || []).map(o => ({n: o.name, t: o.featureType || [], p: progArr(o.progression)}))}));
+    opt: (cls.optionalfeatureProgression || []).map(o => ({n: o.name, t: o.featureType || [], p: progArr(o.progression)})),
+    se: cls.startingEquipment ? compact({rows: seSorok(cls.startingEquipment.defaultData), gold: seArany(cls.startingEquipment.goldAlternative),
+      tx: (cls.startingEquipment.default || []).map(x => tagStrip(String(x)))}) : null}));
   const seen = new Set();
   for (const sc of file.subclass || []) {
     if (sc.classSource !== cs || !RB_SUB.includes(sc.source) || seen.has(sc.shortName + '|' + sc.source)) continue;
@@ -307,7 +336,7 @@ function convBackgrounds(file) {
     if (b._copy) { const src = all.find(x => x.name === b._copy.name && x.source === b._copy.source); b = {...(src || {}), ...b}; }
     const feat = (b.entries || []).find(e => /^Feature:/i.test(e?.name || ''));
     return compact({n: b.name, s: b.source, fx: profFx(b), feature: feat ? {n: tagStrip(feat.name).replace(/^Feature:\s*/i, ''), tx: rbText(feat.entries)} : null,
-      tx: rbText((b.entries || []).filter(e => e?.type === 'list'))});
+      tx: rbText((b.entries || []).filter(e => e?.type === 'list')), se: b.startingEquipment ? compact({rows: seSorok(b.startingEquipment)}) : null});
   });
 }
 function optPre(pre) {
@@ -325,7 +354,7 @@ function convOptFeatures(file) {
 }
 const bonusNum = v => v == null ? 0 : parseInt(String(v).replace('+', '')) || 0;
 // tárgyak mechanikája: típuskód (páncélhoz / fegyverhez), mágikus bónuszok, képességérték-minimum (pl. Gauntlets of Ogre Power)
-const itemMech = it => ({tc: String(it.type || '').split('|')[0], wc: it.weaponCategory || '', bAc: bonusNum(it.bonusAc), bW: bonusNum(it.bonusWeapon), bS: bonusNum(it.bonusSavingThrow),
+const itemMech = it => ({tc: String(it.type || '').split('|')[0], wc: it.weaponCategory || '', scf: it.scfType || '', bAc: bonusNum(it.bonusAc), bW: bonusNum(it.bonusWeapon), bS: bonusNum(it.bonusSavingThrow),
   abS: it.ability?.static ? Object.fromEntries(ABIL.filter(a => it.ability.static[a]).map(a => [a, it.ability.static[a]])) : null});
 
 async function buildRulebook(get = rbFetch) {
@@ -362,6 +391,7 @@ async function buildRulebook(get = rbFetch) {
     conditions: (conds.condition || []).filter(c => c.source === 'PHB').map(c => ({n: c.name, s: c.source, tx: rbText(c.entries)})),
     ...cls, races: rc.races, subraces: rc.subraces, backgrounds: convBackgrounds(bgs), optfeatures: convOptFeatures(opts)
   };
+  seRefek(rb);
   return rb;
 }
 async function uploadRulebook(rb, step = () => {}) {

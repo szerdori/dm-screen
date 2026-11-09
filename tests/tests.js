@@ -3516,11 +3516,11 @@ describe('Szabálykönyv és tárgy-import', () => {
     W.__fdb = f.db; A('Tar.kapcsol(window.__fdb)');
     const meta = await W.uploadRulebook(rb);
     eq(f.log.at(-1), 'set rules/meta'); ok(f.log.includes('del rules/old-0'));
-    eq([meta.counts.spells, meta.counts.items, meta.counts.variants, meta.counts.classes, meta.counts.races, meta.format], [4, 6, 3, 1, 3, 3]);
+    eq([meta.counts.spells, meta.counts.items, meta.counts.variants, meta.counts.classes, meta.counts.races, meta.format], [4, 6, 3, 1, 3, 4]);
     const cache = {}, c = {get: async k => cache[k], set: async (k, v) => { cache[k] = v; }};
     let gets = 0; const db2 = {get: p => { gets++; return f.db.get(p); }};
     const r1 = await H.loadRulebook(db2, c);
-    eq([r1.rb.spells.length, r1.format, gets], [4, 3, 1 + meta.chunks.length]);
+    eq([r1.rb.spells.length, r1.format, gets], [4, 4, 1 + meta.chunks.length]);
     gets = 0; await H.loadRulebook(db2, c); eq(gets, 1, 'változatlan verziónál csak a metát nézi');
     const r3 = await H.loadRulebook({get: async () => { throw new Error('offline'); }}, c);
     ok(r3.offline && r3.rb.items.length === 6 && r3.rb.classes.length === 1, 'internet nélkül a tárolt példány');
@@ -5847,6 +5847,139 @@ describe('Flavour text a sebzésdobásokhoz (leiras.js, TERV-flavour.md)', () =>
 });
 
 // ======================================================================
+// kitalált, 5e.tools-alakú kezdő felszerelés (a szerkezet a valódi szerint, 2026-11-09)
+const seGet = async p => {
+  const d = await fake5eGet(p);
+  if (p === 'items-base.json') d.baseitem.push(
+    {name: 'Leather Armor', source: 'PHB', type: 'LA', ac: 11, armor: true, value: 1000},
+    {name: 'Shield', source: 'PHB', type: 'S', ac: 2, armor: true, value: 1000},
+    {name: 'Longbow', source: 'PHB', type: 'R', weaponCategory: 'martial', dmg1: '1d8', dmgType: 'P', weapon: true, value: 5000},
+    {name: 'Battleaxe', source: 'PHB', type: 'M', weaponCategory: 'martial', dmg1: '1d8', dmgType: 'S', weapon: true, axe: true, value: 1000},
+    {name: 'Dagger', source: 'PHB', type: 'M', weaponCategory: 'simple', property: ['F'], dmg1: '1d4', dmgType: 'P', weapon: true, value: 200},
+    {name: 'Arrows (20)', source: 'PHB', type: 'A', value: 100}, {name: 'Arrow', source: 'PHB', type: 'A', value: 5});
+  if (p === 'items.json') {
+    d.item.push({name: 'Amulet', source: 'PHB', type: 'SCF', scfType: 'holy', rarity: 'none', value: 500}, {name: 'Pouch', source: 'PHB', type: 'G', value: 50},
+      {name: 'Backpack', source: 'PHB', type: 'G', value: 200}, {name: 'Torch', source: 'PHB', type: 'G', value: 1});
+    d.itemGroup.push({name: 'Holy Symbol', source: 'PHB', type: 'SCF', scfType: 'holy', items: ['Amulet|phb']});
+  }
+  if (p === 'class/class-fighter.json') d.class[0].startingEquipment = {additionalFromBackground: true,
+    default: ['(a) {@item chain mail|phb} or (b) {@item leather armor|phb}, {@item longbow|phb}, and {@item arrows (20)|phb|20 arrows}',
+      '(a) a {@filter martial weapon|items|type=martial weapon} and a {@item shield|phb} or (b) two {@filter martial weapons|items|type=martial weapon}', "{@item explorer's pack|phb}"],
+    goldAlternative: '{@dice 5d4 × 10|5d4 × 10|Starting Gold}',
+    defaultData: [{a: ['chain mail|phb'], b: ['leather armor|phb', 'longbow|phb', 'arrows (20)|phb']},
+      {a: [{equipmentType: 'weaponMartial'}, 'shield|phb'], b: [{equipmentType: 'weaponMartial', quantity: 2}]}, {_: ["explorer's pack|phb"]}]};
+  if (p === 'backgrounds.json') d.background[0].startingEquipment = [{_: [{item: 'holy symbol|phb', displayName: 'holy symbol (a gift)'}, {special: 'vestments'},
+    {special: 'sticks of incense', quantity: 5}, {item: 'pouch|phb', containsValue: 1500}]}];
+  return d;
+};
+describe('Kezdő felszerelés (TERV-kezdo-felszereles.md)', () => {
+  const seRb = () => W.buildRulebook(seGet);
+  const ujFighter = (eq, extra = {}) => W.Sheet.norm({auto: true, build: {base: {str: 15, dex: 14, con: 13, int: 10, wis: 12, cha: 8}, levels: [{c: 'Fighter'}], background: 'Acolyte|PHB'},
+    newChar: {step: 'sum', target: 1, eq}, ...extra});
+
+  test('szabálykönyv v4: az osztály és a háttér kezdő felszerelése, a csomag tartalma, a tárgycsoport, a fókusz fajtája; a refek pontos névre', async () => {
+    const rb = await seRb(), f = rb.classes.find(c => c.n === 'Fighter'), ac = rb.backgrounds.find(b => b.n === 'Acolyte');
+    eq(W.Sheet.RB_FORMAT, 4);
+    eq(f.se.gold, '5d4*10');
+    eq(f.se.rows[0], {a: [{r: 'Chain Mail|PHB'}], b: [{r: 'Leather Armor|PHB'}, {r: 'Longbow|PHB'}, {r: 'Arrows (20)|PHB'}]});
+    eq(f.se.rows[1].b, [{cat: 'weaponMartial', q: 2}]);
+    has(f.se.tx[1], 'two martial weapons'); hasNot(f.se.tx.join(), '{@');
+    eq(ac.se.rows[0]._, [{r: 'Holy Symbol|PHB', dn: 'holy symbol (a gift)'}, {sp: 'vestments'}, {sp: 'sticks of incense', q: 5}, {r: 'Pouch|PHB', cp: 1500}]);
+    eq(rb.backgrounds.find(b => b.n === 'Variant Acolyte (Próba)').se.rows.length, 1, 'a _copy-s változat is megkapja');
+    eq(rb.items.find(i => i.n === "Explorer's Pack").pk, [{r: 'Backpack|PHB'}, {r: 'Torch|PHB', q: 10}]);
+    eq(rb.items.find(i => i.n === 'Holy Symbol').grp, ['Amulet|PHB']);
+    eq(rb.items.find(i => i.n === 'Amulet').scf, 'holy');
+    eq([A("seArany('{@dice 5d4|5d4|Starting Gold}')"), A("seArany('')"), A('seTetel({value: 500})'), A('seTetel(5)')], ['5d4', '', {cp: 500}, null]);
+  });
+  test('a választási sorok feloldva: kategória a szabálykönyvből, tárgycsoport választásként, hiány szövege', async () => {
+    const rb = await seRb(), H = W.Sheet, {rows, gold, has: van} = H.seRows('Fighter', 'Acolyte|PHB', rb);
+    eq([rows.map(r => r.key), gold, van], [['c0', 'c1', 'c2', 'h0'], '5d4*10', true]);
+    eq(rows[1].opts.map(o => o.k), ['a', 'b']);
+    eq(rows[1].opts[1].items[0], {kind: 'cat', cat: 'weaponMartial', label: 'bármely martial weapon', from: ['Battleaxe|PHB', 'Longbow|PHB', 'Longsword|PHB'], q: 2});
+    eq(H.seCatItems('weaponSimple', rb), ['Dagger|PHB']);
+    eq(H.seCatItems('focusSpellcastingHoly', rb), ['Amulet|PHB'], 'a csoport maga nem választható');
+    const hs = rows[3].opts[0].items[0];
+    eq([hs.kind, hs.from, hs.dn], ['cat', ['Amulet|PHB'], 'holy symbol (a gift)']);
+    has(H.seHiany(rows, {}), 'Fighter');
+    has(H.seHiany(rows, {pick: {c0: 'a', c1: 'b'}}), 'martial weapon');
+    has(H.seHiany(rows, {pick: {c0: 'a', c1: 'b'}, cat: {'c1:b:0': ['Longsword|PHB', 'Kitalált|PHB']}}), 'martial weapon', 'listán kívüli tárgy nem jó');
+    has(H.seHiany(rows, {pick: {c0: 'a', c1: 'b'}, cat: {'c1:b:0': ['Longsword|PHB', 'Battleaxe|PHB']}}), 'holy symbol');
+    eq(H.seHiany(rows, {pick: {c0: 'a', c1: 'b'}, cat: {'c1:b:0': ['Longsword|PHB', 'Battleaxe|PHB'], 'h0:_:0': ['Amulet|PHB']}}), '');
+    eq(H.seRows('Nincs ilyen', '', rb), {rows: [], gold: '', has: false});
+  });
+  test('Fighter (a) chain mail → AC 16; két martial weapon felszerelve; Explorer\'s Pack kibontva tárolóba; a háttér tárgyai és 15 gp', async () => {
+    const rb = await seRb(), H = W.Sheet;
+    const s = ujFighter({mode: 'pack', pick: {c0: 'a', c1: 'b'}, cat: {'c1:b:0': ['Longsword|PHB', 'Longsword|PHB'], 'h0:_:0': ['Amulet|PHB']}}, {currency: {gp: 2}});
+    const e = H.seEredmeny(s, rb), inv = e.inventory, by = n => inv.filter(i => i.name === n);
+    eq(by('Chain Mail').map(i => [i.qty, i.equipped, i.ref]), [[1, true, 'Chain Mail|PHB']]);
+    eq(by('Longsword').map(i => [i.qty, i.equipped]), [[2, true]], 'az azonos fegyver összevonva');
+    eq(by("Explorer's Pack").map(i => i.container), ['']);
+    eq(inv.filter(i => i.container === "Explorer's Pack").map(i => [i.name, i.qty]), [['Backpack', 1], ['Torch', 10]]);
+    eq(by('Amulet')[0].note, 'holy symbol (a gift)');
+    eq([by('vestments')[0].ref, by('sticks of incense')[0].qty, by('Pouch').length], ['', 5, 1]);
+    eq(e.currency.gp, 17, 'a meglévő 2 gp + 15 gp');
+    const c = H.calc({...s, inventory: inv}, rb);
+    eq(c.ac.v, 16);
+    eq(c.attacks.filter(a => a.name === 'Longsword').length, 1);
+  });
+  test('Fighter (b) leather + longbow → AC 11 + DEX; „Arrows (20)” → 20 db Arrow; a már felvett páncél mellé nem kerül másik felszerelve', async () => {
+    const rb = await seRb(), H = W.Sheet;
+    const s = ujFighter({mode: 'pack', pick: {c0: 'b', c1: 'a'}, cat: {'c1:a:0': ['Battleaxe|PHB'], 'h0:_:0': ['Amulet|PHB']}});
+    const inv = H.seEredmeny(s, rb).inventory, by = n => inv.find(i => i.name === n);
+    eq([by('Leather Armor').equipped, by('Shield').equipped, by('Longbow').equipped, by('Battleaxe').equipped, by('Arrow').qty, by('Arrow').equipped], [true, true, true, true, 20, false]);
+    eq(H.calc({...s, inventory: inv}, rb).ac.v, 11 + 2 + 2, 'leather 11 + DEX 2 + shield 2');
+    const regi = [{name: 'Chain Mail', qty: 1, equipped: true, ref: 'Chain Mail|PHB'}];
+    eq(H.seLeltar([{ref: 'Leather Armor|PHB', n: 'Leather Armor', q: 1}], rb, regi).map(i => i.equipped), [false]);
+  });
+  test('jártasság a ⚠ jelzéshez (ugyanaz, mint a támadásoknál); a csomag szöveges tétele is a csomagba kerül; vegyes sor fix része mindig jön', async () => {
+    const rb = await seRb(), H = W.Sheet, cr = w => ({profs: {weapons: w}});
+    eq([H.seJartas(cr('simple weapons'), 'Dagger|PHB', rb), H.seJartas(cr('simple weapons'), 'Longsword|PHB', rb), H.seJartas(cr('simple weapons, longswords'), 'Longsword|PHB', rb),
+      H.seJartas(cr('martial weapons'), 'Longbow|PHB', rb), H.seJartas(cr(''), 'Shield|PHB', rb), H.seJartas(cr(''), 'Kitalált|PHB', rb)], [true, false, true, true, true, true]);
+    const s = ujFighter({}), c = H.calc(s, rb);
+    eq([H.seJartas(c, 'Battleaxe|PHB', rb), c.attacks.length], [true, 0], 'a Fighter martial weapons jártassága a calc-ból');
+    const pk = rb.items.find(i => i.n === "Explorer's Pack");
+    pk.pk.push({sp: 'little bag of sand', q: 2});
+    eq(H.seLeltar([{ref: "Explorer's Pack|PHB", n: "Explorer's Pack", q: 1}], rb).filter(i => i.container).map(i => [i.name, i.qty, i.ref]),
+      [['Backpack', 1, 'Backpack|PHB'], ['Torch', 10, 'Torch|PHB'], ['little bag of sand', 2, '']]);
+    rb.classes[0].se.rows.push({_: [{r: 'Dagger|PHB'}], a: [{r: 'Shield|PHB'}], b: [{r: 'Arrows (20)|PHB'}]});
+    const sor = H.seRows('Fighter', '', rb).rows.at(-1);
+    eq(sor.opts.map(o => [o.k, o.items.map(t => t.n)]), [['a', ['Shield', 'Dagger']], ['b', ['Arrows (20)', 'Dagger']]]);
+  });
+  test('nincs mód vagy arany mód: csomag nélkül semmi nem kerül a lapra; a newChar.eq tisztítása', async () => {
+    const rb = await seRb(), H = W.Sheet;
+    eq(H.seEredmeny(ujFighter({pick: {c0: 'a'}}), rb).items, []);
+    const x = H.norm({newChar: {target: 1, equip: 'x', eq: {mode: 'zz', pick: {c0: 'a', c1: 'q', x: 'a', h3: 'b'}, cat: {'c1:b:0': ['A|B', 5, {}], 'rossz': ['x']}, gold: '120', cart: [{r: 'Dagger|PHB', q: 0}, {q: 2}, 'x']}}}).newChar;
+    eq([x.equip, x.eq], ['any', {mode: '', pick: {c0: 'a', h3: 'b'}, cat: {'c1:b:0': ['A|B', '5', '']}, gold: 120, cart: [{r: 'Dagger|PHB', q: 1}]}]);
+    eq(H.norm({newChar: {target: 1}}).newChar.eq, {mode: '', pick: {}, cat: {}, gold: null, cart: []});
+    eq(H.norm(H.norm({newChar: {target: 1, equip: 'gold', eq: {mode: 'gold', gold: 70}}})).newChar.equip, 'gold');
+    eq(H.seErmek(1234), {gp: 12, sp: 3, cp: 4});
+  });
+  test('online: mind a 13 osztály és minden PHB-háttér kezdő felszerelése feloldható a szabálykönyvből', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet, hibak = [];
+    eq(rb.classes.filter(c => c.se?.rows?.length).length, 13, 'osztály felszereléssel');
+    for (const c of rb.classes) {
+      if (!/^\d+d4(\*10)?$/.test(c.se?.gold || '')) hibak.push(c.n + ': arany ' + c.se?.gold);
+      if (c.se.tx.length !== c.se.rows.length) hibak.push(c.n + ': a PHB-szöveg sorai nem egyeznek a választási sorokkal');
+      for (const b of rb.backgrounds) {
+        const {rows} = H.seRows(c.n, b.n + '|' + b.s, rb);
+        for (const row of rows) for (const o of row.opts) for (const t of o.items) {
+          if (t.kind === 'cat' && !t.from.length) hibak.push(`${c.n}/${b.n}: üres kategória ${t.label}`);
+          if (t.kind === 'item' && !t.ref && !rb.backgrounds.some(x => x.se?.rows?.some(r => Object.values(r).flat().some(y => y.sp === t.n)))) hibak.push(`${c.n}/${b.n}: ismeretlen tárgy ${t.n}`);
+        }
+      }
+    }
+    eq(rb.classes.find(c => c.n === 'Monk').se.gold, '5d4');
+    eq([...new Set(hibak)], []);
+    ok(rb.backgrounds.filter(b => b.se?.rows?.length).length >= 13, 'háttér felszereléssel');
+    const csomagok = rb.items.filter(i => i.s === 'PHB' && /Pack$/.test(i.n));
+    eq(csomagok.length, 7, 'a hét PHB-csomag');
+    for (const pk of csomagok) for (const p of pk.pk) if (!p.sp && !rb.items.concat(rb.baseItems).some(x => x.n + '|' + x.s === p.r)) hibak.push(`${pk.n}: ${p.r}`);
+    const papi = H.seLeltar([{ref: "Priest's Pack|PHB", n: "Priest's Pack", q: 1}], rb);
+    ok(papi.some(i => i.name === 'vestments' && i.container === "Priest's Pack"), 'a szöveges tétel is a csomagba kerül');
+    eq(hibak, [], 'a csomagok tartalma feloldható');
+  }, {online: true});
+});
+
 describe('Szerződés (szerzodes.js)', () => {
   test('rétegek: csak a js/adat/tar.js hívja az adatbázist; a logika nem nyúl a DOM-hoz, a felület nem hívja a Tar-t (docs/dontesek/0006)', async () => {
     const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();

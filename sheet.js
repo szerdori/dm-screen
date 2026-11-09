@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 21;
+  const VERSION = 22;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -101,7 +101,19 @@ window.Sheet = (() => {
     const lista = methods.length ? methods : [...NC_METHODS];
     return {step: NC_STEPS.includes(v.step) ? v.step : 'alap', target: int(v.target, 1, 1, 20), methods: lista, method: lista.includes(v.method) ? v.method : '',
       rolls: rolls.length === 6 ? rolls.map(x => int(x, 10, 3, 18)) : null,
-      pick: Object.fromEntries(ABIL.filter(a => pick[a] != null && pick[a] !== '').map(a => [a, int(pick[a], 0, 0, 5)])), by: str(v.by, 200), at: isoTime(v.at)};
+      pick: Object.fromEntries(ABIL.filter(a => pick[a] != null && pick[a] !== '').map(a => [a, int(pick[a], 0, 0, 5)])), by: str(v.by, 200), at: isoTime(v.at),
+      equip: SE_EQUIP.includes(v.equip) ? v.equip : 'any', eq: normSeEq(v.eq)};
+  }
+  // kezdő felszerelés a varázslóban (TERV-kezdo-felszereles.md): a DM beállítása (equip) és a játékos választásai (eq)
+  // mode: pack = az osztály és a háttér felszerelése a háttér pénzével, gold = az osztály kezdőarany-dobása, abból vásárol (a háttér felszerelése és pénze nélkül);
+  // pick: {sor: 'a' | 'b' …} (sor: c0 = az osztály 1. sora, h0 = a háttéré); cat: {'sor:betű:tétel': [refek]} („bármely martial weapon”); gold: a dobás (egyszer, rögzítve); cart: a kosár
+  const SE_MODES = ['pack', 'gold'], SE_EQUIP = ['any', 'pack', 'gold'];
+  function normSeEq(v) {
+    const o = isObj(v) ? v : {};
+    const pick = isObj(o.pick) ? Object.fromEntries(Object.entries(o.pick).slice(0, 40).filter(([k, x]) => /^[ch]\d{1,2}$/.test(k) && /^[a-f]$/.test(x))) : {};
+    const cat = isObj(o.cat) ? Object.fromEntries(Object.entries(o.cat).slice(0, 60).filter(([k]) => /^[ch]\d{1,2}:[a-f_]:\d{1,2}$/.test(k)).map(([k, x]) => [k, arr(x, 10).map(r => str(r, 200))])) : {};
+    return {mode: SE_MODES.includes(o.mode) ? o.mode : '', pick, cat, gold: o.gold == null || o.gold === '' ? null : int(o.gold, 0, 0, 1e6),
+      cart: arr(o.cart, 100).filter(isObj).map(x => ({r: str(x.r, 200), q: int(x.q, 1, 1, 999)})).filter(x => x.r)};
   }
   // felülírható kulcsok: ab:str, save:dex (0/1), skill:stealth (0 / 0.5 / 1 / 2), hpMax, init, ac, speed; plus:languages (szöveg: a számolt mellé, pl. átállításkor az el nem helyezhető nyelv)
   const OV_PLUS = ['armor', 'weapons', 'tools', 'languages', 'senses', 'resist'];
@@ -559,6 +571,8 @@ window.Sheet = (() => {
     return Math.max(1, t);
   }
   const ARMOR_TC = ['LA', 'MA', 'HA'];
+  // fegyver-jártasság: wprof = kisbetűs jártasságok ('martial weapons', 'longswords'…), r = a szabálykönyvi tárgy (wc = simple / martial)
+  const fegyverJartas = (wprof, r, name) => wprof.some(p => (r.wc && (p === r.wc || p === r.wc + ' weapons')) || (p.length > 3 && String(name).toLowerCase().includes(p.replace(/s$/, ''))));
   const uniqCI = list => { const seen = new Set(); return list.map(x => String(x).trim()).filter(x => x && !seen.has(x.toLowerCase()) && seen.add(x.toLowerCase())); };
 
   // ---------- a Sheet.calc lépései: mindegyik a közös ctx-et olvassa és bővíti; a sorrendjük (CALC_LEPESEK) számít ----------
@@ -892,7 +906,7 @@ window.Sheet = (() => {
     const {rb, PB, A, mods, worn} = ctx;
     // támadások a felszerelt fegyverekből
     const wprof = uniqCI([...A.weapon, ...String(ctx.ov['plus:weapons'] || '').split(',')]).map(x => x.toLowerCase());
-    const profW = (r, name) => wprof.some(p => (r.wc && (p === r.wc || p === r.wc + ' weapons')) || (p.length > 3 && name.toLowerCase().includes(p.replace(/s$/, ''))));
+    const profW = (r, name) => fegyverJartas(wprof, r, name);
     const attacks = [];
     for (const {i, r} of worn) {
       if (!['M', 'R'].includes(r.tc) || !r.dmg) continue;
@@ -1440,6 +1454,119 @@ window.Sheet = (() => {
     return {cr, choices: all.filter(x => !SPELL_KINDS.includes(x.c.kind)).sort((a, b) => (LU_ORDER[a.c.kind] ?? 9) - (LU_ORDER[b.c.kind] ?? 9)), spells: all.filter(x => SPELL_KINDS.includes(x.c.kind))};
   }
 
+  // ---------- kezdő felszerelés (TERV-kezdo-felszereles.md): a szabálykönyv classes[].se / backgrounds[].se sorai feloldva ----------
+  const SE_FEGYVER = (wc, tc) => x => ['M', 'R'].includes(x.tc) && x.wc === wc && (!tc || x.tc === tc);
+  const SE_CAT = {weaponSimple: SE_FEGYVER('simple'), weaponSimpleMelee: SE_FEGYVER('simple', 'M'), weaponSimpleRanged: SE_FEGYVER('simple', 'R'),
+    weaponMartial: SE_FEGYVER('martial'), weaponMartialMelee: SE_FEGYVER('martial', 'M'), weaponMartialRanged: SE_FEGYVER('martial', 'R'),
+    instrumentMusical: x => x.tc === 'INS', toolArtisan: x => x.tc === 'AT', setGaming: x => x.tc === 'GS',
+    focusSpellcastingArcane: x => x.tc === 'SCF' && x.scf === 'arcane', focusSpellcastingDruidic: x => x.tc === 'SCF' && x.scf === 'druid', focusSpellcastingHoly: x => x.tc === 'SCF' && x.scf === 'holy'};
+  const SE_CAT_HU = {weaponSimple: 'bármely simple weapon', weaponSimpleMelee: 'bármely simple melee weapon', weaponSimpleRanged: 'bármely simple ranged weapon',
+    weaponMartial: 'bármely martial weapon', weaponMartialMelee: 'bármely martial melee weapon', weaponMartialRanged: 'bármely martial ranged weapon',
+    instrumentMusical: 'bármely hangszer', toolArtisan: "bármely artisan's tools", setGaming: 'bármely gaming set',
+    focusSpellcastingArcane: 'arcane focus', focusSpellcastingDruidic: 'druidic focus', focusSpellcastingHoly: 'holy symbol'};
+  // egy kategória választható tárgyai (csak PHB-s, nem mágikus, nem csoport) név szerint
+  function seCatItems(cat, rb) {
+    const f = SE_CAT[cat];
+    return f ? [...(rb?.baseItems || []), ...(rb?.items || [])].filter(x => x.s === 'PHB' && !x.mag && !x.grp?.length && f(x)).sort((a, b) => a.n.localeCompare(b.n)).map(refOf) : [];
+  }
+  // egy tétel feloldva: {kind: 'item', ref, n, q, dn, cp} | {kind: 'cat', label, from: [refek], q, dn} | {kind: 'money', cp}
+  function seTetelFel(t, rb) {
+    const q = num(t.q) > 1 ? num(t.q) : 1, cp = num(t.cp);
+    if (t.cat) return {kind: 'cat', cat: t.cat, label: SE_CAT_HU[t.cat] || t.cat, from: seCatItems(t.cat, rb), q};
+    if (t.r) {
+      const it = rbFind([...(rb?.baseItems || []), ...(rb?.items || [])], t.r);
+      if (it?.grp?.length) return {kind: 'cat', cat: '', label: it.n.toLowerCase(), from: it.grp.map(g => rbFind(rb.items.concat(rb.baseItems), g)).filter(Boolean).map(refOf), q, dn: str(t.dn, 200), cp};
+      return {kind: 'item', ref: it ? refOf(it) : '', n: it ? it.n : refName(t.r), q, dn: str(t.dn, 200), cp};
+    }
+    if (t.sp) return {kind: 'item', ref: '', n: str(t.sp, 200), q, dn: '', cp};
+    return cp ? {kind: 'money', cp} : null;
+  }
+  // a választási sorok: [{key: 'c0' | 'h0', src: 'Fighter' | 'Acolyte', tx, opts: [{k: 'a' | '_', items}]}]; gold: az osztály kezdőarany-kifejezése ('5d4*10')
+  // a fix rész (_) egy választós sorban minden lehetőséghez hozzájön (ha az 5e.tools egyszer ilyet adna)
+  function seRows(clsName, bgRef, rb) {
+    const c = (rb?.classes || []).find(x => x.n === clsName), b = rbFind(rb?.backgrounds, bgRef);
+    const fel = l => arr(l, 40).map(t => isObj(t) ? seTetelFel(t, rb) : null).filter(Boolean);
+    const sorok = (o, p) => arr(o?.se?.rows, 30).filter(isObj).map((row, i) => {
+      const keys = Object.keys(row).filter(k => Array.isArray(row[k])).sort(), valaszt = keys.filter(k => k !== '_'), fix = keys.includes('_') ? fel(row._) : [];
+      return {key: p + i, src: o.n, tx: p === 'c' ? str(o.se.tx?.[i], 500) : '',
+        opts: valaszt.length ? valaszt.map(k => ({k, items: [...fel(row[k]), ...fix]})) : [{k: '_', items: fix}]};
+    });
+    return {rows: [...sorok(c, 'c'), ...sorok(b, 'h')], gold: str(c?.se?.gold, 40), has: !!(c?.se || b?.se)};
+  }
+  // jártas-e a karakter a fegyverben (a calc profs.weapons szövegéből, ugyanúgy, mint a támadásoknál); nem fegyvernél mindig igen
+  function seJartas(cr, ref, rb) {
+    const r = rbFind([...(rb?.baseItems || []), ...(rb?.items || [])], ref);
+    if (!r || !['M', 'R'].includes(r.tc)) return true;
+    return fegyverJartas(String(cr?.profs?.weapons || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean), r, r.n);
+  }
+  const seKulcs = (row, opt, j) => `${row.key}:${opt.k}:${j}`;
+  const seOpt = (row, eq) => row.opts.length === 1 ? row.opts[0] : row.opts.find(o => o.k === eq?.pick?.[row.key]) || null;
+  // csomag módban mi hiányzik még (szöveg; üres = kész)
+  function seHiany(rows, eq) {
+    for (const row of rows) {
+      const opt = seOpt(row, eq);
+      if (!opt) return `Válassz: ${row.src} – ${row.tx || 'felszerelés'}`;
+      for (const [j, t] of opt.items.entries()) {
+        if (t.kind !== 'cat') continue;
+        const v = arr(eq?.cat?.[seKulcs(row, opt, j)], 10);
+        if (v.length < t.q || v.slice(0, t.q).some(r => !t.from.includes(r))) return `Válassz: ${t.label}`;
+      }
+    }
+    return '';
+  }
+  // a kész tárgylista a lapra: {items: [inventory-tételek], cp: a pénz rézben}; csomag módban az osztály + a háttér a háttér pénzével
+  function seCsomag(rows, eq) {
+    const list = []; let cp = 0;
+    for (const row of rows) {
+      const opt = seOpt(row, eq);
+      if (!opt) continue;
+      opt.items.forEach((t, j) => {
+        cp += num(t.cp);
+        if (t.kind === 'item') list.push({ref: t.ref, n: t.n, q: t.q, dn: t.dn});
+        else if (t.kind === 'cat') arr(eq?.cat?.[seKulcs(row, opt, j)], 10).slice(0, t.q).filter(r => t.from.includes(r)).forEach(r => list.push({ref: r, n: refName(r), q: 1, dn: t.dn || ''}));
+      });
+    }
+    return {list, cp};
+  }
+  // [{ref, n, q, dn}] → inventory-tételek: az azonos tárgy összevonva, a csomag kibontva (tárolóba), a „Arrows (20)” 20 db Arrow;
+  // felszerelve: az első páncél, a pajzs és a fegyverek (így az AC és a támadások azonnal számolódnak)
+  function seLeltar(list, rb, regi = []) {
+    const all = [...(rb?.baseItems || []), ...(rb?.items || [])], out = [];
+    const ujTetel = (ref, n, q, container = '', note = '') => {
+      let r = ref ? rbFind(all, ref) : null;
+      const m = (r?.n || n).match(/^(.+?)s?\s*\((\d+)\)$/), egy = m && rbFind(all, m[1] + '|' + (r?.s || 'PHB'));
+      if (egy && egy.tc === r?.tc) { q *= +m[2]; r = egy; }
+      const name = r ? r.n : str(n, 200), refStr = r ? refOf(r) : '';
+      const have = out.find(i => i.name === name && i.container === container && i.ref === refStr && i.note === note);
+      if (have) { have.qty += q; return; }
+      out.push({name, qty: q, equipped: false, attuned: false, magic: !!r?.mag, rarity: r?.rar || '', container, note, ref: refStr, _r: r});
+    };
+    for (const x of list) {
+      const r = x.ref ? rbFind(all, x.ref) : null, note = x.dn && x.dn.toLowerCase() !== String(r?.n || x.n).toLowerCase() ? x.dn : '';
+      ujTetel(x.ref, x.n, x.q, '', note);
+      // a csomag tartalma (a szöveges tételek is, pl. a Priest's Pack vestmentsje)
+      if (r?.pk?.length) for (let k = 0; k < x.q; k++) for (const p of r.pk) if (isObj(p) && (p.r || p.sp)) ujTetel(p.r || '', p.r ? refName(p.r) : p.sp, num(p.q) > 1 ? num(p.q) : 1, r.n);
+    }
+    let pancel = [...regi].some(i => i.equipped && ARMOR_TC.includes(rbFind(all, i.ref || i.name)?.tc)), pajzs = [...regi].some(i => i.equipped && rbFind(all, i.ref || i.name)?.tc === 'S');
+    for (const i of out) {
+      const tc = i._r?.tc, kont = !!i.container;
+      if (!kont && ARMOR_TC.includes(tc) && !pancel) { i.equipped = true; pancel = true; }
+      else if (!kont && tc === 'S' && !pajzs) { i.equipped = true; pajzs = true; }
+      else if (!kont && ['M', 'R'].includes(tc) && i._r?.dmg) i.equipped = true;
+      delete i._r;
+    }
+    return out;
+  }
+  const seErmek = cp => { cp = Math.max(0, Math.floor(num(cp))); return {gp: Math.floor(cp / 100), sp: Math.floor(cp % 100 / 10), cp: cp % 10}; };
+  // a varázsló Kész-e: a lap új inventory-ja és currency-je (a meglévők mellé)
+  function seEredmeny(s, rb) {
+    const eq = s.newChar?.eq || normSeEq(null), rows = seRows(s.build.levels[0]?.c, s.build.background, rb).rows;
+    const {list, cp} = eq.mode === 'pack' ? seCsomag(rows, eq) : {list: [], cp: 0};
+    const items = seLeltar(list, rb, s.inventory), cur = {...s.currency}, add = seErmek(cp);
+    for (const k of Object.keys(add)) cur[k] = num(cur[k]) + add[k];
+    return {inventory: normInventory([...s.inventory, ...items]), currency: cur, items, cp};
+  }
+
   // ---------- leírások a felugró „i” ablakhoz: mit kell tenni, és ki tudja megcsinálni (hol: app | homebrew | dm); a szabad szöveges mezők sablonja és példája ----------
   const BUILD_HELY = 'Helye: Alapadatok fül → Felépítés → Választások (új karakternél és szintlépésnél a varázsló ugyanezt kéri).';
   const SAJAT_JARTASSAG = 'Alapadatok fül → Saját jártasságok';
@@ -1663,7 +1790,8 @@ window.Sheet = (() => {
   // ---------- szabálykönyv (rules/meta + rules/{darab}); a DM Screen tölti fel, a telefon egyszer letölti ----------
   // darab: {data: '{"k":"spells","a":[...]}'}; a meta: {version, format, chunks: [...], counts}
   // 2-es formátum (2. fázis): osztályok, alosztályok, feature-szövegek, fajok, alfajok, hátterek, optional feature-ök, és hatáslisták (fx)
-  const RB_FORMAT = 3, RB_KINDS = ['spells', 'items', 'baseItems', 'variants', 'feats', 'conditions', 'classes', 'subclasses', 'features', 'races', 'subraces', 'backgrounds', 'optfeatures'];
+  // 4-es: kezdő felszerelés (classes[].se, backgrounds[].se, a csomagok pk-ja, a tárgycsoportok grp-je, a fókuszok scf-je)
+  const RB_FORMAT = 4, RB_KINDS = ['spells', 'items', 'baseItems', 'variants', 'feats', 'conditions', 'classes', 'subclasses', 'features', 'races', 'subraces', 'backgrounds', 'optfeatures'];
   const emptyRulebook = () => Object.fromEntries(RB_KINDS.map(k => [k, []]));
   function joinChunks(chunks) {
     const rb = emptyRulebook();
@@ -1866,7 +1994,7 @@ window.Sheet = (() => {
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
-    NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan,
+    NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seEredmeny,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,
     RB_FORMAT, RB_KINDS, joinChunks, splitChunks, loadRulebook, idb, allItems, search, refOf, byRef, itemLine, spellLine, ddbSablon, ddbSablonLap, ddbSkala, regiSorrend, atallithato, autoLap};
