@@ -2,17 +2,33 @@
 // az osztály kezdő felszerelése (tételenként kihagyható); jóváhagyásra kerül a karakterhez. A logika: js/logika/felszereles.js. Terv: TERV-kezdo-felszereles.md.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('felszereles-ablak', N) és az index.html-ben a felszereles-ablak.js?v=N és a VART_MODULOK.
 'use strict';
-modul('felszereles-ablak', 1);
+modul('felszereles-ablak', 2);
 
 let felszAblak = null;  // {terv, rb}
-async function openFelszereles(id, uj = false) {
-  const c = S.library.find(x => x.id === id);
-  if (!c) return;
-  let rb = null;
-  try { rb = await felhoSzabalyok() || (await getRulebook()).rb; } catch (e) { console.error(e); }
-  if (!rb?.classes?.length) { alert('Ehhez a szabálykönyv kell (Menü → 📖 Szabálykönyv), és internet.'); return; }
+// a szabálykönyv: a felhőben lévő, ennek hiányában a tükörből letöltött; nincs: null
+async function felszSzabalyok() {
+  try { const rb = await felhoSzabalyok() || (await getRulebook()).rb; return rb?.classes?.length ? rb : null; } catch (e) { console.error(e); return null; }
+}
+async function openFelszereles(id, uj = false, rb = null) {
+  if (!S.library.some(x => x.id === id)) return;
+  rb = rb || await felszSzabalyok();
+  if (!rb) { alert('Ehhez a szabálykönyv kell (Menü → 📖 Szabálykönyv), és internet.'); return; }
   felszAblak = {terv: felszerelesTerv(id, rb), rb, uj};
   renderFelszereles();
+}
+// a szerkesztőben NPC-ről Játékosra váltva: a statblock felszerelése tárgyként a karakterhez, aztán a kérdés: generáljon-e szinthez illő felszerelést
+async function npcbolJatekos(id) {
+  const c = S.library.find(x => x.id === id);
+  if (!c) return;
+  const rb = await felszSzabalyok();
+  if (!rb) { log(`⚠ ${esc(c.name)}: a statblock felszereléséhez és a 🎁 szinthez illő felszereléshez a szabálykönyv kell (Menü → 📖 Szabálykönyv). A statblock tárgyai így most nem kerültek fel: a szabálykönyv feltöltése után váltsd a lényt NPC-re, majd vissza Játékosra (a 🎁 gomb csak a szinthez illő felszerelést adja).`, 'warn'); openLib('lib'); return; }
+  const {uj, ismeretlen} = statblokkTargyak(id, rb);
+  if (uj.length || ismeretlen.length) log(`🗡 ${esc(c.name)}: a statblock felszerelése tárgyként: ${esc(uj.map(i => i.name).join(', ') || '–')}${ismeretlen.length ? ` (nem azonosítható, kimaradt: ${esc(ismeretlen.join(', '))})` : ''}`);
+  const db = c.inventory.length, minta = c.inventory.slice(0, 5).map(i => i.name).join(', ') + (db > 5 ? ', …' : '');
+  const kerdes = db ? `${c.name} játékos karakter lett. Már van ${db} tárgya (${minta}).\nGeneráljak még szinthez illő felszerelést (DMG 38. o.)?`
+    : `${c.name} játékos karakter lett.\nGeneráljak szinthez illő felszerelést (DMG 38. o.)?`;
+  render();
+  if (confirm(kerdes)) openFelszereles(id, true, rb); else openLib('lib');
 }
 function renderFelszereles() {
   const a = felszAblak; if (!a?.terv) return;

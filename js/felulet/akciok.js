@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 8);
+modul('akciok', 9);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -139,7 +139,15 @@ const AKCIOK = {
 
   // könyvtár
   libAdd: el => { const lib = konyvtari(el), n = darab(el); addToEncounter(lib, n); render(); log(`＋ ${n}× ${esc(lib.name)}`); },
-  libEdit: el => { const lib = konyvtari(el); openEditor(lib, c => { c.id = lib.id; upsertLibrary(c, false); setTimeout(() => openLib('lib')); }, undefined, {share: true}); },
+  // NPC → Játékos váltás: fromNpc (a 🎁 gombhoz), a statblock felszerelése tárgyként, és kérdés a szinthez illő felszerelésről (TERV-kezdo-felszereles.md).
+  // Az NPC-vé tett, majd visszaállított eredeti játékos (van lapja vagy gazdája, és nem NPC-ből lett) nem ilyen: neki semmi nem változik.
+  libEdit: el => { const lib = konyvtari(el), volt = lib.kind, npcVolt = lib.fromNpc || (!SHEETS[lib.id] && !lib.owner && !lib.ddbId); openEditor(lib, c => {
+    c.id = lib.id;
+    const lett = volt === 'npc' && c.kind === 'pc' && npcVolt;
+    if (lett) c.fromNpc = true;
+    upsertLibrary(c, false);
+    if (lett) setTimeout(() => npcbolJatekos(c.id)); else setTimeout(() => openLib('lib'));
+  }, undefined, {share: true}); },
   libExport: el => { const lib = konyvtari(el); download(lib.name.replace(/[^\wáéíóöőúüű -]/gi, '') + '.json', SHEETS[lib.id] ? Sheet.exportLap(SHEETS[lib.id]) : lib); },
   libDel: el => {
     const lib = konyvtari(el);

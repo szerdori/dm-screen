@@ -6182,6 +6182,57 @@ describe('Kezdő felszerelés (TERV-kezdo-felszereles.md)', () => {
     eq([Sz.sanitizeState({settings: {magic: 'x'}}).settings.magic, Sz.sanitizeState({settings: {magic: 'low'}}).settings.magic, Sz.sanitizeState({}).settings.magic], ['std', 'low', 'std']);
     eq([W.normCreature({kind: 'npc', fromNpc: true}).fromNpc, W.normCreature({kind: 'monster', fromNpc: true}).fromNpc, W.normCreature({kind: 'pc', fromNpc: 'igen'}).fromNpc], [true, undefined, undefined]);
   });
+  test('NPC → Játékos a szerkesztőben: fromNpc, a statblock felszerelése tárgyként (felszerelve, ami nem azonosítható, a naplóba), kérdés (tárgyakkal / nélkülük), az ablak; újra NPC: minden marad', async () => {
+    await genRb();
+    A('rulebook = {version: "v", counts: {}, rb: window.__rb}');
+    const npc = W.normCreature({kind: 'npc', name: 'Őrkapitány', type: 'Human — Fighter 5', cr: '3', acNote: 'chain mail, shield', actions: [
+      {name: 'Longsword', text: 'Melee Weapon Attack: +5 to hit, reach 5 ft., one target. Hit: 7 (1d8 + 3) slashing damage.'},
+      {name: 'Heavy Crossbow', text: 'Ranged Weapon Attack: +3 to hit, range 100/400 ft., one target. Hit: 6 (1d10 + 1) piercing damage.'}]});
+    A('S.library').push(npc);
+    let kerdes = ''; W.confirm = m => { kerdes = m; return true; };
+    W.openLib('lib'); click(`[data-lib="${npc.id}"] [data-act="libEdit"]`); setVal($('#edForm').elements.kind, 'pc'); click('[data-act="edSave"]');
+    await until(() => $('#felszMagia'), 2000, 'a generátor ablaka');
+    const c = () => A(`S.library.find(x => x.id === '${npc.id}')`);
+    eq([c().kind, c().fromNpc], ['pc', true]);
+    eq(c().inventory.map(i => [i.name, i.equipped, i.ref]), [['Longsword', true, 'Longsword|PHB'], ['Chain Mail', true, 'Chain Mail|PHB'], ['Shield', true, 'Shield|PHB']]);
+    has(allLog(), 'nem azonosítható, kimaradt: Heavy Crossbow');
+    has(kerdes, 'Már van 3 tárgya (Longsword, Chain Mail, Shield)'); has(kerdes, 'Generáljak még');
+    has($('#modalBox').textContent, 'NPC-ből játékos lett');
+    click('[data-act="felszMegse"]');
+    // újra NPC: a tárgyak és a jelölés maradnak; vissza Játékosra: nincs dupla statblock-tárgy, a kérdés megint jön, Nem → nincs ablak
+    W.openLib('lib'); click(`[data-lib="${npc.id}"] [data-act="libEdit"]`); setVal($('#edForm').elements.kind, 'npc'); click('[data-act="edSave"]'); await wait(50);
+    eq([c().kind, c().fromNpc, c().inventory.length], ['npc', true, 3]);
+    W.confirm = m => { kerdes = m; return false; };
+    W.openLib('lib'); click(`[data-lib="${npc.id}"] [data-act="libEdit"]`); setVal($('#edForm').elements.kind, 'pc'); click('[data-act="edSave"]');
+    await until(() => kerdes.includes('Generáljak') && $('#libRows'), 2000, 'kérdés, utána a Könyvtár');
+    eq(c().inventory.length, 3, 'nem duplázódott'); ok(!$('#felszMagia'), 'Nem → nincs ablak');
+    // tárgy nélküli NPC: a kérdés a „Generáljak” változat
+    const ures = W.normCreature({kind: 'npc', name: 'Remete', type: 'Human — Wizard 3'}); A('S.library').push(ures);
+    kerdes = '';
+    W.openLib('lib'); click(`[data-lib="${ures.id}"] [data-act="libEdit"]`); setVal($('#edForm').elements.kind, 'pc'); click('[data-act="edSave"]');
+    await until(() => kerdes, 2000, 'kérdés');
+    hasNot(kerdes, 'Már van'); has(kerdes, 'Generáljak szinthez illő felszerelést');
+    // az NPC-vé tett, majd visszaállított eredeti játékos (van gazdája) nem „NPC-ből lett”: nincs kérdés, nincs jelölés
+    const regi = W.normCreature({kind: 'npc', name: 'Régi játékos', type: 'Human — Rogue 4', owner: 'regi@x.hu', acNote: 'leather armor'}); A('S.library').push(regi);
+    kerdes = '';
+    W.openLib('lib'); click(`[data-lib="${regi.id}"] [data-act="libEdit"]`); setVal($('#edForm').elements.kind, 'pc'); click('[data-act="edSave"]'); await wait(100);
+    const r = A(`S.library.find(x => x.id === '${regi.id}')`);
+    eq([r.kind, r.fromNpc, r.inventory.length, kerdes], ['pc', undefined, 0, '']);
+    // osztály nélküli NPC (statblock típussal): a generátor osztály nélkül, és szól
+    const bandita = W.normCreature({kind: 'npc', name: 'Banditavezér', type: 'humanoid (any race)', cr: '2'}); A('S.library').push(bandita);
+    W.confirm = () => true;
+    W.openLib('lib'); click(`[data-lib="${bandita.id}"] [data-act="libEdit"]`); setVal($('#edForm').elements.kind, 'pc'); click('[data-act="edSave"]');
+    await until(() => $('#felszMagia'), 2000, 'az ablak osztály nélkül');
+    has($('#modalBox').textContent, 'Osztály nélkül nincs kezdő felszerelés'); has($('#modalBox').textContent, '2. szint');
+    click('[data-act="felszMegse"]');
+    // szabálykönyv nélkül: a napló szól, nincs ablak, a Könyvtár nyílik
+    A('rulebook = null'); W.buildRulebook = async () => ({classes: []});
+    const nincs = W.normCreature({kind: 'npc', name: 'Könyvtelen', type: 'Human — Fighter 5', acNote: 'chain mail'}); A('S.library').push(nincs);
+    W.openLib('lib'); click(`[data-lib="${nincs.id}"] [data-act="libEdit"]`); setVal($('#edForm').elements.kind, 'pc'); click('[data-act="edSave"]');
+    await until(() => allLog().includes('Könyvtelen') && $('#libRows'), 2000, 'napló és Könyvtár');
+    has(allLog(), 'a szabálykönyv kell'); ok(!$('#felszMagia'));
+    eq(A(`S.library.find(x => x.id === '${nincs.id}')`).inventory, [], 'a statblock tárgyai sem kerültek fel');
+  });
   test('online: a generátor a valódi szabálykönyvvel minden osztályra, 17. szinten, magas mágiával tölt minden helyet; nincs egyszer használatos tárgy', async () => {
     const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), hibak = [];
     for (const cls of rb.classes.map(c => c.n)) {

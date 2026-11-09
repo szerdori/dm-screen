@@ -3,7 +3,7 @@
 // duplázás nélkül. Terv: TERV-kezdo-felszereles.md. A felület (js/felulet/felszereles-ablak.js) mutatja előnézetben, a DM hagyja jóvá.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('felszereles', N) és az index.html-ben a felszereles.js?v=N és a VART_MODULOK.
 'use strict';
-modul('felszereles', 1);
+modul('felszereles', 2);
 
 // DMG 2014 38. o.: szintsávonként alaparany + 1d10 × szorzó, és a mágikus tárgyak ritkasága mágiaszintenként (a normál kezdő felszerelés mindig jár)
 const DMG38 = [
@@ -154,3 +154,21 @@ function felszerelesHozzaad(terv, rb) {
 }
 // a terv összefoglalója a naplóba
 function felszerelesSzoveg(terv, db) { return `${db} tárgy + ${terv.gold} gp (DMG 38. o., ${terv.L}. szint, ${MAGIA_HU[terv.magia]})`; }
+// NPC → játékos: a statblock felszerelése (a támadások fegyverei, az AC-megjegyzés páncélja / pajzsa) tárgyként a szabálykönyvi reffel, felszerelve;
+// ami már megvan, kimarad; ami nem azonosítható, azt visszaadja (a napló felsorolja). Visszatér: {uj: [inventory-tételek], ismeretlen: [nevek]}
+function statblokkTargyak(id, rb) {
+  const c = S.library.find(x => x.id === id);
+  if (!c) return {uj: [], ismeretlen: []};
+  const bolt = felszMind(rb).filter(x => !x.mag && !x.grp?.length), nevek = new Set(c.inventory.map(i => i.name.toLowerCase())), lista = [], ismeretlen = [];
+  const keres = n => bolt.find(x => x.s === 'PHB' && x.n.toLowerCase() === n) || bolt.find(x => x.n.toLowerCase() === n);
+  for (const nev of gearOf(c)) {
+    const n = nev.toLowerCase().replace(/\s+/g, ' ').trim(), r = keres(n) || keres(n.replace(/s$/, '')) || keres(n + ' armor');
+    if (!r) { ismeretlen.push(nev); continue; }
+    if (nevek.has(r.n.toLowerCase()) || c.inventory.some(i => felszVariansA({n: i.name}, r.n.toLowerCase()))) continue;  // a mágikus változata (+1 Longsword) is megvan
+    nevek.add(r.n.toLowerCase());
+    lista.push({ref: Sheet.refOf(r), n: r.n, q: 1});
+  }
+  const uj = Sheet.seLeltar(lista, rb, c.inventory);
+  if (uj.length) { c.inventory = Szerzodes.normInventory([...c.inventory, ...uj]); save(); }
+  return {uj, ismeretlen};
+}
