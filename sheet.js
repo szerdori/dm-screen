@@ -325,7 +325,9 @@ window.Sheet = (() => {
   }
 
   // varázslat-választás egy jellemzőből (High Elf, Pact of the Tome…): a megadott lista (ha nincs: bármelyik) és szint
-  const spellChooseFit = (sp, from) => (!from?.list || (sp.cl || []).includes(from.list)) && num(sp.l) === num(from?.l) && (!from?.ri || !!sp.ri);
+  // from: {list?: osztály, l: szint, ri?: ritual, sch?: ['divination', …] iskolák, atk?: támadó varázslat} (a feat-választók: szabalykonyv.js spellFilter)
+  const spellChooseFit = (sp, from) => (!from?.list || (sp.cl || []).includes(from.list)) && num(sp.l) === num(from?.l) && (!from?.ri || !!sp.ri)
+    && (!Array.isArray(from?.sch) || !from.sch.length || from.sch.includes(String(sp.sc || '').toLowerCase())) && (!from?.atk || !!sp.atk);
 
   // ---------- szabálymotor (2. fázis): a lap felépítéséből (build) és a kézi felülírásokból (ov) számol ----------
   // A szabálykönyv elemei (faj, alfaj, háttér, feat, optional feature) hatáslistát (fx) hordoznak, az osztály-feature-ökét a FEATURE_FX adja.
@@ -336,7 +338,7 @@ window.Sheet = (() => {
   //   {hpPerLevel: 1}  {hpPerClassLevel: 1}  {init: 5}  {speed: {v: 10 | 'col:Oszlop', if: 'noHeavy' | 'noArmor'}}  {heavyOk: true}
   //   {acBase: {base: 10, add: ['dex', 'con'], noShield}}  {acBonus: 1} (páncélban)  {mamCap: 3}  {rangedAtk: 2}  {duelDmg: 2}  {martialArts: true}
   //   {res: {n, max: szám | 'col:Oszlop' | 'mod:cha' | 'lvl' | 'lvl*5' | 'pb' | {lv: {szint: érték}}, add, min, reset, shortAt}}
-  //   {spells: [{t: prepared|known|innate|expanded, lvl, sp: [...]}], ab}  {spellChoose: {from: {list?: 'Wizard', l: 0, ri?: true}, n}}  {spellList: ['Cleric']}  {pickChoose: {label, from?, n?, then?: {érték: [hatások]}, weapon?}}  {feat: {n}}  {todo: 'szöveg'} (✋ nem automatizálható)
+  //   {spells: [{t: prepared|known|innate|expanded, lvl, sp: [...]}], ab}  {spellChoose: {from: {list?: 'Wizard', l: 0, ri?: true, sch?: ['divination'], atk?: true}, n, label?}}  {spellList: ['Cleric']}  {pickChoose: {label, from?, n?, then?: {érték: [hatások]}, weapon?}}  {feat: {n}}  {todo: 'szöveg'} (✋ nem automatizálható)
   // A választást kérő hatások kulcsa: '<forrás>:<fajta>' (pl. 'race:ability', 'Rogue:1:skills', 'Rogue:6:expertise', 'Fighter:4:asi',
   // 'feat:Alert|PHB:skills', 'Fighter:opt:Fighting Style'); az érték a build.ch-ban van. Ha egy kulcs már foglalt, számot kap (…:skills2).
   const refName = r => String(r || '').split('|')[0];

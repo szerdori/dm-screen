@@ -30,7 +30,7 @@ function convSpell(sp, lookup) {
   const cl = lookup?.[sp.source.toLowerCase()]?.[sp.name.toLowerCase()]?.class || {};
   const classes = [...new Set(Object.entries(cl).filter(([src]) => RB_SPELL.includes(src)).flatMap(([, o]) => Object.keys(o)))].sort();
   return compact({n: sp.name, s: sp.source, l: sp.level, sc: SCHOOL[sp.school] || '', t: spellTime(sp.time), r: spellRange(sp.range), c: spellComp(sp.components),
-    d: spellDur(sp.duration), k: (sp.duration || []).some(x => x.concentration), ri: !!sp.meta?.ritual, cl: classes,
+    d: spellDur(sp.duration), k: (sp.duration || []).some(x => x.concentration), ri: !!sp.meta?.ritual, atk: !!sp.spellAttack?.length, cl: classes,
     tx: rbText([...(sp.entries || []), ...(sp.entriesHigherLevel || [])])});
 }
 function convItem(it, types, props) {
@@ -73,7 +73,7 @@ const cap1 = s => String(s).replace(/(^|[\s(-])\S/g, m => m.toUpperCase());
 const first = v => Array.isArray(v) ? v[0] : v;
 const chooseOf = c => ({from: c.from, n: c.count || 1});
 // egy 5e.tools elem (faj, alfaj, háttér, feat, osztály-jártasság) jártasságai, képességnövelései → fx lista
-function profFx(o) {
+function profFx(o, featNev = '') {
   const fx = [], keysTrue = obj => Object.entries(obj).filter(([k, v]) => v === true && !['any', 'anyStandard', 'choose'].includes(k)).map(([k]) => k);
   const ab = first(o.ability);
   if (ab) {
@@ -120,11 +120,19 @@ function profFx(o) {
     if (fixed.length) fx.push({resist: fixed});
     if (o.resist.some(r => r?.choose)) fx.push({todo: 'Ellenállás választása'});
   }
-  if (o.additionalSpells) fx.push(...addSpellsFx(o.additionalSpells));
+  if (o.additionalSpells) fx.push(...addSpellsFx(o.additionalSpells, featNev));
   return fx;
 }
+// varázslat-szűrő ('level=1|class=Bard|school=E;D|components & miscellaneous=ritual|spell attack=m;r;o') → spellChoose.from (sheet.js spellChooseFit)
+function spellFilter(s) {
+  const f = Object.fromEntries(String(s).split('|').map(x => x.split('=')).filter(x => x.length === 2).map(([k, v]) => [k.trim().toLowerCase(), v.trim()]));
+  return compact({list: f.class ? cap1(f.class.toLowerCase()) : '', l: parseInt(f.level) || 0, ri: /ritual/i.test(f['components & miscellaneous'] || ''),
+    sch: f.school ? f.school.split(';').map(x => SCHOOL[x.trim().toUpperCase()]).filter(Boolean) : [], atk: !!f['spell attack']});
+}
 // additionalSpells → {spells: [{t: prepared|known|innate|expanded, lvl, sp: [nevek]}], ab}; a választást kérők teendőként
-function addSpellsFx(list) {
+// (faj, alosztály, optional feature: ezek választását a sheet.js FEATURE_FX adja, a teendőt az RB_FX_OFF szűri – ezért itt nem változik)
+function addSpellsFx(list, featNev = '') {
+  if (featNev) return featSpellsFx(list, featNev);
   const as = first(list);
   if (!as) return [];
   const out = [], todo = [];
@@ -139,6 +147,42 @@ function addSpellsFx(list) {
   for (const x of out) { const k = x.t + '|' + x.lvl; (by[k] = by[k] || {t: x.t, lvl: x.lvl, sp: []}).sp.push(x.sp); }
   const fx = [];
   if (out.length) fx.push(compact({spells: Object.values(by), ab: typeof as.ability === 'string' ? as.ability : ''}));
+  if (todo.length) fx.push({todo: [...new Set(todo)].join('; ')});
+  return fx;
+}
+// featnél: a választás valódi választó (spellChoose), teendő helyett; több, névvel ellátott változatnál (Magic Initiate: „Bard Spells”…)
+// előbb a lista választása (pickChoose + then); a napi egyszeri ingyenes varázslás erőforrás (pl. „Fey Touched: Misty Step”), a ritual-választásnál nincs (Ritual Caster)
+function featSpellsFx(list, nev) {
+  const alts = (Array.isArray(list) ? list : [list]).filter(x => x && typeof x === 'object');
+  if (alts.length > 1 && alts.every(a => a.name)) {
+    const lista = a => String(a.name).replace(/\s+Spells$/i, '');
+    return [{pickChoose: {label: 'Varázslatlista', from: alts.map(lista), then: Object.fromEntries(alts.map(a => [lista(a), addSpellsEgy(a, nev)]))}}];
+  }
+  return alts[0] ? addSpellsEgy(alts[0], nev) : [];
+}
+function addSpellsEgy(as, nev) {
+  const out = [], valaszt = [], todo = [], ingyen = [];
+  const walk = (v, t, lvl, napi) => {
+    if (typeof v === 'string') { const n = refClean(v); if (n) { out.push({t, lvl, sp: n}); if (napi) ingyen.push([cap1(n), napi]); } }
+    else if (Array.isArray(v)) v.forEach(x => walk(x, t, lvl, napi));
+    else if (typeof v?.choose === 'string') {
+      const from = spellFilter(v.choose);
+      valaszt.push({spellChoose: {from, n: v.count || 1, label: from.l ? from.l + '. szintű varázslat' : 'Cantrip'}});
+      if (napi && !from.ri) ingyen.push(['választott ' + (from.l ? from.l + '. szintű ' : '') + 'varázslat', napi]);
+    } else if (v?.choose) todo.push(`${t} varázslat választása (${lvl}. szinttől)`);
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) {
+      if (k === 'daily' && x && typeof x === 'object') for (const [d, y] of Object.entries(x)) walk(y, t, lvl, parseInt(d) || 1);
+      else walk(x, t, lvl, napi);
+    }
+  };
+  for (const t of ['prepared', 'known', 'innate', 'expanded']) for (const [lvl, v] of Object.entries(as[t] || {})) walk(v, t, parseInt(lvl) || 1, 0);
+  const by = {};
+  for (const x of out) { const k = x.t + '|' + x.lvl; (by[k] = by[k] || {t: x.t, lvl: x.lvl, sp: []}).sp.push(x.sp); }
+  const fx = [];
+  if (out.length) fx.push(compact({spells: Object.values(by), ab: ABIL.includes(as.ability) ? as.ability : ''}));
+  fx.push(...valaszt);
+  // az 5e.tools mindet „daily”-ként írja; a Fey Teleportation short resttel is visszajön (XGE 74. o.)
+  if (nev) for (const [n, max] of ingyen) fx.push({res: {n: `${nev}: ${n}`, max, reset: nev === 'Fey Teleportation' ? 'short' : 'long'}});
   if (todo.length) fx.push({todo: [...new Set(todo)].join('; ')});
   return fx;
 }
@@ -288,7 +332,7 @@ async function buildRulebook(get = rbFetch) {
       att: h.reqAttune === true ? 'requires attunement' : typeof h.reqAttune === 'string' ? 'requires attunement ' + tagStrip(h.reqAttune) : '',
       pre: h.namePrefix || '', suf: h.nameSuffix || '', req: v.requires || [], exc: v.excludes || null,
       tx: rbText(h.entries).replace(/\{=(\w+)[^}]*\}/g, (m, k) => h[k] ?? '')}); }),
-    feats: (feats.feat || []).filter(f => RB_FEAT.includes(f.source)).map(f => compact({n: f.name, s: f.source, pre: featPre(f.prerequisite), pq: featPq(f.prerequisite), fx: profFx(f),
+    feats: (feats.feat || []).filter(f => RB_FEAT.includes(f.source)).map(f => compact({n: f.name, s: f.source, pre: featPre(f.prerequisite), pq: featPq(f.prerequisite), fx: profFx(f, f.name),
       tx: [featAbility(f.ability), rbText(f.entries)].filter(Boolean).join('\n')})),
     conditions: (conds.condition || []).filter(c => c.source === 'PHB').map(c => ({n: c.name, s: c.source, tx: rbText(c.entries)})),
     ...cls, races: rc.races, subraces: rc.subraces, backgrounds: convBackgrounds(bgs), optfeatures: convOptFeatures(opts)

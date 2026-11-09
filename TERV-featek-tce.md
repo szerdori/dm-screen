@@ -1,6 +1,6 @@
 # Terv: featek előfeltétellel és saját választásokkal, TCE opcionális feature-ök
 
-*Készült: 2026-11-08. Állapot: elfogadva 2026-11-08 (döntések a végén), folyamatban az 1. lépés. Előzmény: `TERV-3-4-fazis.md` 4. fázis 3–5. lépése; a multiclass (1–2. lépés) a felhasználó döntése szerint később.*
+*Készült: 2026-11-08. Állapot: elfogadva 2026-11-08 (döntések a végén), folyamatban; kész: 1–2. lépés. Előzmény: `TERV-3-4-fazis.md` 4. fázis 3–5. lépése; a multiclass (1–2. lépés) a felhasználó döntése szerint később.*
 
 ## Cél
 - Szintlépéskor (ASI helyett) és a Variant Human / új karakter featjénél a választóban **látszik, melyik feat választható** (✓), és melyik nem (az ok: „DEX 13 kell”, „csak Elf”, „varázsolni kell tudni”, „medium armor jártasság kell”).

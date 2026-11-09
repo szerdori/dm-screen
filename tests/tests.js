@@ -1252,6 +1252,15 @@ describe('Online (csak  .\\teszt.ps1 -Online  esetén)', () => {
     eq(c.attacks[0].hit, '+5', 'Warhammer: STR 2 + PB 3 (Dwarven Combat Training)');
     ok(c.resources.some(r => r.name === 'Channel Divinity' && r.max === 1), 'Channel Divinity');
   }, {online: true});
+  test('featek a valódi szabálykönyvben: minden varázslat-választóból van mit választani, és nem marad „varázslat választása” teendő', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet;
+    const valasztok = (fx, hol) => (fx || []).flatMap(x => [...(x.spellChoose ? [[hol, x.spellChoose]] : []), ...Object.entries(x.pickChoose?.then || {}).flatMap(([k, l]) => valasztok(l, hol + ' / ' + k))]);
+    const lista = rb.feats.flatMap(f => valasztok(f.fx, f.n));
+    ok(lista.length >= 20, 'feat varázslat-választók: ' + lista.length);
+    const ures = lista.filter(([, sc]) => !H.choiceOptions({key: 'x', kind: 'spell', n: sc.n, ok: [], from: sc.from}, null, rb).opts.length).map(([h]) => h);
+    eq(ures, [], 'üres választó');
+    eq(rb.feats.filter(f => (f.fx || []).some(x => /varázslat választása/.test(x.todo || ''))).map(f => f.n), [], 'maradt teendő');
+  }, {online: true});
   test('a tokenkép elérhető', async () => {
     const mm = await ORIG.loadFiveSource('MM');
     const r = await fetch(W.convert5e(mm.find(m => m.name === 'Goblin')).portrait);
@@ -1900,7 +1909,7 @@ const FAKE5E = {
       components: {v: true, s: true, m: {text: 'a sprinkling of holy water'}}, duration: [{type: 'timed', duration: {type: 'minute', amount: 1}, concentration: true}], entries: ['Add a d4.']},
     {name: 'Burning Hands', source: 'PHB', level: 1, school: 'V', time: [{number: 1, unit: 'action'}], range: {type: 'cone', distance: {type: 'feet', amount: 15}},
       components: {v: true, s: true}, duration: [{type: 'instant'}], entries: ['{@damage 3d6} fire.']}]},
-  'spells/spells-xge.json': {spell: [{name: 'Toll the Dead', source: 'XGE', level: 0, school: 'N', time: [{number: 1, unit: 'action'}], range: {type: 'point', distance: {type: 'feet', amount: 60}},
+  'spells/spells-xge.json': {spell: [{name: 'Toll the Dead', source: 'XGE', level: 0, school: 'N', spellAttack: ['R'], time: [{number: 1, unit: 'action'}], range: {type: 'point', distance: {type: 'feet', amount: 60}},
     components: {v: true, s: true}, duration: [{type: 'instant'}], entries: ['{@damage 1d8} necrotic.']}]},
   'spells/spells-tce.json': {spell: []},
   'generated/gendata-spell-source-lookup.json': {phb: {fireball: {class: {PHB: {Sorcerer: true, Wizard: true}, XPHB: {Bard: true}}}, 'burning hands': {class: {PHB: {Wizard: true}}}},
@@ -2358,6 +2367,50 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     const o = H.choiceOptions(asi, cf, rb, fighter).opts, rc = o.find(x => x.v === 'Ritual Caster|PHB'), hm = o.find(x => x.v === 'Heavy Armor Master|PHB');
     eq([rc.l, rc.note, rc.warn, rc.dis], ['⚠ Ritual Caster', 'nem teljesül: INT 13 vagy WIS 13', true, false]);
     eq([hm.l, hm.warn], ['Heavy Armor Master', false]);
+  });
+
+  test('feat varázslat-választásai: Magic Initiate (lista → 2 cantrip + 1 első szintű, napi ingyenes), Fey Touched (iskola), Spell Sniper (támadó cantrip), Ritual Caster (ritual, erőforrás nélkül)', () => {
+    const H = W.Sheet, rb = rb3();
+    // a szabálykönyv-letöltő a valódi 5e.tools-alakból (rövidítve)
+    const mi = W.addSpellsFx([{name: 'Bard Spells', ability: 'cha', innate: {_: {daily: {1: [{choose: 'level=1|class=Bard'}]}}}, known: {_: [{choose: 'level=0|class=Bard', count: 2}]}},
+      {name: 'Wizard Spells', ability: 'int', innate: {_: {daily: {1: [{choose: 'level=1|class=Wizard'}]}}}, known: {_: [{choose: 'level=0|class=Wizard', count: 2}]}}], 'Magic Initiate');
+    eq(mi, [{pickChoose: {label: 'Varázslatlista', from: ['Bard', 'Wizard'], then: {
+      Bard: [{spellChoose: {from: {list: 'Bard'}, n: 2, label: 'Cantrip'}}, {spellChoose: {from: {list: 'Bard', l: 1}, n: 1, label: '1. szintű varázslat'}}, {res: {n: 'Magic Initiate: választott 1. szintű varázslat', max: 1, reset: 'long'}}],
+      Wizard: [{spellChoose: {from: {list: 'Wizard'}, n: 2, label: 'Cantrip'}}, {spellChoose: {from: {list: 'Wizard', l: 1}, n: 1, label: '1. szintű varázslat'}}, {res: {n: 'Magic Initiate: választott 1. szintű varázslat', max: 1, reset: 'long'}}]}}}]);
+    const ft = W.addSpellsFx({ability: 'inherit', innate: {_: {daily: {'1e': ['misty step', {choose: 'level=1|school=E;D'}]}}}}, 'Fey Touched');
+    eq(ft, [{spells: [{t: 'innate', lvl: 1, sp: ['misty step']}]}, {spellChoose: {from: {l: 1, sch: ['enchantment', 'divination']}, n: 1, label: '1. szintű varázslat'}},
+      {res: {n: 'Fey Touched: Misty Step', max: 1, reset: 'long'}}, {res: {n: 'Fey Touched: választott 1. szintű varázslat', max: 1, reset: 'long'}}]);
+    eq(W.addSpellsFx([{name: 'Wizard Spells', ability: 'int', known: {_: [{choose: 'level=0|class=Wizard|spell attack=m;r;o', count: 1}]}}, {name: 'Bard Spells', known: {_: [{choose: 'level=0|class=Bard|spell attack=m;r;o'}]}}], 'Spell Sniper')[0].pickChoose.then.Wizard,
+      [{spellChoose: {from: {list: 'Wizard', atk: true}, n: 1, label: 'Cantrip'}}]);
+    eq(W.addSpellsFx([{name: 'Wizard Spells', innate: {_: {daily: {1: [{choose: 'level=1|class=Wizard|components & miscellaneous=ritual', count: 2}]}}}}, {name: 'Cleric Spells', innate: {}}], 'Ritual Caster')[0].pickChoose.then.Wizard,
+      [{spellChoose: {from: {list: 'Wizard', l: 1, ri: true}, n: 2, label: '1. szintű varázslat'}}], 'ritualnál nincs ingyenes erőforrás');
+    eq(W.addSpellsFx({innate: {_: {daily: {1: [{choose: 'level=1|class=Wizard'}]}}}}), [{todo: 'innate varázslat választása (1. szinttől)'}], 'nem featnél (faj, alosztály) a régi teendő marad');
+    // a motor: Fighter 4, ASI helyett Magic Initiate (Wizard)
+    rb.spells.push({n: 'Fire Bolt', s: 'PHB', l: 0, sc: 'evocation', atk: true, cl: ['Wizard']}, {n: 'Light', s: 'PHB', l: 0, sc: 'evocation', cl: ['Wizard', 'Cleric']},
+      {n: 'Mage Hand', s: 'PHB', l: 0, sc: 'conjuration', cl: ['Wizard', 'Bard']}, {n: 'Shield', s: 'PHB', l: 1, sc: 'abjuration', cl: ['Wizard']},
+      {n: 'Detect Magic', s: 'PHB', l: 1, sc: 'divination', ri: true, cl: ['Wizard', 'Cleric']}, {n: 'Charm Person', s: 'PHB', l: 1, sc: 'enchantment', cl: ['Wizard', 'Bard']}, {n: 'Misty Step', s: 'PHB', l: 2, sc: 'conjuration', cl: ['Wizard']});
+    rb.feats.push({n: 'Magic Initiate', s: 'PHB', fx: mi}, {n: 'Fey Touched', s: 'TCE', fx: [{abChoose: {from: ['int', 'wis', 'cha'], n: 1, amt: 1}}, ...ft]});
+    const base = {race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {str: 15, con: 14}, levels: lv('Fighter', 4)};
+    let s = mkS({...base, ch: {'Fighter:4:asi': {feat: 'Magic Initiate|PHB'}}}), c = H.calc(s, rb);
+    const pick = c.choices.find(x => x.key === 'feat:Magic Initiate|PHB:pick');
+    ok(pick && !pick.done && pick.label === 'Varázslatlista', 'előbb a lista');
+    s = mkS({...base, ch: {'Fighter:4:asi': {feat: 'Magic Initiate|PHB'}, 'feat:Magic Initiate|PHB:pick': ['Wizard']}}); c = H.calc(s, rb);
+    const [can, l1] = ['feat:Magic Initiate|PHB:pick:Wizard:spell', 'feat:Magic Initiate|PHB:pick:Wizard:spell2'].map(k => c.choices.find(x => x.key === k));
+    eq([l1.n, can.n, l1.label, can.label], [1, 2, '1. szintű varázslat', 'Cantrip'], 'a két választó címkéje eltér');
+    eq(H.choiceOptions(can, c, rb).opts.map(o => o.l), ['Fire Bolt', 'Light', 'Mage Hand'], 'csak Wizard cantrip');
+    eq(H.choiceOptions(l1, c, rb).opts.map(o => o.l), ['Charm Person', 'Detect Magic', 'Shield'], 'csak 1. szintű Wizard');
+    s = mkS({...base, ch: {'Fighter:4:asi': {feat: 'Magic Initiate|PHB'}, 'feat:Magic Initiate|PHB:pick': ['Wizard'], [l1.key]: ['Shield|PHB'], [can.key]: ['Fire Bolt|PHB', 'Light|PHB']}}); c = H.calc(s, rb);
+    ok(c.choices.filter(x => x.key.startsWith('feat:')).every(x => x.done), 'minden választás kész');
+    ok(['Shield', 'Fire Bolt', 'Light'].every(n => c.always.some(a => a.name === n)), 'a választottak a lapon');
+    eq(c.resources.filter(r => /Magic Initiate/.test(r.name)), [{name: 'Magic Initiate: választott 1. szintű varázslat', max: 1, reset: 'long'}]);
+    eq(c.todos.filter(t => t.kind === 'manual'), [], 'nincs ✋ teendő');
+    // Fey Touched: csak divination / enchantment 1. szintű
+    s = mkS({...base, ch: {'Fighter:4:asi': {feat: 'Fey Touched|TCE'}}}); c = H.calc(s, rb);
+    eq(H.choiceOptions(c.choices.find(x => x.key === 'feat:Fey Touched|TCE:spell'), c, rb).opts.map(o => o.l), ['Charm Person', 'Detect Magic']);
+    ok(c.always.some(a => a.name === 'Misty Step'), 'a fix varázslat');
+    // Spell Sniper: csak támadó cantrip; Ritual Caster: csak ritual
+    eq(H.choiceOptions({key: 'x', kind: 'spell', n: 1, ok: [], from: {list: 'Wizard', atk: true}}, c, rb).opts.map(o => o.l), ['Fire Bolt']);
+    eq(H.choiceOptions({key: 'y', kind: 'spell', n: 2, ok: [], from: {list: 'Wizard', l: 1, ri: true}}, c, rb).opts.map(o => o.l), ['Detect Magic']);
   });
 
   test('azonos forrású ✋ teendők: mind látszik, külön pipálható; az első kulcsa a régi (a kipipált megmarad); azonos szöveg csak egyszer', () => {
@@ -3225,6 +3278,7 @@ describe('Szabálykönyv és tárgy-import', () => {
     const sp = Object.fromEntries(rb.spells.map(s => [s.n, s]));
     eq(Object.keys(sp), ['Fireball', 'Bless', 'Burning Hands', 'Toll the Dead']);
     eq([sp.Fireball.l, sp.Fireball.sc, sp.Fireball.t, sp.Fireball.r, sp.Fireball.c, sp.Fireball.d, sp.Fireball.cl], [3, 'evocation', '1 action', '150 feet', 'V, S, M (a tiny ball of bat guano)', 'Instantaneous', ['Sorcerer', 'Wizard']]);
+    eq([sp.Fireball.atk, sp['Toll the Dead'].atk], [undefined, true], 'támadó varázslat (Spell Sniper): a spellAttack mezőből');
     has(sp.Fireball.tx, '8d6 fire'); has(sp.Fireball.tx, '+1d6 per slot');
     eq([sp.Bless.k, sp.Bless.d, sp.Bless.c, sp['Burning Hands'].r, sp['Toll the Dead'].cl, sp['Toll the Dead'].l], [true, 'Concentration, up to 1 minute', 'V, S, M (a sprinkling of holy water)', 'Self (15-foot cone)', ['Cleric', 'Warlock', 'Wizard'], undefined]);
     const it = Object.fromEntries(rb.items.map(i => [i.n, i]));
