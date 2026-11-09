@@ -1,6 +1,6 @@
 # Kezdő felszerelés és szinthez illő tárgyak – terv
 
-*Készült: 2026-11-09. Állapot: **elfogadva 2026-11-09** (a döntések a végén); a felhasználó minden lépést kért, lépésenként külön committal, a végén feltöltéssel. A pontos adatformátum: `SZERZODES.md`.*
+*Készült: 2026-11-09. Állapot: **kész, mind a 6 lépés (2026-11-09)**, elfogadva 2026-11-09 (a döntések a végén); a felhasználó minden lépést kért, lépésenként külön committal, a végén feltöltéssel. A pontos adatformátum: `SZERZODES.md`.*
 
 Előzmény: a `TERV-3-4-fazis.md` 5. fázisának 7. lépése (kezdő felszerelés) és a 10–11. döntés (a csomagok kibontva, tárolóba téve; arany helyett vásárlás kosárral a varázslóban). Az 5. fázis szűkített változata ezt kihagyta: most a játékos a Felszerelés fülön veszi fel a tárgyait (`docs/mukodes.md`, „✨ Új játékos és kezdő varázsló”). A featek és a TCE kész (`TERV-featek-tce.md`), a szabálykönyv 3-as formátumú.
 
@@ -124,3 +124,11 @@ Egy-egy **🎲 Véletlen** gomb a varázsló választó-lépésein (faj, osztál
 5. **„Normál kezdő felszerelés” a generátorban:** *Javaslat:* csak ha a karakternek nincs egy tárgya sem (különben a statblock felszerelése a kezdő felszerelés). *Másik:* mindig hozzáadja (a csomagot, pl. Explorer's Pack, a páncél / fegyver nélkül).
 6. **Az aranydobás védelme a Firestore-szabályban** (a játékos ne dobhasson újra az app kijátszásával), mint a 4d6-nál: *Javaslat: igen* – ehhez a szabályokat újra be kell másolni a konzolba. *Másik:* nem (bizalom), szabályfrissítés nélkül.
 7. **Véletlen build:** *Javaslat:* a felszerelés után, külön tervvel (🎲 Véletlen gomb lépésenként + DM-nek teljes véletlen karakter). *Másik:* most, ennek a tervnek a részeként; vagy egyáltalán nem.
+
+## Az elkészült változat eltérései a tervtől (2026-11-09)
+
+- A 🎁 ablakban a kezdő felszerelés tételei csak kihagyhatók (✕), átírni nem lehet; a mágiaszint átírása az egész tervet újragenerálja (a korábbi ✕-ek elvesznek).
+- A +N változat a saját fegyverből / páncélból jön; ha ilyen nincs, abból, amiben jártas (a variánsok fele eséllyel, a többi tárgy a maradék eséllyel).
+- „NPC-ből lett” csak az, akinél a Könyvtár szerkesztőjében NPC → Játékos váltás volt, és előtte nem volt játékos (nincs lapja, gazdája, D&D Beyond-azonosítója), vagy már volt `fromNpc`-je. A harcbeli (csempe ✎) típusváltás nem jelöl.
+- Szabálykönyv nélkül a statblock tárgyai sem kerülnek fel; feltöltés után NPC-re, majd vissza Játékosra váltva pótolható (a 🎁 gomb csak a DMG-generátort nyitja).
+- Arany módban, ha a játékos már dobott, a csomagra csak a DM válthat vissza (mint a képességdobásnál); a szabály ezt nem védi, csak a dobást és a DM beállítását.

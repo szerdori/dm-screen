@@ -6233,6 +6233,30 @@ describe('Kezdő felszerelés (TERV-kezdo-felszereles.md)', () => {
     has(allLog(), 'a szabálykönyv kell'); ok(!$('#felszMagia'));
     eq(A(`S.library.find(x => x.id === '${nincs.id}')`).inventory, [], 'a statblock tárgyai sem kerültek fel');
   });
+  test('online robot: minden osztály × minden PHB-háttér, mindegyik lehetőséggel csomag módban (kitölthető, a lapra kerül, a számolás nem akad el), és az arany mód dobása', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet, hibak = [];
+    const base = {str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8};
+    for (const c of rb.classes) for (const [bi, b] of rb.backgrounds.entries()) {
+      const {rows, gold} = H.seRows(c.n, b.n + '|' + b.s, rb), eq = {mode: 'pack', pick: {}, cat: {}};
+      for (const row of rows) {
+        const opt = row.opts[bi % row.opts.length];
+        eq.pick[row.key] = opt.k;
+        opt.items.forEach((t, j) => { if (t.kind === 'cat') eq.cat[`${row.key}:${opt.k}:${j}`] = Array.from({length: t.q}, (_, n) => t.from[(bi + n) % t.from.length]); });
+      }
+      const nev = `${c.n} / ${b.n}`;
+      const baj = H.seHiany(rows, eq);
+      if (baj) { hibak.push(`${nev}: ${baj}`); continue; }
+      const s = H.norm({auto: true, build: {base, levels: [{c: c.n}], background: b.n + '|' + b.s}, newChar: {target: 1, eq}});
+      try {
+        const e = H.seEredmeny(s, rb);
+        if (!e.items.length) hibak.push(nev + ': üres felszerelés');
+        const cr = H.calc({...s, inventory: e.inventory}, rb);
+        if (!(cr.ac.v >= 10)) hibak.push(nev + ': AC ' + cr.ac.v);
+      } catch (err) { hibak.push(`${nev}: ${err.message}`); }
+      if (!(H.seAranyDob(gold, () => 1) > 0)) hibak.push(nev + ': arany ' + gold);
+    }
+    eq(hibak, []);
+  }, {online: true});
   test('online: a generátor a valódi szabálykönyvvel minden osztályra, 17. szinten, magas mágiával tölt minden helyet; nincs egyszer használatos tárgy', async () => {
     const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), hibak = [];
     for (const cls of rb.classes.map(c => c.n)) {
