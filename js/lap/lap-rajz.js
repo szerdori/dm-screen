@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-rajz, a karakter.html része): a szabálykönyv segédei és a lap rajzolása (fülek)
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-rajz', N) és a karakter.html-ben a lap-rajz.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-rajz', 1);
+modul('lap-rajz', 2);
 
 // ---------- szabálykönyv ----------
 const RB = () => rbInfo?.rb || null;
@@ -167,7 +167,8 @@ function spellResults(s) {
   // a TCE bővített listája csak akkor, ha a karakter elfogadta (Felépítés: TCE bővített varázslatlista)
   const tce = c => H.tceIgen(s.build, c, H.TCE_LISTA);
   if (mine && cls.length) list = list.filter(sp => cls.some(c => H.spellOnList(sp, c, tce(c))));
-  $('#spellRes').innerHTML = list.slice(0, 30).map(sp => `<div class="li"><span class="nm"><b>${esc(sp.n)}</b><small>${esc(H.spellLine(sp))} · ${esc((sp.cl || []).join(', '))} · ${esc(sp.s)}</small></span>
+  // a névre koppintva a leírás (leirasMutat), onnan is felvehető
+  $('#spellRes').innerHTML = list.slice(0, 30).map(sp => `<div class="li"><span class="nm"><b>${nevGomb('sp', H.refOf(sp), sp.n, s.spells.some(x => x.name === sp.n) ? '' : ' data-add="spellAdd"')}</b><small>${esc(H.spellLine(sp))} · ${esc((sp.cl || []).join(', '))} · ${esc(sp.s)}</small></span>
     ${s.spells.some(x => x.name === sp.n) ? '<span class="hint">✓ megvan</span>' : `<button class="small" data-act="spellAdd" data-ref="${esc(H.refOf(sp))}">＋</button>`}</div>`).join('')
     || (q.trim() ? `<p class="hint">Nincs találat${mine && cls.length ? ' az osztályaid listáján (vedd ki a pipát a teljes listához)' : ''}.</p>` : '');
 }
@@ -217,8 +218,13 @@ function tabJell(s, ed) {
 }
 function featResults(s) {
   const q = $('#featQ')?.value || '';
-  $('#featRes').innerHTML = H.search(RB().feats, q, 20).map(f => `<div class="li"><span class="nm"><b>${esc(f.n)}</b><small>${esc([f.pre ? 'feltétel: ' + f.pre : '', f.s].filter(Boolean).join(' · '))}</small></span>
-    ${s.features.some(x => x.name === f.n) ? '<span class="hint">✓ megvan</span>' : `<button class="small" data-act="featAdd" data-ref="${esc(H.refOf(f))}">＋</button>`}</div>`).join('') || (q.trim() ? '<p class="hint">Nincs találat.</p>' : '');
+  // a névre koppintva a leírás (leirasMutat); a feltétel teljesülése csak a szabálymotoros lapon számolható
+  const cr = calcOf(s);
+  $('#featRes').innerHTML = H.search(RB().feats, q, 20).map(f => {
+    const fo = cr ? H.featOk(f, cr, RB(), s) : {ok: true}, warn = fo.ok ? '' : 'nem teljesül: ' + fo.hiany.join(', '), van = s.features.some(x => x.name === f.n);
+    return `<div class="li"><span class="nm"><b>${nevGomb('feat', H.refOf(f), (warn ? '⚠ ' : '') + f.n, (van ? '' : ' data-add="featAdd"') + (warn ? ` data-note="${esc(warn)}" data-warn="1"` : ''))}</b><small>${esc([warn || (f.pre ? 'feltétel: ' + f.pre : ''), f.s].filter(Boolean).join(' · '))}</small></span>
+    ${van ? '<span class="hint">✓ megvan</span>' : `<button class="small" data-act="featAdd" data-ref="${esc(H.refOf(f))}">＋</button>`}</div>`;
+  }).join('') || (q.trim() ? '<p class="hint">Nincs találat.</p>' : '');
 }
 function tabJegyz(s, ed) {
   return `<h3>Jegyzetek</h3><textarea id="notes" rows="14" ${ed ? '' : 'readonly'} placeholder="Bármi, amit meg akarsz jegyezni: NPC-nevek, nyomok, tervek…">${esc(s.notes)}</textarea>

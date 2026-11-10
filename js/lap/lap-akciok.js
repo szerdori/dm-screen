@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-akciok, a karakter.html része): a gombok nyilvántartása (LAP_AKCIOK: data-act → kezelő), módosítás, gépelés, billentyűk
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-akciok', N) és a karakter.html-ben a lap-akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-akciok', 3);
+modul('lap-akciok', 4);
 
 // ---------- nyilvántartás: data-act="nev" → LAP_AKCIOK.nev(el, s, i, act) ----------
 // Új gomb = új bejegyzés (s = a nyitott lap, i = a gomb data-i értéke). A kezelő maga ír és rajzol, ha kell.
@@ -32,6 +32,8 @@ const LAP_AKCIOK = {
   luStart(el, s) { if (canEdit(s) && luEnabled(s) && luReady(s) && !sheetStale) { luLoad(view.id, s); window.scrollTo(0, 0); render(true); } },
   info(el) { const info = infoReg.get(el.dataset.info); if (info) infoMutat(info); },
   infoClose() { $('#infoPop').hidden = true; },
+  leiras(el) { leirasMutat(el); },
+  leirasValaszt(el, s) { leirasValaszt(s); },
   ncPortre() { $('#ncPortreFile')?.click(); },
   ncPortreTorol(el, s) { if (s.newChar && canEdit(s)) patch({portrait: ''}); },
   ncCls: ncGomb, ncEqMode: ncGomb, ncEqPick: ncGomb, ncEqGold: ncGomb, ncEqGoldRe: ncGomb, ncKosar: ncGomb, ncMethod: ncGomb, ncRollDo: ncGomb, ncReroll: ncGomb, ncNext: ncGomb, ncBack: ncGomb, ncDone: ncGomb, ncSkip: ncGomb,

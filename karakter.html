@@ -144,7 +144,8 @@ nav.tabs button.on{background:var(--accent);color:var(--on-accent);border-color:
 details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
 details>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
 details>summary::-webkit-details-marker{display:none}
-details .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:var(--text2)}
+details .tx,#infoPop .tx{white-space:pre-wrap;font-size:14px;margin-top:8px;color:var(--text2)}
+.lnk{background:none;border:0;border-radius:0;padding:0;margin:0;color:inherit;font:inherit;text-align:left;text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}
 /* minmax(0,…) és width:100%: a mezők ne a saját alapszélességüket kérjék, különben keskeny telefonon kilóg az űrlap */
 .form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .form input:not([type=checkbox]),.form select,.form textarea{width:100%;min-width:0}
@@ -239,7 +240,7 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on,button[data-act^="ncEq"
 :root[data-meret] .abil .sc{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
 :root[data-meret] .abil .sv{font-size:max(var(--betu-min),calc(12px * var(--meret)))}
 :root[data-meret] .nm small{font-size:max(var(--betu-min),calc(12px * var(--meret)))}
-:root[data-meret] details .tx{font-size:max(var(--betu-min),calc(14px * var(--meret)))}
+:root[data-meret] details .tx,:root[data-meret] #infoPop .tx{font-size:max(var(--betu-min),calc(14px * var(--meret)))}
 :root[data-meret] .form label{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
 :root[data-meret] #rollbar .modes button{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
 :root[data-meret] #lastRoll span{font-size:max(var(--betu-min),calc(13px * var(--meret)))}
@@ -265,6 +266,7 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on,button[data-act^="ncEq"
 :root[data-meret] button{min-height:44px}
 :root[data-meret] button.small{padding:6px 10px}
 :root[data-meret] .ibtn{width:calc(26px * var(--meret));height:calc(26px * var(--meret));min-width:calc(26px * var(--meret));min-height:0}
+:root[data-meret] .lnk{min-height:0;padding:6px 0}
 :root[data-meret] .pip{width:calc(24px * var(--meret));height:calc(24px * var(--meret));min-height:0}
 :root[data-meret] input[type=checkbox]{width:28px;height:28px}
 :root[data-meret] .bar,:root[data-meret] .bar.slim{height:auto;min-height:calc(22px * var(--meret))}
@@ -336,20 +338,20 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on,button[data-act^="ncEq"
 // A lapot a gazdája (és a DM) írja; minden változás mezőnként megy a felhőbe, a DM Screen élőben látja.
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 24, szerzodes: 7, 'lap-alap': 1, 'lap-dobas': 1, 'lap-rajz': 1, 'lap-felepites': 1, 'lap-szintlepes': 1, 'lap-ujkarakter': 3, 'lap-elozmenyek': 1, 'lap-fiok': 1, 'lap-iras': 1, 'lap-utvonal': 1, 'lap-gesztus': 1, 'lap-akciok': 3, 'lap-indulas': 1};
+const VART_MODULOK = {kozos: 3, sheet: 24, szerzodes: 7, 'lap-alap': 1, 'lap-dobas': 1, 'lap-rajz': 2, 'lap-felepites': 2, 'lap-szintlepes': 1, 'lap-ujkarakter': 3, 'lap-elozmenyek': 1, 'lap-fiok': 2, 'lap-iras': 1, 'lap-utvonal': 1, 'lap-gesztus': 1, 'lap-akciok': 4, 'lap-indulas': 1};
 </script>
 <script src="js/lap/lap-alap.js?v=1"></script>
 <script src="js/lap/lap-dobas.js?v=1"></script>
-<script src="js/lap/lap-rajz.js?v=1"></script>
-<script src="js/lap/lap-felepites.js?v=1"></script>
+<script src="js/lap/lap-rajz.js?v=2"></script>
+<script src="js/lap/lap-felepites.js?v=2"></script>
 <script src="js/lap/lap-szintlepes.js?v=1"></script>
 <script src="js/lap/lap-ujkarakter.js?v=3"></script>
 <script src="js/lap/lap-elozmenyek.js?v=1"></script>
-<script src="js/lap/lap-fiok.js?v=1"></script>
+<script src="js/lap/lap-fiok.js?v=2"></script>
 <script src="js/lap/lap-iras.js?v=1"></script>
 <script src="js/lap/lap-utvonal.js?v=1"></script>
 <script src="js/lap/lap-gesztus.js?v=1"></script>
-<script src="js/lap/lap-akciok.js?v=3"></script>
+<script src="js/lap/lap-akciok.js?v=4"></script>
 <script src="js/lap/lap-indulas.js?v=1"></script>
 <script src="firebase-config.js"></script>
 <script type="module">

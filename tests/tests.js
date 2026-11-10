@@ -4125,8 +4125,10 @@ describe('Szintlépés-engedély a DM Screenben', () => {
 describe('Telefonos karakterlap (karakter.html)', () => {
   const kq = s => K.document.querySelector(s), kqa = s => [...K.document.querySelectorAll(s)];
   const kclick = el => { if (typeof el === 'string') el = kq(el); ok(el, 'nincs ilyen elem'); el.dispatchEvent(new K.MouseEvent('click', {bubbles: true, cancelable: true})); };
-  const kset = (el, v, evt = 'change') => { if (typeof el === 'string') el = kq(el); ok(el, 'nincs ilyen mező'); if (el.type === 'checkbox') el.checked = v; else el.value = v; el.dispatchEvent(new K.Event(evt, {bubbles: true})); };
+  const kset = (el, v, evt = 'change') => { const _s = el; if (typeof el === 'string') el = kq(el); ok(el, 'nincs ilyen mező' + (typeof _s === 'string' ? ': ' + _s : '')); if (el.type === 'checkbox') el.checked = v; else el.value = v; el.dispatchEvent(new K.Event(evt, {bubbles: true})); };
   const ktext = () => kq('main').textContent;
+  // a választó pipája (a feat, az opt és a faji / feat-varázslat is pipás lista, nem legördülő)
+  const kcb = (key, v) => { const el = kqa('input[type=checkbox][data-ch]').find(e => e.dataset.ch === key && e.value === v); ok(el, `nincs ilyen pipa: ${key} = ${v}`); return el; };
   let klog;
   const ORIGK = {};
   const ktest = (name, fn, opts) => test(name, async () => {
@@ -4264,10 +4266,9 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kset('#luHpIn', 4, 'input'); ok(!kq('[data-act="luNext"]').disabled);
     has(ktext(), '+4 (kézi, d6)');
     luNext(); eq(luStep(), 'Választások');
-    const mm = kqa('select[data-ch="Sorcerer:opt:Metamagic"]');
-    eq(mm.length, 2);
-    kset(mm[0], 'Quickened Spell|PHB');
-    kset(kqa('select[data-ch="Sorcerer:opt:Metamagic"]')[1], 'Twinned Spell|PHB');
+    ok(kcb('Sorcerer:opt:Metamagic', 'Quickened Spell|PHB'), 'pipás lista');
+    kset(kcb('Sorcerer:opt:Metamagic', 'Quickened Spell|PHB'), true);
+    kset(kcb('Sorcerer:opt:Metamagic', 'Twinned Spell|PHB'), true);
     luNext(); eq(luStep(), 'Varázslatok');
     has(ktext(), 'Egyet lecserélhetsz');
     const C = (k, v) => kqa('input[type=checkbox]').find(e => e.dataset.ch === k && e.value === v);
@@ -4283,6 +4284,25 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     ok(!kq('[data-act="luNext"]').disabled);
     eq([...K.eval('lu').build.spells.Sorcerer.known].sort(), ['Grease|PHB', 'Sleep|PHB', 'Thunderwave|PHB', 'Web|PHB']);
     eq(K.eval('sheets.get("p1")').build.spells.Sorcerer.known.length, 3, 'a lap még a régi');
+  });
+  ktest('pipás lista: a zárolt (szintlépés előtti) választás sem a listából, sem a leírás ablakából nem cserélhető; a szabálykönyvben nem szereplő régi érték „saját” jelöléssel megmarad', () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    const MM = 'Sorcerer:opt:Metamagic', pop = () => kq('#infoPop');
+    openSheet({auto: true, build: {base: {cha: 16}, levels: lv('Sorcerer', 3), sub: {Sorcerer: 'Draconic|PHB'}, spells: {}, ch: {[MM]: ['Quickened Spell|PHB', 'Régi Metamagic|HB']}}, classes: [{name: 'Sorcerer', level: 3, hitDie: 6}]});
+    kclick('[data-tab="adat"]');
+    // zárolva (ahogy a szintlépés-varázsló rajzolja): a választott és a többi is tiltott, az ablakban nincs gomb
+    K.eval(`{ const cr = calcOf(sheets.get('p1')), c = cr.choices.find(x => x.key === '${MM}'); $('main').innerHTML = choiceBox(c, cr, {locked: ['Quickened Spell|PHB'], csere: false}); }`);
+    ok(kcb(MM, 'Quickened Spell|PHB').checked && kcb(MM, 'Quickened Spell|PHB').disabled, 'zárolt');
+    ok(kcb(MM, 'Twinned Spell|PHB').disabled, 'a hely betelt, a többi tiltott');
+    kclick(kqa('[data-act="leiras"]').find(e => e.dataset.chk === MM && e.dataset.ref === 'Quickened Spell|PHB'));
+    has(pop().textContent, 'nem cserélhető'); ok(!pop().querySelector('[data-act="leirasValaszt"]'), 'nincs választó gomb');
+    kclick(pop().querySelector('[data-act="infoClose"]'));
+    // a „saját” régi érték bepipálva látszik, és egy másik pipa levétele után is megmarad
+    K.render(true);
+    ok(kcb(MM, 'Régi Metamagic|HB').checked, 'a saját érték bepipálva');
+    has(kcb(MM, 'Régi Metamagic|HB').closest('label').textContent, 'saját');
+    kset(kcb(MM, 'Quickened Spell|PHB'), false);
+    eq(lastUpdate().build.ch[MM], ['Régi Metamagic|HB'], 'a saját érték megmaradt');
   });
   ktest('szintlépés: a piszkozat a telefonon, és ha közben megváltozik a felépítés vagy elveszik az engedélyt, nem írja felül; 320 px; gonosz adat', () => {
     const rb = rbVarazs();
@@ -4729,11 +4749,11 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     K.KApp.setRulebook({version: 'v', rb});
     const b = extra => ({base: {dex: 14}, levels: lv('Rogue', 1), race: 'Elf|PHB', subrace: 'High|PHB', spells: {}, ...extra});
     openSheet({auto: true, build: b(), classes: [{name: 'Rogue', level: 1, hitDie: 8}], ov: {'skill:stealth': 1}});
-    const lap = () => K.eval('sheets.get("p1")'), sel = () => kq('select[data-ch="subrace:spell"]');
+    const lap = () => K.eval('sheets.get("p1")'), sel = () => kqa('input[type=checkbox]').find(e => e.dataset.ch === 'subrace:spell' && e.value === 'Fire Bolt|PHB');
     kclick('[data-tab="adat"]');
     ok(sel(), 'van választó');
     ok(!sel().disabled, 'nem szürke');
-    kset(sel(), 'Fire Bolt|PHB');
+    kset(sel(), true);
     eq(lap().build.ch['subrace:spell'], ['Fire Bolt|PHB']);
     ok(lap().spells.some(x => x.name === 'Fire Bolt'), 'a lapon');
     const box = kqa('input[type=checkbox]').find(e => e.dataset.ch === 'Rogue:1:skills' && e.value === 'stealth');
@@ -5488,6 +5508,61 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     K.KApp.setRulebook({version: 'v2', rb: rb3()});
     eq(klog.length, m, 'azonos eredménynél nem ír');
   });
+  ktest('leírás választás előtt: a feat, a Fighting Style és a varázslat neve a leírást nyitja, onnan választható; egy helynél a másik pipa cserél; a keresőből is; gonosz szöveg nem fut', () => {
+    K.__xss = 0;
+    const rb = rb3(), pop = () => kq('#infoPop'), nev = (k, v) => kqa('[data-act="leiras"]').find(e => e.dataset.chk === k && e.dataset.ref === v);
+    rb.feats.push({n: 'Grappler', s: 'PHB', pre: 'STR 13', tx: 'Fogás ' + XSS}, {n: XSS, s: 'PHB', pre: XQ, tx: XQ});
+    rb.optfeatures[1].tx = 'Távolsági +2 ' + XSS;
+    rb.spells.push({n: 'Fire Bolt', s: 'PHB', l: 0, sc: 'evocation', t: '1 action', r: '120 feet', c: 'V, S', d: 'Instantaneous', cl: ['Wizard'], tx: 'Tűzcsóva ' + XSS});
+    K.KApp.setRulebook({version: 'v1', rb});
+    openSheet({auto: true, build: {race: 'Human|PHB', subrace: 'Variant|PHB', base: {str: 15, dex: 14, con: 13}, levels: lv('Fighter', 4)}, inventory: [], attacks: [], resources: [], features: []});
+    kclick('[data-tab="adat"]');
+    ok(!kq('select[data-ch="subrace:feat"]') && kcb('subrace:feat', 'Alert|PHB'), 'a feat pipás lista, nem legördülő');
+    has(kq('#ch-subrace_feat').textContent, 'A névre koppintva');
+    // a névre koppintás nem pipál, csak a leírást nyitja
+    const m = klog.length;
+    kclick(nev('subrace:feat', 'Alert|PHB'));
+    eq(klog.length, m, 'nem írt'); ok(!kcb('subrace:feat', 'Alert|PHB').checked, 'nem pipált');
+    ok(!pop().hidden); has(pop().textContent, 'Éber.'); has(pop().textContent, '＋ Kiválasztom');
+    kclick(pop().querySelector('[data-act="leirasValaszt"]'));
+    ok(pop().hidden, 'bezárult'); eq(lastUpdate().build.ch['subrace:feat'], ['Alert|PHB']);
+    kclick(nev('subrace:feat', 'Alert|PHB')); has(pop().textContent, 'Leveszem'); kclick(pop().querySelector('[data-act="infoClose"]')); ok(pop().hidden);
+    // a feltétel és a gonosz szöveg; egy helynél a másik pipa lecseréli az előzőt
+    kclick(nev('subrace:feat', 'Grappler|PHB')); has(pop().textContent, 'Feltétel: STR 13'); has(pop().textContent, 'Fogás <img');
+    kclick(pop().querySelector('[data-act="leirasValaszt"]')); eq(lastUpdate().build.ch['subrace:feat'], ['Grappler|PHB'], 'csere');
+    kclick(nev('subrace:feat', XSS + '|PHB')); has(pop().textContent, XQ);
+    eq(K.document.querySelectorAll('[onmouseover], img[src="x"]').length, 0, 'a felugró ablakban sincs befecskendezés');
+    kclick(pop().querySelector('[data-act="infoClose"]'));
+    // az ASI-hely feat módja is lista; a máshol felvett feat szürke, a leírásban „Most nem választható”
+    kset(kq('[data-ch="Fighter:4:asi"][data-asi="mode"]'), 'feat');
+    ok(kcb('Fighter:4:asi', 'Grappler|PHB').disabled, 'máshol felvett');
+    kclick(nev('Fighter:4:asi', 'Grappler|PHB')); has(pop().textContent, 'Most nem választható'); ok(!pop().querySelector('[data-act="leirasValaszt"]'));
+    kclick(nev('Fighter:4:asi', 'Alert|PHB')); kclick(pop().querySelector('[data-act="leirasValaszt"]'));
+    eq(lastUpdate().build.ch['Fighter:4:asi'], {feat: 'Alert|PHB'});
+    // Fighting Style
+    kclick(nev('Fighter:opt:Fighting Style', 'Archery|PHB')); has(pop().textContent, 'Távolsági +2'); kclick(pop().querySelector('[data-act="leirasValaszt"]'));
+    eq(lastUpdate().build.ch['Fighter:opt:Fighting Style'], ['Archery|PHB']);
+    // varázslat a Felépítés választójában (Wizard cantrip): szint, iskola, idő, távolság, komponens, időtartam, szöveg
+    openSheet({auto: true, build: {race: 'Human|PHB', subrace: 'Human (alap)|PHB', base: {int: 15}, levels: lv('Wizard', 1)}, inventory: [], attacks: [], resources: [], features: [], spells: []});
+    kclick('[data-tab="adat"]');
+    kclick(nev('Wizard:cantrips', 'Fire Bolt|PHB'));
+    has(pop().textContent, 'Cantrip · evocation · 1 action · 120 feet · V, S · Instantaneous'); has(pop().textContent, 'Tűzcsóva');
+    kclick(pop().querySelector('[data-act="leirasValaszt"]'));
+    ok(lastUpdate().build.spells.Wizard.cantrips.includes('Fire Bolt|PHB'), 'kiválasztva');
+    // a Varázslat fül keresője: a névre koppintva leírás, onnan „Hozzáadom a laphoz”
+    openSheet({classes: [{name: 'Wizard', level: 1}], spells: []});
+    kclick('[data-tab="var"]'); kset('#spellQ', 'fire', 'input');
+    kclick(kq('#spellRes [data-act="leiras"]')); has(pop().textContent, 'Tűzcsóva'); has(pop().textContent, 'Hozzáadom a laphoz');
+    kclick(pop().querySelector('[data-act="leirasValaszt"]')); eq(lastUpdate().spells.map(x => x.name), ['Fire Bolt']);
+    // a feat keresője
+    kclick('[data-tab="kep"]'); kset('#featQ', 'grap', 'input');
+    kclick(kq('#featRes [data-act="leiras"]')); has(pop().textContent, 'Feltétel: STR 13');
+    kclick(pop().querySelector('[data-act="leirasValaszt"]')); ok(lastUpdate().features.some(f => f.name === 'Grappler'), 'felvéve');
+    kset('#featQ', 'grap', 'input'); kclick(kq('#featRes [data-act="leiras"]')); ok(!pop().querySelector('[data-act="leirasValaszt"]'), 'ami megvan, nem vehető fel újra');
+    kclick(pop().querySelector('[data-act="infoClose"]'));
+    eq(K.document.querySelectorAll('[onmouseover], img[src="x"]').length, 0); ok(!K.__xss, 'lefutott a kód');
+    K.eval('for (const k in asiMode) delete asiMode[k]');   // az ASI-hely feat módja a következő tesztre ne maradjon meg
+  });
   ktest('Felépítés-fül: választók (képesség, feat, Fighting Style, ASI, alosztály), Teendők, ✎ felülírás és visszaállítás, szint-HP, név', () => {
     K.KApp.setRulebook({version: 'v1', rb: rb3()});
     openSheet({auto: true, build: {race: 'Human|PHB', subrace: 'Variant|PHB', base: {str: 15, dex: 14, con: 13}, levels: lv('Fighter', 4)}, inventory: [], attacks: [], resources: [], features: []});
@@ -5498,8 +5573,8 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kset(abBox('str'), true); eq(lastUpdate().build.ch['subrace:ability'], ['str']);
     kset(abBox('con'), true);
     ok(abBox('dex').disabled && !abBox('str').disabled, 'két választás után a többi tiltva');
-    kset(kq('select[data-ch="subrace:feat"]'), 'Alert|PHB'); eq(lastUpdate().build.ch['subrace:feat'], ['Alert|PHB']);
-    kset(kq('select[data-ch="Fighter:opt:Fighting Style"]'), 'Archery|PHB');
+    kset(kcb('subrace:feat', 'Alert|PHB'), true); eq(lastUpdate().build.ch['subrace:feat'], ['Alert|PHB']);
+    kset(kcb('Fighter:opt:Fighting Style', 'Archery|PHB'), true);
     kset(kq('[data-ch="Fighter:4:asi"][data-asi="a0"]'), 'dex'); has(ktext(), 'Még 1 pont');
     kset(kq('[data-ch="Fighter:4:asi"][data-asi="a1"]'), 'dex'); eq(lastUpdate().build.ch['Fighter:4:asi'], {dex: 2});
     kset(kq('select[data-ch="Fighter:sub"]'), 'Champion|PHB'); eq(lastUpdate().build.sub, {Fighter: 'Champion|PHB'});
@@ -5508,7 +5583,7 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     ok(!kq('.todobar'), 'nincs több teendő');
     // ASI → feat módra váltás
     kset(kq('[data-ch="Fighter:4:asi"][data-asi="mode"]'), 'feat'); ok(kq('[data-ch="Fighter:4:asi"][data-asi="feat"]'), 'feat-lista');
-    ok([...kq('[data-ch="Fighter:4:asi"][data-asi="feat"]').options].find(o => o.value === 'Alert|PHB').disabled, 'a már felvett feat nem választható újra');
+    ok(kcb('Fighter:4:asi', 'Alert|PHB').disabled, 'a már felvett feat nem választható újra');
     // ✎ felülírás és visszaállítás
     kset(kq('[data-ov="ac"]'), '20'); eq([lastUpdate().ov, lastUpdate().ac], [{ac: 20}, 20]); has(ktext(), 'számolt: 12', 'ASI helyett feat: DEX 14');
     kclick('[data-act="ovReset"][data-key="ac"]'); eq([lastUpdate().ov, lastUpdate().ac], [{}, 12]);

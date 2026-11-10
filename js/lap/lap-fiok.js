@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-fiok, a karakter.html része): felugró leírás, Fiók menü, teendők, Felépítés fül, Alapadatok űrlap
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-fiok', N) és a karakter.html-ben a lap-fiok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-fiok', 1);
+modul('lap-fiok', 2);
 
 // ---------- felugró leírás (i gomb): a teendők és a szabad szöveges mezők magyarázata; a szövegek a sheet.js-ben (Sheet.todoInfo, freeInfo, MEZO_INFO) ----------
 const infoReg = new Map();
@@ -42,6 +42,37 @@ function infoMutat(info) {
     ${info.sablon ? `<p><b>Formátum:</b> ${esc(info.sablon)}</p>` : ''}${info.pelda ? `<p><b>Példa:</b> <code>${esc(info.pelda)}</code></p>` : ''}
     <div class="row" style="justify-content:flex-end"><button class="primary" data-act="infoClose">Rendben</button></div></div>`;
   p.hidden = false;
+}
+// ---------- felugró leírás választás előtt: varázslat, feat, választható képesség (Invocation, Fighting Style…) a szabálykönyvből ----------
+// a név gombja (nevGomb, lap-felepites.js): data-lr (sp | feat | opt), data-ref; a választóban data-chk (a hely kulcsa), a keresőben data-add (spellAdd | featAdd)
+const LEIRAS_LISTA = {sp: 'spells', feat: 'feats', opt: 'optfeatures'}, LEIRAS_ADD = new Set(['spellAdd', 'featAdd']);
+let leirasCel = null;   // {chk, ref, asi} vagy {add, ref}: mit tesz a „Kiválasztom” / „Hozzáadom” gomb
+const chDoboz = (key, ref) => [...document.querySelectorAll('input[type=checkbox][data-ch]')].find(e => e.dataset.ch === key && e.value === ref);
+function leirasMutat(el) {
+  const f = el.dataset.lr, ref = el.dataset.ref || '', d = el.dataset;
+  if (!Object.hasOwn(LEIRAS_LISTA, f)) return;
+  const x = H.byRef(RB()?.[LEIRAS_LISTA[f]] || [], ref), cb = d.chk != null ? chDoboz(d.chk, ref) : null;
+  const sor = !x ? '' : f === 'sp' ? [H.spellLine(x), (x.cl || []).join(', '), x.s].filter(Boolean).join(' · ') : [x.pre ? 'Feltétel: ' + x.pre : '', x.s].filter(Boolean).join(' · ');
+  const note = d.note && d.note !== x?.pre ? d.note : '';
+  leirasCel = cb && !cb.disabled ? {chk: d.chk, ref, on: !cb.checked} : LEIRAS_ADD.has(d.add) && x ? {add: d.add, ref} : null;
+  const gomb = !leirasCel ? '' : `<button class="primary" data-act="leirasValaszt">${cb?.checked ? '✕ Leveszem' : cb ? '＋ Kiválasztom' : '＋ Hozzáadom a laphoz'}</button>`;
+  const p = $('#infoPop');
+  p.innerHTML = `<div class="ibox" role="dialog" aria-modal="true" aria-label="${esc(x?.n || H.refName(ref))}"><h3>${esc(x?.n || H.refName(ref))}</h3>
+    ${sor ? `<div class="hint">${esc(sor)}</div>` : ''}${note ? `<p class="${d.warn ? 'warn' : 'hint'}" style="margin:6px 0">${d.warn ? '⚠ ' : ''}${esc(note)}</p>` : ''}
+    ${x?.tx ? `<div class="tx">${esc(x.tx)}</div>` : '<p class="hint">Nincs leírás a szabálykönyvben.</p>'}
+    ${cb?.disabled ? `<p class="hint">Most nem választható${cb.checked ? ' (korábbi választás, nem cserélhető)' : ''}.</p>` : ''}
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button data-act="infoClose">Bezár</button>${gomb}</div></div>`;
+  p.hidden = false;
+}
+function leirasValaszt(s) {
+  const c = leirasCel; leirasCel = null;
+  $('#infoPop').hidden = true;
+  if (!c) return;
+  if (c.add) { LAP_AKCIOK[c.add]({dataset: {ref: c.ref}}, s); return; }
+  const cb = chDoboz(c.chk, c.ref);
+  if (!cb || cb.disabled || cb.checked === c.on) return;   // amit a gomb kiírt, azt teszi (közben jött frissítés után sem fordítva)
+  cb.checked = c.on;
+  cb.dispatchEvent(new Event('change', {bubbles: true}));
 }
 function todoList(s, cr) {
   const items = cr.todos.map(t => {

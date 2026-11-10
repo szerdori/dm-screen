@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-felepites, a karakter.html része): a szabálymotoros lap választásai (Felépítés)
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-felepites', N) és a karakter.html-ben a lap-felepites.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-felepites', 1);
+modul('lap-felepites', 2);
 
 // ---------- szabálymotoros lap: Felépítés (választások), Számolt értékek (ℹ bontás, ✎ felülírás), Teendők ----------
 let calcMemo = {sig: null, r: null};
@@ -23,14 +23,36 @@ function spellPicker(c, o, lock, cr) {
   // miért szürke vagy miért hiányzik egy varázslat: a helyek betelve; az alosztály (pl. Warlock patrón) még nincs kiválasztva, pedig a listát bővítheti
   const nincsAl = cr?.choices.some(x => x.key === c.ctx.cls + ':sub' && !x.done) && H.subclassesOf(c.ctx.cls, RB()).some(x => JSON.stringify(x.fx || []).includes('"expanded"'));
   const miert = `${full ? '<p class="hint" style="margin:4px 0">Minden hely foglalt: másikat csak akkor választhatsz, ha előbb leveszel egyet. Ezen felül saját varázslatot a Varázslat fülön vehetsz fel.</p>' : ''}${nincsAl ? '<p class="warn" style="margin:4px 0">Előbb válaszd ki az alosztályt: a kibővített varázslatlistája (pl. Warlock patrón) csak utána látszik.</p>' : ''}`;
-  const item = x => `<label ${spellHidden(c.key, x) ? 'hidden' : ''} data-chl="${esc(x.l.toLowerCase())}"><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${zar(x.v) || (!sel.has(x.v) && (full || x.dis)) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`;
+  const item = x => chItem(c, x, 'sp', sel.has(x.v), zar(x.v) || (!sel.has(x.v) && (full || x.dis)));
   const rest = o.opts.filter(x => !sel.has(x.v)), szintek = [...new Set(rest.map(x => x.lvl))];
   const off = c.ctx.off ? `<p class="hint" style="margin:4px 0">Ebből ${esc(c.ctx.off)} lehet a rendes listán kívül („kivétel”).</p>` : '';
-  return `${miert}${off}${sel.size ? `<div class="chopts">${o.opts.filter(x => sel.has(x.v)).map(item).join('')}</div>` : ''}
+  return `${miert}${off}${o.opts.length ? LEIRAS_SUGO : ''}${sel.size ? `<div class="chopts">${o.opts.filter(x => sel.has(x.v)).map(item).join('')}</div>` : ''}
     <input data-chq="${K}" value="${esc(chSearch[c.key] || '')}" placeholder="Keresés név szerint (angolul)…" autocomplete="off">
     ${szintek.map(l => det('chl:' + c.key + ':' + l, `<b>${l ? esc(H.ORD[l]) + ' level' : 'Cantrip'}</b> <span class="hint">(${rest.filter(x => x.lvl === l).length})</span>`,
       `<div class="chopts" style="margin-top:6px">${rest.filter(x => x.lvl === l).map(item).join('')}</div>`)).join('')}
     ${o.opts.length ? '' : '<p class="hint">Nincs választható varázslat.</p>'}`;
+}
+// a választható tétel neve gomb: koppintásra a szabálykönyvi leírást nyitja (leirasMutat, lap-fiok.js), onnan is kiválasztható; a pipa közvetlenül választ
+const LEIRAS_SUGO = '<p class="hint" style="margin:4px 0">A névre koppintva elolvashatod a leírását.</p>';
+const nevGomb = (fajta, ref, l, extra = '') => `<button type="button" class="lnk" data-act="leiras" data-lr="${fajta}" data-ref="${esc(ref)}"${extra}>${esc(l)}</button>`;
+const chItem = (c, x, fajta, on, dis, attr = '') => `<label ${spellHidden(c.key, x) ? 'hidden' : ''} data-chl="${esc(x.l.toLowerCase())}"><input type="checkbox" data-ch="${esc(c.key)}"${attr} value="${esc(x.v)}" ${on ? 'checked' : ''} ${dis ? 'disabled' : ''} aria-label="${esc(x.l)}"> `
+  + `${nevGomb(fajta, x.v, x.l, ` data-chk="${esc(c.key)}"${attr}${x.note ? ` data-note="${esc(x.note)}"` : ''}${x.warn ? ' data-warn="1"' : ''}`)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`;
+// leírással választható lista a legördülő helyett: feat (az ASI-hely feat módja is), faji / feat-varázslat, Invocation, Fighting Style, Maneuver, Metamagic…
+// egy helynél (n = 1) a másik pipa lecseréli a választást (kivéve a zárolt, szintlépés előtti választást); több helynél betelve a többi szürke
+const LISTAS = {feat: 'feat', asi: 'feat', opt: 'opt', spell: 'sp'};
+function listPicker(c, o, lock, asiFeat = null) {
+  const zar = lockedFn(c, lock), asi = asiFeat !== null, attr = asi ? ' data-asi="feat"' : '';
+  const vals = asi ? (asiFeat ? [asiFeat] : []) : Array.isArray(c.value) ? c.value.map(String) : c.value ? [String(c.value)] : [];
+  const sel = new Set(vals), n = asi ? 1 : c.n, full = sel.size >= n && (n > 1 || vals.some(zar));
+  const sajat = vals.filter(v => !o.opts.some(x => x.v === v)).map(v => ({v, l: H.refName(v), note: 'saját'}));
+  const rest = o.opts.filter(x => !sel.has(x.v));
+  if (rest.length <= 12) delete chSearch[c.key];   // kereső nélkül egy korábbi keresés se rejtsen el semmit
+  const item = x => chItem(c, x, LISTAS[c.kind], sel.has(x.v), zar(x.v) || (!sel.has(x.v) && (full || x.dis)), attr);
+  const lista = `<div class="chopts" style="margin-top:6px">${rest.map(item).join('')}</div>`;
+  return `${o.opts.length ? LEIRAS_SUGO : ''}${sel.size ? `<div class="chopts">${[...o.opts.filter(x => sel.has(x.v)), ...sajat].map(item).join('')}</div>` : ''}
+    ${rest.length > 12 ? `<input data-chq="${esc(c.key)}" value="${esc(chSearch[c.key] || '')}" placeholder="Keresés név szerint (angolul)…" autocomplete="off">
+    ${det('chl:' + c.key, `<b>${sel.size && n === 1 ? 'Másik választása' : 'Választható'}</b> <span class="hint">(${rest.length})</span>`, lista)}` : rest.length ? lista : ''}
+    ${o.opts.length ? '' : '<p class="hint">Nincs választható.</p>'}`;
 }
 // szintlépéskor a korábbi választás zárolva van (lock: Sheet.levelUpPlan tétele), kivéve a szintenkénti 1 cserét
 const lockedFn = (c, lock) => {
@@ -48,10 +70,11 @@ function choiceBox(c, cr, lock = null) {
     const mode = asiMode[c.key] || (feat ? 'feat' : 'asi');
     const picks = H.ABIL.flatMap(a => Array(Math.max(0, Math.min(2, Math.floor(num(v[a]))))).fill(a));
     body = `<select data-ch="${K}" data-asi="mode"><option value="asi" ${mode === 'asi' ? 'selected' : ''}>Képességnövelés (+2 egyre vagy +1 kettőre)</option><option value="feat" ${mode === 'feat' ? 'selected' : ''}>Feat</option></select>`
-      + (mode === 'feat' ? `<select data-ch="${K}" data-asi="feat">${optList(o.opts, feat)}</select>`
+      + (mode === 'feat' ? listPicker(c, o, lock, feat)
         : [0, 1].map(j => `<select data-ch="${K}" data-asi="a${j}"><option value="">(+1: válassz képességet)</option>${H.ABIL.map(a => `<option value="${a}" ${picks[j] === a ? 'selected' : ''}>+1 ${a.toUpperCase()} (${esc(cr.abilities[a].v)})</option>`).join('')}</select>`).join('')
           + (picks.length === 1 ? '<p class="hint" style="margin:4px 0 0">Még 1 pont kiosztható.</p>' : ''));
   } else if (H.SPELL_KINDS.includes(c.kind)) body = spellPicker(c, o, lock, cr);
+  else if (Object.hasOwn(LISTAS, c.kind) && !o.free) body = listPicker(c, o, lock);
   else if (o.multi) {
     const sel = new Set(c.ok.map(String)), full = sel.size >= c.n;
     body = `<div class="chopts">${o.opts.map(x => `<label><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${zar(x.v) || (!sel.has(x.v) && (full || x.dis)) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`).join('')}</div>`
@@ -71,7 +94,7 @@ function choicePicked(t) {
   let v;
   if (c.kind === 'asi') {
     if (t.dataset.asi === 'mode') { asiMode[key] = t.value; v = {}; }
-    else if (t.dataset.asi === 'feat') v = t.value ? {feat: t.value} : {};
+    else if (t.dataset.asi === 'feat') { asiMode[key] = 'feat'; v = t.checked ? {feat: t.value} : {}; }   // a feat levétele után Feat módban marad
     else { v = {}; for (const e of els.filter(e => /^a\d$/.test(e.dataset.asi) && e.value)) v[e.value] = (v[e.value] || 0) + 1; }
   } else if (H.SPELL_KINDS.includes(c.kind)) {
     // a pipa levétele a varázslat jegyzetét is viszi: telefonon egy véletlen koppintástól ne vesszen el
@@ -79,6 +102,7 @@ function choicePicked(t) {
     if (noted && !confirm(`Leveszed: ${noted.name}? A jegyzete is törlődik.`)) { t.checked = true; return; }
     v = [...H.spellKept(c, H.choiceOptions(c, null, RB()), RB()), ...els.filter(e => e.checked).map(e => e.value)];
   } else if (H.choiceOptions(c, null, RB()).multi) v = els.filter(e => e.checked).map(e => e.value);
+  else if (Object.hasOwn(LISTAS, c.kind) && t.type === 'checkbox') v = c.n === 1 && t.checked ? [t.value] : els.filter(e => e.checked).map(e => e.value);
   else if (c.kind === 'subclass' || c.kind === 'subrace') v = els[0].value;
   else v = els.map(e => e.value.trim()).filter(Boolean);
   if (lu) { lu.build = H.setChoice(lu.build, c, v); luStore(); render(true); return; }
