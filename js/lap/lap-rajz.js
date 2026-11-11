@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-rajz, a karakter.html része): a szabálykönyv segédei és a lap rajzolása (fülek)
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-rajz', N) és a karakter.html-ben a lap-rajz.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-rajz', 2);
+modul('lap-rajz', 3);
 
 // ---------- szabálykönyv ----------
 const RB = () => rbInfo?.rb || null;
@@ -73,7 +73,9 @@ function tabHarc(s, ed) {
   const fog = ed && s.attacks.length > 1;
   const atk = s.attacks.map((a, i) => `<div class="li">${fog ? `<span class="drag" data-drag="atk" data-i="${i}" title="Húzd a sorrend megváltoztatásához" aria-label="${esc(a.name)} áthelyezése">⠿</span>` : ''}<span class="nm"><b>${esc(a.name)}</b><small>${esc([a.dmg.replace(diceOf(a.dmg), '').trim(), a.note].filter(Boolean).join(' · '))}</small></span>
     ${a.hit.trim() ? rollBtn(parseInt(a.hit.replace('−', '-')) || 0, a.name + ' – támadás', undefined, 'atk') : ''}${diceOf(a.dmg) ? dmgBtn(diceOf(a.dmg), a.name + ' – sebzés', H.tavolsagiFegyver(a.name, a.note) ? 'wdmg' : 'wdmg:melee', tamadasFx(s, a)) : ''}</div>`).join('');
-  const sDc = H.spellDc(s);
+  // varázslás osztályonként (multiclass: mindegyik a saját képességével), és a támadások száma akciónként (Extra Attack)
+  const casts = H.spellCasts(s), apa = H.attacksPerAction(s);
+  const varazs = casts.map(c => `<div class="li"><span class="nm"><b>Varázslat${c.cls && casts.length > 1 ? ` (${esc(c.cls)})` : ''}</b><small>spell save DC ${esc(c.dc)}</small></span>${rollBtn(c.atk, 'Spell attack' + (c.cls && casts.length > 1 ? ` (${c.cls})` : ''), undefined, 'atk')}</div>`).join('');
   const res = s.resources.map((r, i) => `<div class="li"><span class="nm"><b>${esc(r.name)}</b><small>${esc(r.max - r.used)} / ${esc(r.max)} · ${esc(RESET_HU[r.reset])}</small></span>
     <span class="pips">${pipRow(r.max, r.used, `data-act="res" data-i="${i}"`, dis, r.name)}</span></div>`).join('');
   // állapot / aktív hatás: a gépi hatás leírása; a DM kikapcsolhatja (⚙), ilyenkor csak emlékeztető
@@ -85,8 +87,8 @@ function tabHarc(s, ed) {
   }).join('');
   const effNames = Object.keys(H.EFFECTS).filter(n => !H.CONDITIONS.includes(n) && !s.conditions.includes(n));
   return `
-    <h3>Támadások ${iGomb(H.MEZO_INFO.attack)}</h3><div class="list">${atk || `<p class="hint">Nincs felvett támadás${ed ? ' (Alapadatok fül)' : ''}.</p>`}
-      ${sDc ? `<div class="li"><span class="nm"><b>Varázslat</b><small>spell save DC ${esc(sDc)}</small></span>${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</div>` : ''}</div>
+    <h3>Támadások ${iGomb(H.MEZO_INFO.attack)}</h3>${apa > 1 ? `<p class="hint" id="apa">⚔ Támadás akciónként: <b>${esc(apa)}</b> (Extra Attack)</p>` : ''}<div class="list">${atk || `<p class="hint">Nincs felvett támadás${ed ? ' (Alapadatok fül)' : ''}.</p>`}
+      ${varazs}</div>
     ${res ? `<h3>Erőforrások</h3><div class="list">${res}</div>` : ''}
     <h3>Állapotok</h3><div class="list">${conds || '<p class="hint">Nincs.</p>'}</div>
     ${ed ? `<div class="row" style="margin-top:8px"><select id="condAdd"><option value="">＋ Állapot / hatás hozzáadása…</option>
@@ -148,14 +150,22 @@ function tabVar(s, ed) {
   const pact = sc.pact.max ? `<div class="li"><span class="nm"><b>Pact Magic (${H.ORD[sc.pact.level] || '?'} level)</b><small>${sc.pact.max - sc.pact.used} / ${sc.pact.max} szabad · short restnél visszatöltődik</small></span>
     <span class="pips">${pipRow(sc.pact.max, sc.pact.used, 'data-act="pact"', dis, 'Pact slot')}</span></div>` : '';
   // „csak a bekészítettek”: a cantripek mindig látszanak (nem kell bekészíteni őket)
-  const csak = csakBekeszitett(), by = {};
-  s.spells.forEach((sp, i) => { if (!csak || !sp.level || sp.prepared || sp.always) (by[sp.level] = by[sp.level] || []).push(spellRow(sp, i, ed, s)); });
+  const csak = csakBekeszitett(), latszik = sp => !csak || !sp.level || sp.prepared || sp.always;
+  // szintenként; multiclassnál előbb osztályonként (TERV-multiclass.md: mindegyik a saját DC-jével), a nem besorolt varázslatok az „Egyéb” alatt
+  const szintek = idx => { const by = {}; idx.forEach(i => { const sp = s.spells[i]; if (latszik(sp)) (by[sp.level] = by[sp.level] || []).push(spellRow(sp, i, ed, s)); });
+    return Object.keys(by).sort((a, b) => a - b).map(l => `<h3 class="sub2">${l == 0 ? 'Cantripek' : H.ORD[l] + ' level'}</h3><div class="list">${by[l].join('')}</div>`).join(''); };
+  const casts = H.spellCasts(s), multi = casts.length > 1, minden = s.spells.map((_, i) => i);
+  const bek = cls => s.spells.filter(sp => sp.level && sp.prepared && !sp.always && sp.cls === cls).length;
+  const fej = multi ? casts.map(c => `<p class="mcfej"><b>${esc(c.cls)}</b>${c.ab ? ` (${esc(H.ABIL_FULL[c.ab] || c.ab)})` : ''}: spell save DC <b>${esc(c.dc)}</b> · spell attack ${rollBtn(c.atk, `Spell attack (${c.cls})`, undefined, 'atk')}${c.prep ? ` · bekészítve ${esc(bek(c.cls))} / ${esc(c.prep)}` : ''}</p>`).join('')
+    : ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>';
+  const lista = multi ? [...casts.map(c => [c.cls, minden.filter(i => s.spells[i].cls === c.cls)]), ['Egyéb', minden.filter(i => !casts.some(c => c.cls === s.spells[i].cls))]]
+    .map(([n, idx]) => { const t = szintek(idx); return t ? `<h3 class="mcosz">${esc(n)}</h3>${t}` : ''; }).join('') : szintek(minden);
   const prepared = s.spells.filter(sp => sp.level && (sp.prepared || sp.always)).length, rejtett = s.spells.filter(sp => sp.level && !sp.prepared && !sp.always).length;
-  return `${ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>'}
+  return `${fej}
     ${slots || pact ? `<h3>Spell slotok</h3><div class="list">${slots}${pact}</div>` : ''}
     <h3>Varázslatok <span class="hint">(${prepared} bekészítve)</span></h3>
     ${s.spells.some(sp => sp.level) ? `<label class="hint"><input type="checkbox" data-act="csakBek" ${csak ? 'checked' : ''}> csak a bekészítettek${csak && rejtett ? ` (${rejtett} elrejtve)` : ''}</label>` : ''}
-    ${Object.keys(by).sort((a, b) => a - b).map(l => `<h3 class="sub2">${l == 0 ? 'Cantripek' : H.ORD[l] + ' level'}</h3><div class="list">${by[l].join('')}</div>`).join('') || `<p class="hint">${s.spells.length ? 'Nincs bekészített varázslat.' : 'Még nincs varázslat a lapon.'}</p>`}
+    ${lista || `<p class="hint">${s.spells.length ? 'Nincs bekészített varázslat.' : 'Még nincs varázslat a lapon.'}</p>`}
     ${ed ? `<h3>＋ Varázslat hozzáadása</h3>${rbNote()}
       ${RB() ? `<div class="row"><input id="spellQ" class="grow" placeholder="Keresés név szerint (angolul)…" autocomplete="off"><label class="hint"><input type="checkbox" id="spellMine" ${searchQ.all ? '' : 'checked'}> csak az osztályaim listája</label></div><div class="list" id="spellRes" style="margin-top:6px"></div>` : ''}
       <div class="row" style="margin-top:8px"><input id="spellNew" class="grow" placeholder="Saját / homebrew varázslat neve">${iGomb(H.MEZO_INFO.spell)}<select id="spellNewL">${H.ORD.map((o, l) => `<option value="${l}">${l ? o + ' level' : 'Cantrip'}</option>`).join('')}</select><button data-act="spellCustom">＋</button></div>` : ''}`;

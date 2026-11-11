@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 13);
+modul('lapszinkron', 14);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -35,10 +35,13 @@ function sheetToCreature(s, base) {
   });
   const traits = s.features.map(f => ({name: f.name, text: f.text.slice(0, 600)}));
   if (s.resources.length) traits.unshift({name: 'Erőforrások', text: s.resources.map(r => `${r.name}: ${r.max - r.used}/${r.max}`).join(', ')});
+  // támadás akciónként (Extra Attack, a lap cache-éből): a statblokk Multiattackja helyett egy jellemző
+  if (H.attacksPerAction(s) > 1) traits.unshift({name: 'Támadás akciónként', text: `${H.attacksPerAction(s)} (Extra Attack, az Attack action része)`});
   if (s.spells.length) {
-    const dc = H.spellDc(s), by = {};
+    // multiclassnál osztályonként (TERV-multiclass.md): „Wizard: spell save DC 14, +6 to hit; Cleric: …”
+    const casts = H.spellCasts(s), by = {};
     s.spells.forEach(sp => (by[sp.level] = by[sp.level] || []).push(sp.name + (sp.level && !sp.prepared && !sp.always ? ' (nincs bekészítve)' : '')));
-    traits.unshift({name: 'Varázslatok', text: [dc ? `spell save DC ${dc}, ${sgn(H.spellAtk(s))} to hit` : '',
+    traits.unshift({name: 'Varázslatok', text: [casts.map(c => `${casts.length > 1 ? c.cls + ': ' : ''}spell save DC ${c.dc}, ${sgn(c.atk)} to hit`).join('; '),
       ...Object.keys(by).sort((a, b) => a - b).map(l => `${l == 0 ? 'Cantrips' : ordinal(+l) + ' level'}: ${by[l].join(', ')}`)].filter(Boolean).join('\n')});
   }
   // az AC és a speed az aktív hatásokkal (Mage Armor, Haste, Grappled…) együtt; a hatások a lap állapotai között vannak
@@ -134,11 +137,30 @@ function onSheets(docs) {
     ids.add(d.id);
     const s = Sheet.norm(d);
     if (SHEETS[d.id] && stableJson(SHEETS[d.id]) === stableJson(s)) continue;
+    const regi = SHEETS[d.id];
     SHEETS[d.id] = s; applySheet(d.id); changed = true;
+    if (regi) mcFigyel(regi, s);
   }
   for (const id of Object.keys(SHEETS)) if (!ids.has(id) && !sheetOps.set.has(id)) { delete SHEETS[id]; delete shadow[id]; changed = true; }
   jatekosDobasok();  // előbb: a kérésre jött Initiative a harcba kerül, és a rajzolás már ezzel megy
   if (changed) { save(); Ertesito.lapokValtoztak(); }
+}
+// multiclass nem teljesült PHB-feltétellel (TERV-multiclass.md, a felhasználó döntése: csak figyelmeztet, a DM jelzést kap): ha a lapon új osztály jelenik meg,
+// a szintlépés előtti lap szerint ellenőrizzük. Egyszer szól: a következő változásnál a régi lapon már ott az osztály (a helyi másolat újratöltés után is).
+// A feltételhez a felhős szabálykönyv kell; nélküle (vagy belépés nélkül) nincs sor.
+function mcFigyel(regi, s) {
+  // készülő karakter (kezdő varázsló: az osztály még cserélhető) és osztálycsere (a régi osztály eltűnt) nem multiclass
+  if (s.deleted || s.newChar || regi.newChar || !regi.classes.some(c => c.name)) return;
+  if (!regi.classes.every(c => !c.name || s.classes.some(x => x.name === c.name))) return;
+  const ujak = s.classes.map(c => c.name).filter(n => n && !regi.classes.some(c => c.name === n));
+  if (!ujak.length) return;
+  return felhoSzabalyok().then(rb => {
+    if (!rb) return;
+    for (const n of ujak) {
+      const m = Sheet.mcCheck(regi, rb, n);
+      if (!m.ok) Ertesito.naplo(`⚠ <b>${esc(s.name)}</b>: ${esc(n)} multiclass – ${esc(m.hiany.join('; '))} (PHB 163. o.; a feltétel csak figyelmeztet)`, 'warn');
+    }
+  }).catch(e => console.error('multiclass-ellenőrzés:', e));
 }
 // a játékosok telefonon dobott dobásai (a lap `rolls` mezője) a DM naplójába, a karakter nevével:
 // az első figyelés után az összes lapról együtt a legutóbbi Sheet.ROLLS_MAX, utána csak az újak – a dobást a tartalma azonosítja, nem az időhatár

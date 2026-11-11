@@ -139,8 +139,10 @@ window.Sheet = (() => {
   function normCache(c) {
     const nums = (o, keys) => Object.fromEntries(keys.filter(k => isObj(o) && o[k] != null && o[k] !== '').map(k => [k, int(o[k], 0, -50, 99)]));
     const sp = isObj(c.spell) ? nums(c.spell, ['dc', 'atk']) : null;
+    // spells: varázslás osztályonként (multiclass: DC, attack, bekészíthető szám); atk: támadás akciónként (Extra Attack) – TERV-multiclass.md
+    const spells = arr(c.spells, 13).filter(isObj).map(x => ({cls: str(x.cls, 60).trim(), ab: ABIL.includes(x.ab) ? x.ab : '', ...nums(x, ['dc', 'atk', 'prep'])})).filter(x => x.cls && 'dc' in x && 'atk' in x);
     return {saves: nums(c.saves, ABIL), skills: nums(c.skills, Object.keys(SKILLS)), passive: nums(c.passive, ['perception', 'investigation', 'insight']),
-      spell: sp && 'dc' in sp && 'atk' in sp ? sp : null};
+      spell: sp && 'dc' in sp && 'atk' in sp ? sp : null, spells, atk: int(c.atk, 1, 1, 4)};
   }
   // egy dobás a lapon: mikor, mire, mennyi (a total szöveg is lehet, pl. „✗” automatikus kudarcnál), részletek, a d20 természetes értéke (0 = nem d20)
   const ROLLS_MAX = 15;
@@ -254,7 +256,9 @@ window.Sheet = (() => {
   function normHist(d) {
     d = isObj(d) ? d : {};
     return {at: isoTime(d.at), by: str(d.by, 200), reason: ['levelup', 'manual', 'restore'].includes(d.reason) ? d.reason : 'manual',
-      from: int(d.from, 0, 0, 20), to: int(d.to, 0, 0, 20), hp: ['avg', 'roll', 'manual'].includes(d.hp) ? d.hp : '', sheet: norm(d.sheet)};
+      from: int(d.from, 0, 0, 20), to: int(d.to, 0, 0, 20), hp: ['avg', 'roll', 'manual'].includes(d.hp) ? d.hp : '',
+      // multiclass, nem teljesült feltétellel (TERV-multiclass.md): melyik osztály, mi hiányzott
+      mc: isObj(d.mc) && str(d.mc.cls, 60).trim() ? {cls: str(d.mc.cls, 60).trim(), hiany: arr(d.mc.hiany, 10).map(x => str(x, 200))} : null, sheet: norm(d.sheet)};
   }
 
   // ---------- számolt értékek (1. fázis: a lapon tárolt választásokból; a szabálymotor a 2. fázisban jön) ----------
@@ -278,6 +282,10 @@ window.Sheet = (() => {
   const spellAbility = s => s.spellcasting.ability || CLASSES[findClass(s.classes.find(c => CLASSES[findClass(c.name)]?.ab)?.name)]?.ab || '';
   const spellDc = s => { if (s.auto && s.cache?.spell) return s.cache.spell.dc; const a = spellAbility(s); return a ? 8 + pb(s) + mod(s.abilities[a]) : null; };
   const spellAtk = s => { if (s.auto && s.cache?.spell) return s.cache.spell.atk; const a = spellAbility(s); return a ? pb(s) + mod(s.abilities[a]) : null; };
+  // varázslás osztályonként: motoros lapon a cache-ből (multiclassnál több sor), különben egy sor a lap varázsképességével (cls: '')
+  const spellCasts = s => s.auto && s.cache?.spells?.length ? s.cache.spells : spellAbility(s) ? [{cls: '', ab: spellAbility(s), dc: spellDc(s), atk: spellAtk(s)}] : [];
+  // támadás akciónként (Extra Attack, nem halmozódik); kézi lapon 1
+  const attacksPerAction = s => s.auto ? s.cache?.atk || 1 : 1;
   const classLabel = s => s.classes.filter(c => c.name).map(c => `${c.name} ${c.level}${c.subclass ? ' (' + c.subclass + ')' : ''}`).join(' / ');
   function hitDice(s) {
     const out = {};
@@ -1062,7 +1070,8 @@ window.Sheet = (() => {
       spellcasting: {...sc, ability: cast?.ab || (c.full ? '' : sc.ability), slots: c.slots, used: sc.used.map((u, i) => Math.min(u, c.slots[i])),
         pact: {level: c.pact.level, max: c.pact.max, used: Math.min(sc.pact.used, c.pact.max)}},
       cache: {saves: Object.fromEntries(ABIL.map(a => [a, c.saves[a].v])), skills: Object.fromEntries(Object.keys(SKILLS).map(k => [k, c.skills[k].v])),
-        passive: c.passive, spell: cast ? {dc: cast.dc, atk: cast.atk} : null}
+        passive: c.passive, spell: cast ? {dc: cast.dc, atk: cast.atk} : null,
+        spells: c.casting.map(x => ({cls: x.cls, ab: x.ab, dc: x.dc, atk: x.atk, prep: x.prepared})), atk: c.attacksPerAction}
     };
     if (c.full) {
       // a számolt tételek (auto) cserélődnek, a saját tételek maradnak; az azonos nevű saját tétel kiesik (átállításkor ne legyen kétszer)
@@ -2053,7 +2062,7 @@ window.Sheet = (() => {
 
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
-    spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
+    spellAbility, spellDc, spellAtk, spellCasts, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, mcCheck, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seMod, seAr, seBolt, seAranyDob, seKosar, seEredmeny,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,

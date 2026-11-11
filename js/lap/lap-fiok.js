@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-fiok, a karakter.html része): felugró leírás, Fiók menü, teendők, Felépítés fül, Alapadatok űrlap
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-fiok', N) és a karakter.html-ben a lap-fiok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-fiok', 2);
+modul('lap-fiok', 3);
 
 // ---------- felugró leírás (i gomb): a teendők és a szabad szöveges mezők magyarázata; a szövegek a sheet.js-ben (Sheet.todoInfo, freeInfo, MEZO_INFO) ----------
 const infoReg = new Map();
@@ -109,7 +109,7 @@ function tabBuild(s) {
       <div class="g6">${H.ABIL.map(a => `<label>${a.toUpperCase()}<input type="number" inputmode="numeric" min="1" max="30" data-act="bBase" data-a="${a}" value="${esc(b.base[a])}"></label>`).join('')}</div>
     </div>
     <h3>Szintek</h3><div class="list">${lvls || '<p class="hint">Még nincs szint.</p>'}</div>
-    ${isDM ? `<div class="row" style="margin-top:6px"><select id="lvCls">${H.classNames(rb).map(n => `<option ${n === b.levels.at(-1)?.c ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select><button class="small" data-act="lvAdd">＋ Szint (DM)</button>${b.levels.length > 1 ? '<button class="small" data-act="lvRm">− Utolsó szint</button>' : ''}</div>`
+    ${isDM ? `<div class="row" style="margin-top:6px"><select id="lvCls">${H.classNames(rb).map(n => { const m = H.mcCheck(s, rb, n, cr); return `<option value="${esc(n)}" ${n === b.levels.at(-1)?.c ? 'selected' : ''}>${m.ok ? '' : '⚠ '}${esc(n)}${m.ok ? '' : ' – ' + esc(m.hiany.join('; '))}</option>`; }).join('')}</select><button class="small" data-act="lvAdd">＋ Szint (DM)</button>${b.levels.length > 1 ? '<button class="small" data-act="lvRm">− Utolsó szint</button>' : ''}</div>`
       : '<p class="hint">Új szintet a DM ad (szintlépés). A HP üresen hagyva az átlag; dobott értéket beírhatsz.</p>'}
     <h3>Választások</h3>${chs || '<p class="hint">Nincs választási hely.</p>'}
     <h3>Számolt értékek</h3>

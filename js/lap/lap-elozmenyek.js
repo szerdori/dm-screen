@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-elozmenyek, a karakter.html része): backup, előzmények, visszaállítás, törlés
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-elozmenyek', N) és a karakter.html-ben a lap-elozmenyek.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-elozmenyek', 1);
+modul('lap-elozmenyek', 2);
 
 // ---------- backup és előzmények: kézi mentés, teljes visszaállítás, letöltés; a legfrissebb szintlépés külön visszavonható ----------
 const histCache = new Map();  // lap-id → lista (legfrissebb elöl) | 'hiba'
@@ -18,7 +18,7 @@ function histBox(s) {
   // a szintlépés visszavonható, amíg nem jött újabb szintlépés vagy visszaállítás (a kézi mentés nem számít)
   const canUndo = h => h === list.find(x => x.reason !== 'manual') && h.reason === 'levelup' && h.to === L;
   const cim = h => h.reason === 'manual' ? `${HIST_HU.manual}: ${h.to}. szint` : `${HIST_HU[h.reason]}: ${h.from} → ${h.to}`;
-  const row = h => `<div class="li"><span class="nm"><b>${esc(cim(h))}</b><small>${esc(h.at ? new Date(h.at).toLocaleString('hu-HU') : '')}${h.hp ? ' · HP: ' + esc(HOW_HU[h.hp]) : ''}${isDM ? ' · ' + esc(h.by) : ''}</small></span>
+  const row = h => `<div class="li"><span class="nm"><b>${esc(cim(h))}</b><small>${esc(h.at ? new Date(h.at).toLocaleString('hu-HU') : '')}${h.hp ? ' · HP: ' + esc(HOW_HU[h.hp]) : ''}${isDM ? ' · ' + esc(h.by) : ''}${h.mc ? `<br><span class="warn">⚠ ${esc(h.mc.cls)} multiclass: ${esc(h.mc.hiany.join('; '))}</span>` : ''}</small></span>
     ${canUndo(h) ? `<button class="small" data-act="histRestore" data-h="${esc(h.id)}" title="Csak a felépítés jön vissza, a felszerelés, a pénz és a jegyzet marad">↩ Szintlépés visszavonása</button>` : ''}
     ${isDM || H.backupAllowed(s, h) ? `<button class="small" data-act="histFull" data-h="${esc(h.id)}" title="A teljes lap visszajön">Visszaállítás</button>` : ''}
     <button class="small" data-act="histDl" data-h="${esc(h.id)}" title="Letöltés JSON-ként">⬇</button></div>`;

@@ -188,6 +188,8 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on,button[data-act^="ncEq"
 .lusteps{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 12px}
 .lusteps span{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--panel);color:var(--muted)}
 .lusteps span.on{background:var(--accent);color:var(--on-accent);font-weight:700}
+.mcfej{margin:4px 0;padding:6px 8px;border-left:3px solid var(--accent);background:var(--panel);border-radius:6px}
+.mcosz{margin-top:16px;padding-bottom:2px;border-bottom:1px solid var(--accent);color:var(--accent)}
 .lunav{margin:16px 0;position:sticky;bottom:0;background:var(--bg);padding:8px 0}
 .lutab{width:100%;border-collapse:collapse;table-layout:fixed}
 .lutab td{padding:4px 6px;border-bottom:1px solid var(--line);overflow-wrap:break-word}
@@ -338,16 +340,16 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on,button[data-act^="ncEq"
 // A lapot a gazdája (és a DM) írja; minden változás mezőnként megy a felhőbe, a DM Screen élőben látja.
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 3, sheet: 25, szerzodes: 7, 'lap-alap': 1, 'lap-dobas': 1, 'lap-rajz': 2, 'lap-felepites': 2, 'lap-szintlepes': 1, 'lap-ujkarakter': 3, 'lap-elozmenyek': 1, 'lap-fiok': 2, 'lap-iras': 1, 'lap-utvonal': 1, 'lap-gesztus': 1, 'lap-akciok': 4, 'lap-indulas': 1};
+const VART_MODULOK = {kozos: 3, sheet: 25, szerzodes: 7, 'lap-alap': 1, 'lap-dobas': 1, 'lap-rajz': 3, 'lap-felepites': 2, 'lap-szintlepes': 2, 'lap-ujkarakter': 3, 'lap-elozmenyek': 2, 'lap-fiok': 3, 'lap-iras': 1, 'lap-utvonal': 1, 'lap-gesztus': 1, 'lap-akciok': 4, 'lap-indulas': 1};
 </script>
 <script src="js/lap/lap-alap.js?v=1"></script>
 <script src="js/lap/lap-dobas.js?v=1"></script>
-<script src="js/lap/lap-rajz.js?v=2"></script>
+<script src="js/lap/lap-rajz.js?v=3"></script>
 <script src="js/lap/lap-felepites.js?v=2"></script>
-<script src="js/lap/lap-szintlepes.js?v=1"></script>
+<script src="js/lap/lap-szintlepes.js?v=2"></script>
 <script src="js/lap/lap-ujkarakter.js?v=3"></script>
-<script src="js/lap/lap-elozmenyek.js?v=1"></script>
-<script src="js/lap/lap-fiok.js?v=2"></script>
+<script src="js/lap/lap-elozmenyek.js?v=2"></script>
+<script src="js/lap/lap-fiok.js?v=3"></script>
 <script src="js/lap/lap-iras.js?v=1"></script>
 <script src="js/lap/lap-utvonal.js?v=1"></script>
 <script src="js/lap/lap-gesztus.js?v=1"></script>

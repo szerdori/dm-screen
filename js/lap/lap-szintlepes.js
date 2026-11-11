@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-szintlepes, a karakter.html része): a szintlépés-varázsló
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-szintlepes', N) és a karakter.html-ben a lap-szintlepes.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-szintlepes', 1);
+modul('lap-szintlepes', 2);
 
 // ---------- szintlépés-varázsló: a piszkozat (lu) egy ideiglenes felépítés; a mentésig a lap nem változik, és a telefonon megmarad (újratöltés, elalvó telefon) ----------
 let lu = null;  // {id, from, step, cls, how: 'avg'|'roll'|'manual'|'', die, build, saving}
@@ -20,7 +20,9 @@ function luLoad(id, s) {
     return lu;
   };
   if (!isObj(d) || d.from !== L) return uj();
-  const build = H.norm({auto: true, build: d.build}).build, cls = s.classes.some(c => c.name === d.cls) && build.levels.at(-1)?.c === d.cls && build.levels.length === L + 1 ? d.cls : '';
+  // a piszkozat osztálya meglévő, vagy (multiclass) a szabálykönyv osztálya
+  const build = H.norm({auto: true, build: d.build}).build, ismert = s.classes.some(c => c.name === d.cls) || H.classNames(RB()).includes(d.cls);
+  const cls = ismert && build.levels.at(-1)?.c === d.cls && build.levels.length === L + 1 ? d.cls : '';
   if (!cls) return uj();
   const hd = H.classInfo(cls, RB()).hd, die = Number.isInteger(d.die) && d.die >= 1 && d.die <= hd ? d.die : null, how = die && ['roll', 'manual'].includes(d.how) ? d.how : d.how === 'avg' ? 'avg' : '';
   build.levels.at(-1).hp = how === 'avg' ? null : how ? die : null;
@@ -60,8 +62,26 @@ function luBlocked(plan) {
   const n = lu.step === 'ch' ? luMissing(plan.choices) : lu.step === 'sp' ? luMissing(plan.spells) : 0;
   return n ? `Még ${n} választás hiányzik.` : '';
 }
+// multiclass (TERV-multiclass.md): mit ad az új osztály multiclassként (hit die, jártasság a szabálykönyv mc.fx-éből, varázsol-e)
+function luMcInfo(n) {
+  const ci = H.classInfo(n, RB()), l = [`d${ci.hd}`];
+  for (const x of ci.r?.mc?.fx || []) {
+    if (x.armor?.length) l.push('páncél: ' + x.armor.join(', '));
+    if (x.weapon?.length) l.push('fegyver: ' + x.weapon.join(', '));
+    if (x.tool?.length) l.push('eszköz: ' + x.tool.join(', '));
+    if (x.skillChoose) l.push(`${x.skillChoose.n} skill`);
+  }
+  if (ci.caster) l.push(ci.caster === 'pact' ? 'Pact Magic' : 'varázsol');
+  return l.join(' · ');
+}
+// a meglévő osztályok, alattuk a többi (multiclass): a PHB 163. o. feltétele csak figyelmeztet (⚠ és az ok), nem tilt
+const luUjOsztalyok = s => H.classNames(RB()).filter(n => !s.classes.some(c => c.name === n || H.findClass(c.name) === n));
 function luStepCls(s) {
-  return `<p class="hint">Melyik osztályban lépsz szintet?</p><div class="list">${s.classes.map(c => `<button class="li ${lu.cls === c.name ? 'on' : ''}" data-act="luCls" data-c="${esc(c.name)}" ${lu.how === 'roll' ? 'disabled' : ''} style="width:100%;text-align:left"><b>${esc(c.name)}</b> ${esc(c.level)} → ${esc(c.level + 1)}${lu.cls === c.name ? ' ✓' : ''}</button>`).join('')}</div>
+  const dis = lu.how === 'roll' ? 'disabled' : '', cr = calcOf(s);
+  const sor = (n, fej, al) => `<button class="li ${lu.cls === n ? 'on' : ''}" data-act="luCls" data-c="${esc(n)}" ${dis} style="width:100%;text-align:left"><span class="nm">${fej}${lu.cls === n ? ' ✓' : ''}${al ? `<small>${al}</small>` : ''}</span></button>`;
+  const uj = luUjOsztalyok(s).map(n => { const m = H.mcCheck(s, RB(), n, cr); return sor(n, `<b>${m.ok ? '' : '⚠ '}${esc(n)}</b> 1. szint`, esc(m.ok ? luMcInfo(n) : m.hiany.join('; ') + ' · ' + luMcInfo(n))); }).join('');
+  return `<p class="hint">Melyik osztályban lépsz szintet?</p><div class="list">${s.classes.map(c => sor(c.name, `<b>${esc(c.name)}</b> ${esc(c.level)} → ${esc(c.level + 1)}`, '')).join('')}</div>
+    ${uj ? `<details data-key="lu:uj" ${openKeys.has('lu:uj') || luUjOsztalyok(s).includes(lu.cls) ? 'open' : ''}><summary><b>🔀 Új osztály (multiclass)</b></summary><p class="hint">A PHB szerint az új és a meglévő osztályok fő képessége is legalább 13 kell (⚠ = nem teljesül; így is választható, de a DM látja). Multiclassként kevesebb jártasság jár, mentő nem.</p><div class="list">${uj}</div></details>` : ''}
     ${lu.how === 'roll' ? '<p class="hint">Már dobtál HP-t, ezért az osztály nem változtatható.</p>' : ''}`;
 }
 const luHpText = plan => {
@@ -97,8 +117,8 @@ function luStepSum(s, plan) {
   const hd = x => H.hitDice(x).map(h => h.max + 'd' + h.die).join(' + ');
   const slots = x => [...x.spellcasting.slots.map((v, i) => v ? `${i + 1}.: ${v}` : '').filter(Boolean), x.spellcasting.pact.max ? `Pact: ${x.spellcasting.pact.max} (${x.spellcasting.pact.level}.)` : ''].filter(Boolean).join(', ') || '–';
   const casting = plan.nw.casting.map(c => { const o = plan.old.casting.find(x => x.cls === c.cls); return row(`${c.cls}: spell DC`, o?.dc ?? '–', c.dc) + (c.prepared ? row(`${c.cls}: bekészíthető`, o?.prepared ?? 0, c.prepared) : ''); }).join('');
-  const ovK = Object.keys(n.ov), nyitott = plan.nw.todos.length;
-  return `<table class="lutab">
+  const ovK = Object.keys(n.ov), nyitott = plan.nw.todos.length, m = H.mcCheck(s, RB(), plan.cls, plan.old);
+  return `${m.uj ? `<p class="${m.ok ? '' : 'warn'}">🔀 Új osztály: <b>${esc(plan.cls)} 1</b>${m.ok ? '' : ` – ⚠ ${esc(m.hiany.join('; '))} (a DM látni fogja)`}</p>` : ''}<table class="lutab">
       ${row('Szint', H.level(s), H.level(n))}${row('Osztályok', H.classLabel(s), H.classLabel(n))}${row('Jártassági bónusz', sgn(H.pb(s)), sgn(H.pb(n)))}${row('Max HP', s.hp.max, n.hp.max)}${row('Jelenlegi HP', s.hp.cur, n.hp.cur)}${row('Hit Dice', hd(s), hd(n))}
       ${H.ABIL.map(a => row(H.ABIL_FULL[a], s.abilities[a], n.abilities[a])).join('')}${row('AC', s.ac, n.ac)}${row('Speed', s.speed, n.speed)}
       ${H.ABIL.map(a => row(a.toUpperCase() + ' mentő', sgn(H.saveBonus(s, a)), sgn(H.saveBonus(n, a)))).join('')}${row('Spell slotok', slots(s), slots(n))}${casting}
@@ -149,9 +169,10 @@ function afterSave(id, s, p, at) {
 }
 async function luFinish(s) {
   const at = new Date().toISOString(), id = lu.id, from = lu.from, how = lu.how;
-  const p = {...H.levelUpApply(s, RB(), lu.build), updatedAt: at, updatedBy: me};
+  const p = {...H.levelUpApply(s, RB(), lu.build), updatedAt: at, updatedBy: me}, m = H.mcCheck(s, RB(), lu.cls, calcOf(s));
   lu.saving = true; render(true);
-  const ok = await saveWithHist(id, p, {at, by: me, reason: 'levelup', from, to: from + 1, hp: how, sheet: s});
+  // a nem teljesült multiclass-feltétel az előzményben is látszik (a DM-nek)
+  const ok = await saveWithHist(id, p, {at, by: me, reason: 'levelup', from, to: from + 1, hp: how, ...(m.ok ? {} : {mc: {cls: lu.cls, hiany: m.hiany}}), sheet: s});
   if (lu) lu.saving = false;
   if (!ok) { render(true); return; }
   afterSave(id, s, p, at);
@@ -162,7 +183,12 @@ async function luFinish(s) {
 function luAct(act, el, s) {
   const plan = lu.cls ? H.levelUpPlan(s, RB(), lu.build) : null, steps = luSteps(plan), i = steps.findIndex(([k]) => k === lu.step);
   if (act === 'luClose') { luStore(); lu = null; render(true); return; }
-  if (act === 'luCls') { if (lu.how !== 'roll' && lu.cls !== el.dataset.c) luSetClass(s, el.dataset.c); }
+  if (act === 'luCls') {
+    const c = el.dataset.c, m = H.mcCheck(s, RB(), c, calcOf(s));
+    if (lu.how === 'roll' || lu.cls === c || !(s.classes.some(x => x.name === c) || luUjOsztalyok(s).includes(c))) return;
+    if (!m.ok && !confirm(`A PHB szerint ehhez: ${m.hiany.join('; ')}.\nA DM látni fogja. Így is felveszed: ${c}?`)) return;
+    luSetClass(s, c);
+  }
   else if (act === 'luHow') {
     if (lu.how === 'roll') return;
     const how = el.dataset.how;
