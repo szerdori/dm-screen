@@ -197,7 +197,7 @@ newChar: {
 4. **Visszavonás joga:** *Javaslat:* a játékos az utolsó szintlépését vonhatja vissza (amíg újabb nincs), a DM bármelyik előzményt visszaállíthatja.
 5. **TCE opcionális feature-ök:** (a) mind elérhető, a játékos dönt, (b) a DM kapcsolja be karakterenként vagy feature-önként, (c) kampányszintű be / ki. *Javaslat: (c) + a játékos dönt egyenként, ha be van kapcsolva.*
 6. **HP-dobás:** egyszeri, rögzített dobás; a *Kézi* érték is mindenkinek elérhető (pl. asztali kockához), de a DM az előzményben látja, melyiket választották? *Javaslat: igen.*
-7. **Multiclass-feltétel elengedése:** a DM az engedélyben felülbírálhatja? *Javaslat: igen.*
+7. **Multiclass-feltétel elengedése:** a DM az engedélyben felülbírálhatja? *Javaslat: igen.* **Felülírva 2026-11-11 (a felhasználó döntése, `TERV-multiclass.md`):** a feltétel csak figyelmeztet, nincs mit elengedni; a DM jelzést kap.
 8. **Spellcsere a Felépítés-fülön** (szintlépésen kívül): szabadon szerkeszthető (bizalom), vagy csak a varázslóban? *Javaslat: szabadon, a DM látja az előzményben.*
 
 **A 3. fázis kódjának felmérésekor előjött döntések (2026-10-30, mind a javaslat):**
