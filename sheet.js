@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 24;
+  const VERSION = 25;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -401,7 +401,8 @@ window.Sheet = (() => {
   // Kulcs: 'Osztály|Feature', 'Osztály|Alosztály|Feature', 'race|Faj vagy jellemző', 'feat|Név', 'opt|Név'. Az online teszt ellenőrzi, hogy minden kulcs létezik.
   const FEATURE_FX = {
     'Barbarian|Rage': [{res: {n: 'Rage', max: 'col:Rages', reset: 'long'}}],
-    'Barbarian|Unarmored Defense': [{acBase: {add: ['dex', 'con']}}],
+    'Barbarian|Unarmored Defense': [{acBase: {add: ['dex', 'con'], ud: true}}],
+    'Barbarian|Extra Attack': [{extraAttack: 2}],
     'Barbarian|Fast Movement': [{speed: {v: 10, if: 'noHeavy'}}],
     'Barbarian|Totem Warrior|Totem Spirit': [{pickChoose: {label: 'Totem Spirit', from: ['Bear', 'Eagle', 'Wolf']}}],
     'Barbarian|Totem Warrior|Aspect of the Beast': [{pickChoose: {label: 'Aspect of the Beast', from: ['Bear', 'Eagle', 'Wolf']}}],
@@ -427,16 +428,24 @@ window.Sheet = (() => {
     'Fighter|Second Wind': [{res: {n: 'Second Wind', max: 1, reset: 'short'}}],
     'Fighter|Action Surge': [{res: {n: 'Action Surge', max: {lv: {2: 1, 17: 2}}, reset: 'short'}}],
     'Fighter|Indomitable': [{res: {n: 'Indomitable', max: {lv: {9: 1, 13: 2, 17: 3}}, reset: 'long'}}],
+    'Fighter|Extra Attack': [{extraAttack: 2}], 'Fighter|Extra Attack (2)': [{extraAttack: 3}], 'Fighter|Extra Attack (3)': [{extraAttack: 4}],
     'Fighter|Champion|Remarkable Athlete': [{remarkable: true}],
     'Fighter|Battle Master|Combat Superiority': [{res: {n: 'Superiority Dice', max: {lv: {3: 4, 7: 5, 15: 6}}, reset: 'short'}}],
     'Fighter|Battle Master|Student of War': [{toolChoose: {n: 1}}],
-    'Monk|Unarmored Defense': [{acBase: {add: ['dex', 'wis'], noShield: true}}],
+    'Monk|Unarmored Defense': [{acBase: {add: ['dex', 'wis'], noShield: true, ud: true}}],
+    'Monk|Extra Attack': [{extraAttack: 2}],
     'Monk|Martial Arts': [{martialArts: true}],
     'Monk|Ki': [{res: {n: 'Ki', max: 'col:Ki Points', reset: 'short'}}],
     'Monk|Unarmored Movement': [{speed: {v: 'col:Unarmored Movement', if: 'noArmor'}}],
     'Monk|Diamond Soul': [{saveAll: true}],
     'Paladin|Divine Sense': [{res: {n: 'Divine Sense', max: 'mod:cha', add: 1, min: 1, reset: 'long'}}],
     'Paladin|Lay on Hands': [{res: {n: 'Lay on Hands', max: 'lvl*5', reset: 'long'}}],
+    // multiclassnál (Cleric + Paladin) a Channel Divinity egy erőforrás: a használatok nem adódnak össze, a nagyobb számít (PHB 164. o.)
+    'Paladin|*|Channel Divinity': [{res: {n: 'Channel Divinity', max: 1, reset: 'short'}}],
+    // Extra Attack: több forrásból sem halmozódik, a legnagyobb számít (PHB 164. o.; a calc attacksPerAction-je)
+    'Paladin|Extra Attack': [{extraAttack: 2}], 'Ranger|Extra Attack': [{extraAttack: 2}],
+    'Bard|Valor|Extra Attack': [{extraAttack: 2}], 'Bard|Swords|Extra Attack': [{extraAttack: 2}], 'Wizard|Bladesinging|Extra Attack': [{extraAttack: 2}],
+    'Artificer|Battle Smith|Extra Attack': [{extraAttack: 2}], 'Artificer|Armorer|Extra Attack': [{extraAttack: 2}],
     'Paladin|Aura of Protection': [{saveBonus: {ab: 'cha', min: 1}}],
     'Ranger|Favored Enemy': [{todo: 'Favored Enemy: válassz ellenféltípust (és nyelvet)'}],
     'Ranger|Natural Explorer': [{todo: 'Natural Explorer: válassz kedvelt terepet'}],
@@ -685,7 +694,8 @@ window.Sheet = (() => {
           if (f.opt) { tceValaszt(f, sub.short, f.tx || ''); continue; }
           if (tceKivaltja(b, c.name, sub.short, f.n)) continue;
           features.push({name: f.n, text: f.tx || '', src: `${sub.short} ${f.lvl}`});
-          addFx(ctx, FEATURE_FX[`${c.name}|${sub.short}|${f.n}`], `${f.n} (${sub.short} ${f.lvl})`, `${c.name}:${f.lvl}`, kor);
+          // 'Osztály|*|Név': minden alosztály azonos nevű jellemzőjére (pl. a Paladin esküinek Channel Divinity-je)
+          addFx(ctx, FEATURE_FX[`${c.name}|${sub.short}|${f.n}`] || FEATURE_FX[`${c.name}|*|${f.n}`],`${f.n} (${sub.short} ${f.lvl})`, `${c.name}:${f.lvl}`, kor);
         }
       }
       for (const [o, pre] of [...(rc?.opt || []).map(o => [o, c.name]), ...(sub?.opt || []).map(o => [o, c.name + ':' + sub.short])]) {
@@ -733,7 +743,7 @@ window.Sheet = (() => {
     const abil = {};
     for (const a of ABIL) abil[a] = {base: b.base[a], parts: [{v: b.base[a], src: 'alapérték'}], set: null};
     const A = {saves: {}, skills: {}, expert: [], jack: null, remarkable: null, saveAll: null, saveBonus: [], hp: [], init: [], passive: {}, armor: [], weapon: [], tool: [], lang: [],
-      dv: 0, resist: [], acBase: [], acBonus: [], speed: [], heavyOk: false, mamCap: 2, rangedAtk: 0, duelDmg: 0, martialArts: null, res: [], spells: [], lists: [], todo: []};
+      dv: 0, resist: [], acBase: [], acBonus: [], speed: [], heavyOk: false, extra: 1, mamCap: 2, rangedAtk: 0, duelDmg: 0, martialArts: null, res: [], spells: [], lists: [], todo: []};
     for (const {fx, src, ctx: kor, ch} of fxs) {
       if (isObj(fx.ab)) for (const a of ABIL) if (num(fx.ab[a])) abil[a].parts.push({v: num(fx.ab[a]), src});
       if (ch.ability) for (const a of ch.ability.ok) abil[a].parts.push({v: ch.ability.amt, src});
@@ -758,6 +768,7 @@ window.Sheet = (() => {
       A.resist.push(...arr(fx.resist, 20).map(x => str(x, 40)));
       if (isObj(fx.acBase)) A.acBase.push({...fx.acBase, src});
       if (num(fx.acBonus)) A.acBonus.push({v: num(fx.acBonus), src});
+      if (num(fx.extraAttack) > A.extra) A.extra = Math.min(4, num(fx.extraAttack));
       if (isObj(fx.speed)) A.speed.push({...fx.speed, src, ctx: kor});
       if (fx.heavyOk) A.heavyOk = true;
       if (num(fx.mamCap) > A.mamCap) A.mamCap = num(fx.mamCap);
@@ -807,6 +818,8 @@ window.Sheet = (() => {
       if (v < tot) parts.push({v: v - tot, src: 'legfeljebb 20'});
       if (x.set && x.set.v > v) { parts.push({v: x.set.v - v, src: x.set.src + ` (legalább ${x.set.v})`}); v = x.set.v; }
       abilities[a] = val(ov, 'ab:' + a, v, parts);
+      // tárgy (abSet) nélküli érték a multiclass-feltételhez (mcCheck); nem része a kimenet szövegének, mint a skillek pc-je
+      Object.defineProperty(abilities[a], 'nat', {value: abilities[a].ov ? abilities[a].v : x.base > 20 ? tot : Math.min(20, tot)});
       mods[a] = mod(abilities[a].v);
     }
     ctx.abilities = abilities;
@@ -869,7 +882,9 @@ window.Sheet = (() => {
       cands.push({shield: true, parts: [{v: num(r.ac), src: armor.i.name}, ...(r.tc !== 'HA' ? [{v: d, src: 'DEX-módosító' + (r.tc === 'MA' ? ` (legfeljebb +${A.mamCap})` : '')}] : [])]});
     } else {
       cands.push({shield: true, parts: [{v: 10, src: 'páncél nélkül'}, {v: mods.dex, src: 'DEX-módosító'}]});
-      for (const x of A.acBase) cands.push({shield: !x.noShield, parts: [{v: num(x.base, 10), src: x.src}, ...arr(x.add, 3).filter(a => ABIL.includes(a)).map(a => ({v: mods[a], src: a.toUpperCase() + '-módosító'}))]});
+      // Unarmored Defense: csak az elsőként megszerzett (a szintek sorrendjében); a második osztályé nem jár (PHB 164. o.)
+      const ud = A.acBase.find(x => x.ud);
+      for (const x of A.acBase.filter(x => !x.ud || x === ud)) cands.push({shield: !x.noShield, parts: [{v: num(x.base, 10), src: x.src}, ...arr(x.add, 3).filter(a => ABIL.includes(a)).map(a => ({v: mods[a], src: a.toUpperCase() + '-módosító'}))]});
     }
     for (const c of cands) { c.useShield = !!shield && c.shield; if (c.useShield) c.parts.push({v: 2, src: shield.i.name}); c.v = sum(c.parts); }
     const best = cands.reduce((m, c) => c.v > m.v ? c : m, cands[0]);
@@ -1009,7 +1024,7 @@ window.Sheet = (() => {
     return {full, level: L, pb: PB, classes, abilities, mods, saves, skills, jack, passive, hpMax, init, ac, acNote, speed, slots: sl.slots, pact: sl.pact,
       profs: {armor: plus('armor', A.armor), weapons: plus('weapons', A.weapon), tools: plus('tools', A.tool), languages: plus('languages', A.lang)},
       senses: plus('senses', A.dv ? [`darkvision ${A.dv} ft.`] : []), resist: plus('resist', A.resist),
-      features, resources, attacks, casting, always, learned, choices, todos, missing};
+      features, resources, attacks, attacksPerAction: A.extra, casting, always, learned, choices, todos, missing};
   }
 
   function calc(s, rb = null) {
@@ -1159,6 +1174,23 @@ window.Sheet = (() => {
     ];
     const l = pq.map(hiany);
     return l.some(x => !x.length) ? {ok: true, hiany: []} : {ok: false, hiany: l[0]};
+  }
+  // multiclass-feltétel (PHB 163. o.): új osztálynál a meglévő minden osztály és az új osztály képesség-minimuma (szabálykönyv: classes[].mc.req, az 5e.tools requirements-e:
+  // {int: 13, wis: 13} = és, {or: [{str: 13, dex: 13}]} = vagy). A képességek tárgyak (abSet) nélkül; kézi lapon a lap értékei. Meglévő osztálynál nincs feltétel; ismeretlen (homebrew) osztálynak nincs sajátja, a meglévőké akkor is számít.
+  // A felhasználó döntése (TERV-multiclass.md): csak figyelmeztet, nem tilt. → {ok, uj, hiany: ['INT 13 kell (most 12)', 'Rogue miatt: DEX 13 kell (most 10)']}
+  function mcCheck(s, rb, cls, cr = null) {
+    const nev = n => findClass(n) || n, cel = nev(cls), osztalyok = [...new Set((s?.auto ? buildClasses(s.build, rb) : s?.classes || []).map(c => nev(c.name)).filter(Boolean))];
+    if (!osztalyok.length || osztalyok.includes(cel)) return {ok: true, uj: false, hiany: []};
+    const c = s.auto && rb ? cr || calc(s, rb) : null, ab = Object.fromEntries(ABIL.map(a => [a, c ? c.abilities[a].nat ?? c.abilities[a].v : num(s.abilities?.[a], 10)]));
+    const req = n => (rb?.classes || []).find(x => x.n === n)?.mc?.req;
+    const hiany = r => {
+      if (!isObj(r)) return [];
+      const es = Object.entries(r).filter(([k]) => ABIL.includes(k)), vagy = arr(r.or, 5).filter(isObj).map(o => Object.entries(o).filter(([k]) => ABIL.includes(k))).filter(l => l.length);
+      return [...es.filter(([k, v]) => ab[k] < num(v)).map(([k, v]) => `${k.toUpperCase()} ${num(v)} kell (most ${ab[k]})`),
+        ...vagy.filter(l => !l.some(([k, v]) => ab[k] >= num(v))).map(l => `${l.map(([k, v]) => k.toUpperCase() + ' ' + num(v)).join(' vagy ')} kell (most ${l.map(([k]) => ab[k]).join(' / ')})`)];
+    };
+    const out = [...hiany(req(cel)), ...osztalyok.flatMap(o => hiany(req(o)).map(h => `${o} miatt: ${h}`))];
+    return {ok: !out.length, uj: true, hiany: out};
   }
   function choiceOptions(c, cr, rb, s = null) {
     const others = kind => (cr?.choices || []).filter(x => x.kind === kind && x.key !== c.key).flatMap(x => x.ok);
@@ -2022,7 +2054,7 @@ window.Sheet = (() => {
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
-    FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
+    FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, mcCheck, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seMod, seAr, seBolt, seAranyDob, seKosar, seEredmeny,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
     classNames, subclassesOf, subclassRef, raceOptions, findRace, derive, acItem, equipPatch, skillKey, choiceOptions, setChoice, ovAfterChoice, toAuto, FX_LABEL,

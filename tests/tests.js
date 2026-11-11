@@ -1241,6 +1241,7 @@ describe('Online (csak  .\\teszt.ps1 -Online  esetén)', () => {
       if (p[0] === 'feat') return !rb.feats.some(f => f.n === p[1]);
       if (p[0] === 'opt') return !rb.optfeatures.some(o => o.n === p[1]);
       if (p.length === 2) return !rb.features.some(f => f.cls === p[0] && !f.sub && f.n === p[1]);
+      if (p[1] === '*') return !rb.features.some(f => f.cls === p[0] && f.sub && f.n === p[2]);
       return !rb.features.some(f => f.cls === p[0] && f.sub === p[1] && f.n === p[2]);
     });
     eq(bad, [], 'nem létező kulcsok');
@@ -3175,6 +3176,100 @@ describe('Szintlépés: robot (minden osztály 1 → 20)', () => {
     ok(at.always.some(x => x.name === 'Mage Hand'), 'AT: a Mage Hand a szabálykönyvből mindig megvan, a táblázat csak a többi cantripet számolja');
     eq(at.choices.find(x => x.key === 'Rogue:cantrips').n, 2);
   }, {online: true});
+});
+
+// ======================================================================
+// multiclass-minta: az rb3 a PHB 163. o. feltételeivel (az 5e.tools requirements alakjában), multiclass-jártasságokkal és a nem halmozódó jellemzőkkel
+const rbMc = () => {
+  const rb = rb3(), c = n => rb.classes.find(x => x.n === n);
+  const req = {Barbarian: {str: 13}, Monk: {dex: 13, wis: 13}, Paladin: {str: 13, cha: 13}, Bard: {cha: 13}, Cleric: {wis: 13}, Fighter: {or: [{str: 13, dex: 13}]}, Wizard: {int: 13}, Ranger: {dex: 13, wis: 13}};
+  for (const [n, r] of Object.entries(req)) c(n).mc = {req: r, fx: []};
+  c('Bard').mc.fx = [{armor: ['light']}, {skillChoose: {from: 'any', n: 1}}];
+  c('Fighter').mc.fx = [{armor: ['light', 'medium', 'shields']}, {weapon: ['simple', 'martial']}];
+  for (const n of ['Barbarian', 'Monk', 'Paladin', 'Fighter', 'Ranger']) c(n).feats.push({n: 'Extra Attack', lvl: 5});
+  c('Fighter').feats.push({n: 'Extra Attack (2)', lvl: 11});
+  // a valódi szabálykönyvben a Paladin Channel Divinity-je az eskü (alosztály) jellemzője
+  rb.subclasses.push({n: 'Oath of Devotion', short: 'Devotion', cls: 'Paladin', s: 'PHB'}, {n: 'Bladesinging', short: 'Bladesinging', cls: 'Wizard', s: 'TCE'});
+  rb.features.push({n: 'Channel Divinity', cls: 'Paladin', sub: 'Devotion', ss: 'PHB', lvl: 3, s: 'PHB', tx: 'Eskü.'}, {n: 'Extra Attack', cls: 'Wizard', sub: 'Bladesinging', ss: 'TCE', lvl: 6, s: 'TCE', tx: 'Két.'});
+  c('Fighter').feats.push({n: 'Extra Attack (3)', lvl: 20});
+  return rb;
+};
+describe('Multiclass: szabálymotor (TERV-multiclass.md, 1. lépés)', () => {
+  const H = () => W.Sheet;
+  const mc = (base, levels, extra = {}) => mkS({base, levels, ...(extra.build || {})}, extra.lap || {});
+  test('mcCheck: az új osztály és a meglévők feltétele; meglévő osztálynál nincs; vagy-feltétel; homebrew osztály', () => {
+    const rb = rbMc();
+    eq(H().mcCheck(mc({str: 8, dex: 13, int: 12}, lv('Fighter', 3)), rb, 'Wizard'), {ok: false, uj: true, hiany: ['INT 13 kell (most 12)']});
+    eq(H().mcCheck(mc({str: 8, dex: 13, int: 13}, lv('Fighter', 3)), rb, 'Wizard'), {ok: true, uj: true, hiany: []}, 'Fighter: STR 8, de DEX 13 elég');
+    eq(H().mcCheck(mc({str: 8, dex: 12, int: 14}, lv('Fighter', 3)), rb, 'Wizard'), {ok: false, uj: true, hiany: ['Fighter miatt: STR 13 vagy DEX 13 kell (most 8 / 12)']});
+    eq(H().mcCheck(mc({str: 8, int: 12}, lv('Fighter', 3)), rb, 'Fighter'), {ok: true, uj: false, hiany: []}, 'meglévő osztály');
+    eq(H().mcCheck(mc({str: 13, dex: 14, wis: 12}, lv('Fighter', 2)), rb, 'Monk').hiany, ['WIS 13 kell (most 12)'], 'Monk: két képesség');
+    eq(H().mcCheck(mc({str: 13, int: 8}, lv('Fighter', 2)), rb, 'Próbaosztály'), {ok: true, uj: true, hiany: []}, 'ismeretlen osztály: nincs feltétel');
+    eq(H().mcCheck(H().norm({classes: [{name: 'Rogue', level: 3}], abilities: {int: 10}}), rb, 'Wizard').hiany, ['INT 13 kell (most 10)'], 'kézi lap: a lap értékei');
+    eq(H().mcCheck(H().norm({}), rb, 'Wizard').ok, true, 'osztály nélkül (új karakter) nincs feltétel');
+  });
+  test('mcCheck: a tárgy (Gauntlets of Ogre Power) nem teljesíti a feltételt, a kézi felülírás (✎) igen', () => {
+    const rb = rbMc(), s = mc({str: 10, int: 14}, lv('Wizard', 3), {lap: {inventory: inv({name: 'Gauntlets of Ogre Power', attuned: true})}});
+    eq(H().calc(s, rb).abilities.str.v, 19);
+    eq(H().mcCheck(s, rb, 'Barbarian').hiany, ['STR 13 kell (most 10)']);
+    eq(H().mcCheck(H().norm({...s, ov: {'ab:str': 14}}), rb, 'Barbarian').ok, true);
+  });
+  test('Unarmored Defense csak az elsőként megszerzett osztályé; páncélban egyik sem', () => {
+    const rb = rbMc(), base = {str: 13, dex: 16, con: 16, wis: 13};
+    let c = H().calc(mc(base, [...lv('Monk', 2), ...lv('Barbarian', 1)]), rb);
+    eq([c.ac.v, c.acNote], [14, 'Unarmored Defense (Monk 1)'], 'Monk 2 / Barbarian 1: 10 + DEX 3 + WIS 1, a Barbarian CON-os képlete nem jár');
+    c = H().calc(mc(base, [...lv('Barbarian', 1), ...lv('Monk', 2)]), rb);
+    eq([c.ac.v, c.acNote], [16, 'Unarmored Defense (Barbarian 1)'], 'Barbarian 1 / Monk 2');
+    c = H().calc(mc(base, [...lv('Fighter', 5), ...lv('Barbarian', 1)], {lap: {inventory: inv('Chain Mail')}}), rb);
+    eq([c.ac.v, c.attacksPerAction], [16, 2], 'Fighter 5 / Barbarian 1 páncélban: Chain Mail, 2 támadás');
+  });
+  test('Extra Attack nem halmozódik: a legnagyobb számít', () => {
+    const rb = rbMc(), base = {str: 13, dex: 13, wis: 13};
+    eq([H().calc(mc(base, lv('Fighter', 4)), rb).attacksPerAction, H().calc(mc(base, lv('Fighter', 5)), rb).attacksPerAction, H().calc(mc(base, lv('Fighter', 11)), rb).attacksPerAction], [1, 2, 3]);
+    eq(H().calc(mc(base, [...lv('Fighter', 5), ...lv('Ranger', 5)]), rb).attacksPerAction, 2, 'Fighter 5 / Ranger 5: nem 3');
+    eq(H().calc(mc(base, [...lv('Fighter', 11), ...lv('Ranger', 5)]), rb).attacksPerAction, 3);
+    eq(H().calc(mc(base, lv('Fighter', 20)), rb).attacksPerAction, 4, 'Fighter 20');
+    const bs = H().calc(mc({...base, int: 13}, [...lv('Wizard', 6), ...lv('Fighter', 5)], {build: {sub: {Wizard: 'Bladesinging|TCE'}}}), rb);
+    eq(bs.attacksPerAction, 2, 'Bladesinging 6 / Fighter 5: alosztályé is, nem 3');
+  });
+  test('Expertise ugyanarra a skillre kétszer nem (Rogue 1 / Bard 3)', () => {
+    const rb = rbVarazs(), c = H().calc(mkS({base: {dex: 14, cha: 14}, levels: [...lv('Rogue', 1), ...lv('Bard', 3)], ch: {'Rogue:1:skills': ['stealth', 'perception', 'arcana', 'acrobatics'], 'Rogue:1:expertise': ['stealth', 'arcana']}}), rb);
+    const bard = c.choices.find(x => x.key === 'Bard:3:expertise');
+    ok(bard, 'Bard 3 expertise');
+    const o = H().choiceOptions(bard, c, rb).opts;
+    eq([o.find(x => x.v === 'stealth').dis, o.find(x => x.v === 'perception').dis], [true, false], 'a Rogue-val választott nem, a többi igen');
+  });
+  test('Channel Divinity: Cleric + Paladin egy erőforrás, a nagyobb számít', () => {
+    const rb = rbMc(), base = {str: 13, wis: 13, cha: 13}, cd = levels => H().calc(mc(base, levels, {build: {sub: {Paladin: 'Devotion|PHB'}}}), rb).resources.filter(r => r.name === 'Channel Divinity');
+    eq(cd(lv('Paladin', 3)), [{name: 'Channel Divinity', max: 1, reset: 'short'}]);
+    eq(cd([...lv('Cleric', 2), ...lv('Paladin', 3)]), [{name: 'Channel Divinity', max: 1, reset: 'short'}], 'Cleric 2 / Paladin 3: 1, nem 2');
+    eq(cd([...lv('Cleric', 6), ...lv('Paladin', 3)]).map(r => r.max), [2], 'Cleric 6 / Paladin 3');
+  });
+  test('multiclass-jártasság, mentők az első osztályból, HP, Fighting Style kétszer nem, spell slotok és spellszint osztályonként', () => {
+    const rb = rbMc(), base = {str: 13, dex: 14, con: 14, int: 13, wis: 13, cha: 13};
+    let c = H().calc(mc(base, [...lv('Fighter', 1), ...lv('Bard', 1)]), rb);
+    ok(c.choices.some(x => x.key === 'Bard:mc:skills' && x.n === 1), 'Bard multiclass: 1 skill');
+    ok(!c.choices.some(x => x.key === 'Bard:1:skills'), 'nem a Bard teljes 3 skillje');
+    eq(['str', 'dex', 'con', 'cha'].map(a => c.saves[a].prof), [1, 0, 1, 0], 'mentők csak a Fighterből');
+    eq(c.hpMax.v, 10 + 2 + 5 + 2, 'Bard 1. szint: átlag (5), nem a maximum');
+    c = H().calc(mc(base, [...lv('Fighter', 1), ...lv('Paladin', 2)], {build: {ch: {'Fighter:opt:Fighting Style': ['Defense|PHB']}}}), rb);
+    const pal = c.choices.find(x => x.key === 'Paladin:opt:Fighting Style');
+    eq(H().choiceOptions(pal, c, rb).opts.find(o => o.v === 'Defense|PHB').dis, true, 'a Fighterrel választott Fighting Style a Paladinnál nem választható');
+    c = H().calc(mc(base, [...lv('Fighter', 3), ...lv('Wizard', 1)], {build: {sub: {Fighter: 'Eldritch Knight|PHB'}}}), rb);
+    eq([c.slots.filter(Boolean), c.casting.find(x => x.cls === 'Wizard').maxSpell], [[3], 1], 'EK 3 / Wizard 1: caster level 2, a spellbook csak 1. szintű');
+    const sl = cls => { const r = H().slotsFor(cls); return [r.slots.filter(Boolean), r.pact]; };
+    eq(sl([{name: 'Paladin', level: 2}, {name: 'Sorcerer', level: 3}])[0], [4, 3], 'Paladin 2 / Sorcerer 3: caster level 4');
+    eq(sl([{name: 'Artificer', level: 3}, {name: 'Wizard', level: 1}])[0], [4, 2], 'Artificer 3 / Wizard 1: caster level 3 (Artificer felfelé)');
+    eq(sl([{name: 'Warlock', level: 3}, {name: 'Sorcerer', level: 2}]), [[3], {max: 2, level: 2}], 'Warlock 3 / Sorcerer 2: Pact külön');
+  });
+  test('szintlépés új osztályba: a terv az új osztály 1. szintjének választásait kéri, HP az új osztály kockájával', () => {
+    const rb = rbMc(), s = mc({str: 13, dex: 14, con: 14, cha: 13}, lv('Fighter', 3));
+    const plan = H().levelUpPlan(s, rb, H().levelUpBuild(s, 'Bard'));
+    eq([plan.cls, plan.classLevel, plan.hp.hd, plan.hp.gain], ['Bard', 1, 8, 5 + 2]);
+    ok(plan.choices.some(x => x.c.key === 'Bard:mc:skills' && x.uj), 'multiclass skill');
+    const n = H().norm({...s, ...H().levelUpApply(s, rb, H().levelUpBuild(s, 'Bard'))});
+    eq([H().classLabel(n), n.saveProf.sort()], ['Fighter 3 / Bard 1', ['con', 'str']]);
+  });
 });
 
 describe('Átállítás és faji varázslat (sheet.js)', () => {
