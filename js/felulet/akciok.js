@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 9);
+modul('akciok', 10);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -101,6 +101,7 @@ const AKCIOK = {
   partySzintMind: () => { partyMembers().forEach(c => szintlepesAd(c.id)); rerenderParty(); },
   partyRemove: el => { setPartyMember(el.dataset.pc, false); rerenderParty(); },
   partySortReset: () => { partySort.s = {col: null, dir: 1}; rerenderParty(); },
+  partySkillInfo: el => { partySkillLeiras = partySkillLeiras === el.dataset.sk ? null : el.dataset.sk; rerenderParty(); },
   libParty: el => { const lib = konyvtari(el); setPartyMember(lib.id, !partyMembers().some(c => c.id === lib.id)); filterLib(); },
   // dobáskérés mindenkitől (skill, próba, mentő); akinek nincs telefonos lapja, annak itt dobunk
   partyGroup: (el, e) => partyKer(partyMembers().map(c => c.id), el.dataset.tipus || 'skill', el.dataset.sk, dobasMod(e)),

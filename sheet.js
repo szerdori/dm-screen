@@ -6,11 +6,32 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 26;
+  const VERSION = 27;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
   const skillLabel = k => k.split('-').map(w => w === 'of' ? w : w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  // a skillek rövid magyar leírása (TERV-fejlesztesek-2026-11.md, 2. lépés): saját megfogalmazás, a példák a PHB / SRD 5.1 (CC-BY 4.0) skill-leírásait követik
+  const SKILL_INFO = {
+    acrobatics: 'Egyensúly és ügyes mozgás: talpon maradni jégen, keskeny párkányon, himbálózó kötélhídon vagy viharos hajófedélzeten; bukfenc, ugrás, kitérés, ügyes kiszabadulás egy szorításból.',
+    'animal-handling': 'Állatok kezelése: megnyugtatni egy riadt lovat, irányítani a hátasodat egy nehéz manővernél, megérezni, mit akar egy állat, vagy elhessegetni egy kóbor kutyát.',
+    arcana: 'Mágikus tudás: varázslatok, mágikus tárgyak, rúnák és jelek felismerése, a síkok és a mágikus hagyományok ismerete, egy furcsa mágikus jelenség értelmezése.',
+    athletics: 'Nyers erő és testi teljesítmény mozgás közben: mászás, ugrás, úszás erős sodrásban, lökés, birkózás, megragadni vagy kiszabadulni egy fogásból.',
+    deception: 'Megtévesztés: hazugság, félrevezetés, álruhás szerep fenntartása, kétértelmű válasz, blöff a kártyaasztalnál vagy egy őr előtt.',
+    history: 'Történelmi tudás: régi birodalmak, háborúk, uralkodók, legendák, nemesi családok, romok és tárgyak eredete.',
+    insight: 'Emberismeret: kiolvasni valaki szándékát a viselkedéséből, észrevenni a hazugságot, az idegességet, vagy megjósolni, mit fog tenni.',
+    intimidation: 'Megfélemlítés: fenyegetés, erőfitogtatás, ijesztő fellépés, hogy valaki engedjen, beszéljen vagy elálljon az útból.',
+    investigation: 'Nyomozás és következtetés: rejtett ajtó vagy csapda megtalálása kereséssel, nyomokból kikövetkeztetni, mi történt, iratok átnézése, egy szerkezet gyenge pontjának kiszúrása.',
+    medicine: 'Gyógyítás és orvosi tudás: haldokló társ stabilizálása, betegség vagy méreg felismerése, egy sérülés vagy halál okának megállapítása.',
+    nature: 'Természetismeret: terep, növények, állatok, időjárás és természetes ciklusok ismerete; mérgező bogyó, veszélyes vad vagy közelgő vihar felismerése.',
+    perception: 'Észlelés: látni, hallani, szagolni, ami körülötted van – a lopakodó ellenfél, a halk lépések, a távoli füst. Ez a passzív Perception alapja is.',
+    performance: 'Előadás: zene, tánc, színjáték, történetmesélés; közönség szórakoztatása, figyelem elterelése, pénzkeresés a fogadóban.',
+    persuasion: 'Meggyőzés: tisztességes érveléssel, kedvességgel vagy diplomáciával rávenni valakit valamire; alku, tárgyalás, kérés egy előkelőtől.',
+    religion: 'Vallási tudás: istenek, szertartások, szent jelképek, papi rendek, kultuszok, valamint az élőhalottak és más szent vagy átkozott dolgok ismerete.',
+    'sleight-of-hand': 'Kézügyesség: zsebtolvajlás, apró tárgy elrejtése vagy becsempészése, bűvésztrükk, észrevétlen csere – amikor a kéz gyorsabb a szemnél.',
+    stealth: 'Lopakodás: észrevétlenül osonni, elrejtőzni, csendben elhaladni az őrök mellett vagy rajtaütni az ellenfélen.',
+    survival: 'Túlélés a vadonban: nyomkövetés, vadászat, tájékozódás, élelem és menedék keresése, a veszélyes terep és időjárás elkerülése.'
+  };
   const CONDITIONS = ['Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
   const COINS = ['pp', 'gp', 'ep', 'sp', 'cp'];
   const RESETS = ['short', 'long', 'none'];
@@ -2086,7 +2107,7 @@ window.Sheet = (() => {
   // verzióőr: a kozos.js nyilvántartásába (az oldalak a kozos.js-t a sheet.js előtt töltik)
   if (typeof modul === 'function') modul('sheet', VERSION);
 
-  return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
+  return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, SKILL_INFO, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
     spellAbility, spellDc, spellAtk, spellCasts, spellSave, spellCastOf, cantripKocka, cantripDarab, spellDmgBonus, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, mcCheck, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,

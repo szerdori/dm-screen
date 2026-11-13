@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-rajz, a karakter.html része): a szabálykönyv segédei és a lap rajzolása (fülek)
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-rajz', N) és a karakter.html-ben a lap-rajz.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-rajz', 4);
+modul('lap-rajz', 5);
 
 // ---------- szabálykönyv ----------
 const RB = () => rbInfo?.rb || null;
@@ -102,7 +102,7 @@ function tabKep(s, ed) {
   const ab = H.ABIL.map(a => `<div class="abil" data-act="d20" data-bonus="${mod(s.abilities[a])}" data-label="${H.ABIL_FULL[a]} próba" data-kind="check:${a}"><small>${a.toUpperCase()}</small><b>${esc(sgn(mod(s.abilities[a])))}</b><span class="sc">${esc(s.abilities[a])}</span>
     <span class="sv ${s.saveProf.includes(a) ? 'p' : ''}" data-act="d20" data-bonus="${H.saveBonus(s, a)}" data-label="${H.ABIL_FULL[a]} mentő" data-kind="save:${a}">mentő ${esc(sgn(H.saveBonus(s, a)))}${s.saveProf.includes(a) ? ' ●' : ''}</span></div>`).join('');
   const sk = Object.keys(H.SKILLS).map(k => { const p = H.skillProfOf(s, k);
-    return `<div class="li"><span class="mark" title="${p === 2 ? 'expertise' : p === 1 ? 'jártas' : p ? 'Jack of All Trades' : ''}">${PROF_MARK[p]}</span><span class="nm">${esc(H.skillLabel(k))} <span class="hint">${H.SKILLS[k].toUpperCase()}</span></span>${rollBtn(H.skillBonus(s, k), H.skillLabel(k), undefined, `check:${H.SKILLS[k]}:${k}`)}</div>`; }).join('');
+    return `<div class="li"><span class="mark" title="${p === 2 ? 'expertise' : p === 1 ? 'jártas' : p ? 'Jack of All Trades' : ''}">${PROF_MARK[p]}</span><span class="nm">${nevGomb('sk', k, H.skillLabel(k))} <span class="hint">${H.SKILLS[k].toUpperCase()}</span></span>${rollBtn(H.skillBonus(s, k), H.skillLabel(k), undefined, `check:${H.SKILLS[k]}:${k}`)}</div>`; }).join('');
   return `<p class="hint">Koppints egy értékre a dobáshoz (nagy szám: próba, alatta: mentődobás). Előnyhöz / hátrányhoz előbb válaszd ki lent.</p>
     <div class="abils">${ab}</div>
     <h3>Skillek</h3><div class="list">${sk}</div>

@@ -1,7 +1,7 @@
 // Zsákmány és Csapat nézet ablaka (felület): rajzolás, rendezés, keresés, csapatdobás.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('ablakok', N) és az index.html-ben az ablakok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('ablakok', 4);
+modul('ablakok', 5);
 
 // ---------- zsákmány (megjelenítés) ----------
 function openLoot() {
@@ -50,6 +50,7 @@ const PROF_MARK = {2: '◆', 1: '●', 0.5: '½', 0: ''};
 const PROF_HU = {2: 'expertise', 1: 'jártas', 0.5: 'fél jártasság (Jack of All Trades)', 0: ''};
 // oszlop szerinti rendezés: p = passzív táblázat (sorok = játékosok), s = skill-táblázat (sorok = skillek)
 let partySort = {p: {col: null, dir: 1}, s: {col: null, dir: 1}};
+let partySkillLeiras = null;  // a Csapat nézet skill-táblázatában kinyitott leírás (skill-kulcs; TERV-fejlesztesek-2026-11.md, 2. lépés)
 const sortArrow = (t, col) => partySort[t].col === col ? (partySort[t].dir > 0 ? ' ▲' : ' ▼') : '';
 function setPartySort(t, col) {
   const s = partySort[t];
@@ -117,12 +118,13 @@ function partyHtml() {
   else if (sortPc) keys = keys.map((k, i) => [k, i]).sort((a, b) => ((partySkill(sortPc, a[0]).b - partySkill(sortPc, b[0]).b) * ss.dir) || a[1] - b[1]).map(x => x[0]);
   const rows = keys.map(k => {
     const vals = pcs.map(c => partySkill(c, k)), top = Math.max(...vals.map(v => v.b));
-    return `<tr><td>${esc(skillLabel(k))} <span class="ab">${SKILLS[k].toUpperCase()}</span></td>
+    const leiras = Sheet.SKILL_INFO[k] || '', nyitva = partySkillLeiras === k;
+    return `<tr><td><button type="button" class="lnk" data-act="partySkillInfo" data-sk="${k}" title="${esc(leiras)}" aria-expanded="${nyitva}">${esc(skillLabel(k))}</button> <span class="ab">${SKILLS[k].toUpperCase()}</span></td>
       ${vals.map((v, i) => `<td class="sk ${v.b === top ? 'best' : ''}" data-pc="${esc(pcs[i].id)}" data-sk="${k}" title="${esc(pcs[i].name)} – ${esc(skillLabel(k))}${v.p ? ' (' + PROF_HU[v.p] + ')' : ''}. Kattints: dobást kérsz a telefonjára · Shift: előny · Ctrl: hátrány">${esc(sgn(v.b))}<span class="pmark">${PROF_MARK[v.p]}</span></td>`).join('')}
-      <td><button class="small" data-act="partyGroup" data-sk="${k}" title="Dobást kérsz mindenkitől erre a skillre">Mindenki</button></td></tr>`;
+      <td><button class="small" data-act="partyGroup" data-sk="${k}" title="Dobást kérsz mindenkitől erre a skillre">Mindenki</button></td></tr>${nyitva ? `<tr class="skinfo"><td colspan="${pcs.length + 2}">${esc(leiras)}</td></tr>` : ''}`;
   }).join('');
   const skills = `<table class="ptable"><tr><th class="sortable" data-sort="s" data-col="skill">Skill${sortArrow('s', 'skill')}</th>${head}<th>${ss.col ? '<button class="small" data-act="partySortReset" title="Vissza a képességek szerinti sorrendhez">alap sorrend</button>' : ''}</th></tr>${rows}</table>
-    <p class="hint">● jártas · ◆ expertise · ½ fél jártasság (Jack of All Trades) · aranyszínű = a csapat legjobbja · a fejlécre kattintva rendezhető (▼ csökkenő, ▲ növekvő)</p>`;
+    <p class="hint">● jártas · ◆ expertise · ½ fél jártasság (Jack of All Trades) · aranyszínű = a csapat legjobbja · a fejlécre kattintva rendezhető (▼ csökkenő, ▲ növekvő) · a skill nevére kattintva a leírása</p>`;
   // karakterkártyák
   const item = i => `<li data-item="${esc((i.name + ' ' + i.note + ' ' + i.container).toLowerCase())}"><span class="${i.magic ? 'mag' : ''}" title="${esc(i.rarity)}">${i.qty !== 1 ? esc(i.qty) + '× ' : ''}${esc(i.name)}</span>${i.attuned ? '<span class="flag">✦ hangolva</span>' : i.equipped ? '<span class="flag">viselve</span>' : ''}${i.note ? `<br><span class="note">${esc(i.note)}</span>` : ''}</li>`;
   const card = c => {

@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-fiok, a karakter.html része): felugró leírás, Fiók menü, teendők, Felépítés fül, Alapadatok űrlap
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-fiok', N) és a karakter.html-ben a lap-fiok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-fiok', 3);
+modul('lap-fiok', 4);
 
 // ---------- felugró leírás (i gomb): a teendők és a szabad szöveges mezők magyarázata; a szövegek a sheet.js-ben (Sheet.todoInfo, freeInfo, MEZO_INFO) ----------
 const infoReg = new Map();
@@ -48,18 +48,24 @@ function infoMutat(info) {
 const LEIRAS_LISTA = {sp: 'spells', feat: 'feats', opt: 'optfeatures'}, LEIRAS_ADD = new Set(['spellAdd', 'featAdd']);
 let leirasCel = null;   // {chk, ref, asi} vagy {add, ref}: mit tesz a „Kiválasztom” / „Hozzáadom” gomb
 const chDoboz = (key, ref) => [...document.querySelectorAll('input[type=checkbox][data-ch]')].find(e => e.dataset.ch === key && e.value === ref);
+// skill (data-lr="sk", data-ref = skill-kulcs): a saját magyar leírás (Sheet.SKILL_INFO), a képessége és a karakter bónusza – szabálykönyv nélkül is
+function skillLap(k) {
+  if (!Object.hasOwn(H.SKILLS, k)) return null;
+  const s = cur(), p = s ? H.skillProfOf(s, k) : 0, ab = H.SKILLS[k];
+  return {n: H.skillLabel(k), tx: H.SKILL_INFO[k] || '', sor: [`${H.ABIL_FULL[ab]} (${ab.toUpperCase()})`, s ? `bónusz ${sgn(H.skillBonus(s, k))}${p === 2 ? ' · expertise' : p === 1 ? ' · jártas' : p ? ' · Jack of All Trades' : ''}` : ''].filter(Boolean).join(' · ')};
+}
 function leirasMutat(el) {
   const f = el.dataset.lr, ref = el.dataset.ref || '', d = el.dataset;
-  if (!Object.hasOwn(LEIRAS_LISTA, f)) return;
-  const x = H.byRef(RB()?.[LEIRAS_LISTA[f]] || [], ref), cb = d.chk != null ? chDoboz(d.chk, ref) : null;
-  const sor = !x ? '' : f === 'sp' ? [H.spellLine(x), (x.cl || []).join(', '), x.s].filter(Boolean).join(' · ') : [x.pre ? 'Feltétel: ' + x.pre : '', x.s].filter(Boolean).join(' · ');
+  if (!Object.hasOwn(LEIRAS_LISTA, f) && f !== 'sk') return;
+  const x = f === 'sk' ? skillLap(ref) : H.byRef(RB()?.[LEIRAS_LISTA[f]] || [], ref), cb = d.chk != null ? chDoboz(d.chk, ref) : null;
+  const sor = !x ? '' : f === 'sk' ? x.sor : f === 'sp' ? [H.spellLine(x), (x.cl || []).join(', '), x.s].filter(Boolean).join(' · ') : [x.pre ? 'Feltétel: ' + x.pre : '', x.s].filter(Boolean).join(' · ');
   const note = d.note && d.note !== x?.pre ? d.note : '';
   leirasCel = cb && !cb.disabled ? {chk: d.chk, ref, on: !cb.checked} : LEIRAS_ADD.has(d.add) && x ? {add: d.add, ref} : null;
   const gomb = !leirasCel ? '' : `<button class="primary" data-act="leirasValaszt">${cb?.checked ? '✕ Leveszem' : cb ? '＋ Kiválasztom' : '＋ Hozzáadom a laphoz'}</button>`;
   const p = $('#infoPop');
   p.innerHTML = `<div class="ibox" role="dialog" aria-modal="true" aria-label="${esc(x?.n || H.refName(ref))}"><h3>${esc(x?.n || H.refName(ref))}</h3>
     ${sor ? `<div class="hint">${esc(sor)}</div>` : ''}${note ? `<p class="${d.warn ? 'warn' : 'hint'}" style="margin:6px 0">${d.warn ? '⚠ ' : ''}${esc(note)}</p>` : ''}
-    ${x?.tx ? `<div class="tx">${esc(x.tx)}</div>` : '<p class="hint">Nincs leírás a szabálykönyvben.</p>'}
+    ${x?.tx ? `<div class="tx">${esc(x.tx)}</div>` : `<p class="hint">Nincs leírás${f === 'sk' ? '' : ' a szabálykönyvben'}.</p>`}
     ${cb?.disabled ? `<p class="hint">Most nem választható${cb.checked ? ' (korábbi választás, nem cserélhető)' : ''}.</p>` : ''}
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button data-act="infoClose">Bezár</button>${gomb}</div></div>`;
   p.hidden = false;

@@ -50,7 +50,7 @@ function fresh() {
      S = {library: [], enc: {list: [], round: 1, active: null}, saved: [], settings: {groupInit: true, rollHp: false, sources: ['MM']}};
      selected = null; logLines = []; libTab = 'lib'; lastSaved = emptySaved();
      fiveIndex = null; fiveData = {}; fiveResults = []; backupWarn = ''; lootData = null; lootResult = null;
-     partySort = {p: {col: null, dir: 1}, s: {col: null, dir: 1}};
+     partySort = {p: {col: null, dir: 1}, s: {col: null, dir: 1}}; partySkillLeiras = null;
      SHEETS = {}; shadow = {}; cshadow = {}; sheetOps = {set: new Set(), del: new Set()}; sheetUnsub = null; sheetsWarn = ''; rulebook = null; itemResults = []; latottDobas = {}; dobasokElso = true; keresek = [];
      closeModal(); renderGate(null); render();`);
   W.document.getElementById('log').innerHTML = '';
@@ -1744,6 +1744,17 @@ describe('Csapat nézet (harcon kívül)', () => {
     has($('#partyRoll').textContent, 'Borin Perception: 20'); has($('#partyRoll').textContent, 'előny');
     stubRnd(10); click('[data-act="partyGroup"][data-sk="insight"]');
     has($('#partyRoll').textContent, 'Borin Insight: 12'); has($('#partyRoll').textContent, 'Teszt Tünde Insight: 12');
+  });
+  test('skill leírása (TERV-fejlesztesek-2026-11.md, 2. lépés): a skill nevére kattintva kinyílik alatta, újra kattintva bezárul; a cella továbbra is dobást kér', () => {
+    W.upsertLibrary(W.convertDDB(ddbParty())); W.upsertLibrary(manualPc()); W.openParty();
+    ok(!$('tr.skinfo'), 'alapból zárva');
+    has($('[data-act="partySkillInfo"][data-sk="stealth"]').title, 'Lopakodás');
+    click('[data-act="partySkillInfo"][data-sk="stealth"]');
+    eq($$('tr.skinfo').length, 1); has($('tr.skinfo').textContent, 'Lopakodás');
+    click('[data-act="partySkillInfo"][data-sk="arcana"]');
+    eq($$('tr.skinfo').length, 1, 'egyszerre egy'); has($('tr.skinfo').textContent, 'Mágikus tudás');
+    click('[data-act="partySkillInfo"][data-sk="arcana"]'); ok(!$('tr.skinfo'), 'bezárult');
+    stubRnd(12); click($$('td.sk[data-sk="stealth"]')[1]); has($('#partyRoll').textContent, 'Stealth: 21');
   });
   test('kereső a tárgyak között: találatszám, elrejtés, a találat nélküli kártya halványabb', () => {
     W.upsertLibrary(W.convertDDB(ddbParty())); W.upsertLibrary(manualPc()); W.openParty();
@@ -4386,6 +4397,11 @@ describe('Varázslat sora: mentő, cantrip-kocka, darab, sebzésbónusz (sheet.j
       eq(H.spellDmgBonus(m, 'Eldritch Blast')?.v, 3, Object.keys(ch)[0]);
     }
   });
+  test('skill-leírás: mind a 18 skillhez van saját magyar leírás (2. lépés)', () => {
+    const H = W.Sheet;
+    eq(Object.keys(H.SKILL_INFO).sort(), Object.keys(H.SKILLS).sort());
+    ok(Object.values(H.SKILL_INFO).every(t => typeof t === 'string' && t.length >= 60 && !/[<>]/.test(t)), 'nem üres, nincs benne HTML');
+  });
   test('a varázslat osztályának DC-je és attackje (multiclass); osztály nélkül az elsőé', () => {
     const H = W.Sheet, s = {auto: true, cache: {spells: [{cls: 'Cleric', dc: 14, atk: 6}, {cls: 'Wizard', dc: 15, atk: 7}]}};
     eq([H.spellCastOf(s, {cls: 'Wizard'}).dc, H.spellCastOf(s, {cls: ''}).dc, H.spellCastOf(s, {cls: 'Bard'}).dc], [15, 14, 14]);
@@ -5767,6 +5783,30 @@ describe('Telefonos karakterlap (karakter.html)', () => {
       spells: [{name: 'Teszt Tűz', level: 0, cls: 'Wizard'}, {name: 'Teszt Láng', level: 0, cls: 'Cleric'}]});
     kclick('[data-tab="var"]');
     eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk, r('Teszt Láng').dmg], ['2d10', '6', '2d8']); has(r('Teszt Láng').t, 'DEX 13');
+  });
+  ktest('skill leírása (TERV-fejlesztesek-2026-11.md, 2. lépés): a Képességek fülön és a skill-választóban a névre koppintva; a választóban onnan is választható; a dobógomb marad', () => {
+    const pop = () => kq('#infoPop');
+    openSheet();
+    kclick('[data-tab="kep"]');
+    const sor = kqa('.li').find(r => r.textContent.includes('Stealth'));
+    const m = klog.length;
+    kclick(sor.querySelector('[data-act="leiras"][data-lr="sk"]'));
+    eq(klog.length, m, 'nem írt, nem dobott');
+    ok(!pop().hidden); has(pop().textContent, 'Lopakodás'); has(pop().textContent, 'Dexterity (DEX)'); has(pop().textContent, 'bónusz ');
+    ok(!pop().querySelector('[data-act="leirasValaszt"]'), 'itt nincs választó gomb');
+    kclick(pop().querySelector('[data-act="infoClose"]')); ok(pop().hidden, 'bezárult');
+    K.rnd = () => 3; kclick(sor.querySelector('[data-act="d20"]')); eq(lastUpdate().rolls[0].label, 'Stealth');
+    // ismeretlen skill-kulcs: nem dob hibát, nincs leírás
+    K.eval('leirasMutat')({dataset: {lr: 'sk', ref: '__proto__'}}); has(pop().textContent, 'Nincs leírás');
+    // választó (szabálymotoros lap, Alapadatok): a skill neve a leírást nyitja, onnan választható
+    K.KApp.setRulebook({version: 'v1', rb: rbArany()});
+    openSheet({auto: true, build: {base: {dex: 15}, levels: lv('Rogue', 1)}, inventory: [], attacks: [], resources: [], features: []});
+    kclick('[data-tab="adat"]');
+    const gomb = kqa('[data-act="leiras"][data-lr="sk"]').find(e => e.dataset.chk === 'Rogue:1:skills' && e.dataset.ref === 'stealth');
+    ok(gomb, 'a választóban a skill neve gomb'); const key = gomb.dataset.chk;
+    kclick(gomb); has(pop().textContent, 'Lopakodás'); has(pop().textContent, '＋ Kiválasztom');
+    kclick(pop().querySelector('[data-act="leirasValaszt"]'));
+    ok(lastUpdate().build?.ch?.[key]?.includes('stealth'), 'a leírásból választott: ' + key);
   });
   ktest('varázslat sora 320 px-en, normál és nagy betűvel: a leveles, támadó, koncentrációs sor sem lóg ki, a név nem törik betűnként', async () => {
     const rb = rbVarazs();

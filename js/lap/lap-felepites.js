@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-felepites, a karakter.html része): a szabálymotoros lap választásai (Felépítés)
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-felepites', N) és a karakter.html-ben a lap-felepites.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-felepites', 2);
+modul('lap-felepites', 3);
 
 // ---------- szabálymotoros lap: Felépítés (választások), Számolt értékek (ℹ bontás, ✎ felülírás), Teendők ----------
 let calcMemo = {sig: null, r: null};
@@ -40,6 +40,7 @@ const chItem = (c, x, fajta, on, dis, attr = '') => `<label ${spellHidden(c.key,
 // leírással választható lista a legördülő helyett: feat (az ASI-hely feat módja is), faji / feat-varázslat, Invocation, Fighting Style, Maneuver, Metamagic…
 // egy helynél (n = 1) a másik pipa lecseréli a választást (kivéve a zárolt, szintlépés előtti választást); több helynél betelve a többi szürke
 const LISTAS = {feat: 'feat', asi: 'feat', opt: 'opt', spell: 'sp'};
+const SKILL_VALASZTO = new Set(['skills', 'expertise']);   // a skill neve a leírást nyitja (nevGomb 'sk')
 function listPicker(c, o, lock, asiFeat = null) {
   const zar = lockedFn(c, lock), asi = asiFeat !== null, attr = asi ? ' data-asi="feat"' : '';
   const vals = asi ? (asiFeat ? [asiFeat] : []) : Array.isArray(c.value) ? c.value.map(String) : c.value ? [String(c.value)] : [];
@@ -76,8 +77,9 @@ function choiceBox(c, cr, lock = null) {
   } else if (H.SPELL_KINDS.includes(c.kind)) body = spellPicker(c, o, lock, cr);
   else if (Object.hasOwn(LISTAS, c.kind) && !o.free) body = listPicker(c, o, lock);
   else if (o.multi) {
-    const sel = new Set(c.ok.map(String)), full = sel.size >= c.n;
-    body = `<div class="chopts">${o.opts.map(x => `<label><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${zar(x.v) || (!sel.has(x.v) && (full || x.dis)) ? 'disabled' : ''}> ${esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`).join('')}</div>`
+    // skill-jártasság és expertise: a skill neve a leírását nyitja, onnan is választható (TERV-fejlesztesek-2026-11.md, 2. lépés)
+    const sel = new Set(c.ok.map(String)), full = sel.size >= c.n, skill = SKILL_VALASZTO.has(c.kind);
+    body = `${skill && o.opts.length ? LEIRAS_SUGO : ''}<div class="chopts">${o.opts.map(x => `<label><input type="checkbox" data-ch="${K}" value="${esc(x.v)}" ${sel.has(x.v) ? 'checked' : ''} ${zar(x.v) || (!sel.has(x.v) && (full || x.dis)) ? 'disabled' : ''}${skill ? ` aria-label="${esc(x.l)}"` : ''}> ${skill ? nevGomb('sk', x.v, x.l, ` data-chk="${K}"`) : esc(x.l)}${x.note ? ` <span class="hint">(${esc(x.note)})</span>` : ''}</label>`).join('')}</div>`
       + (!o.opts.length ? '<p class="hint">Nincs választható (pl. expertise-hez előbb jártasság kell).</p>' : '');
   } else {
     const vals = Array.isArray(c.value) ? c.value.map(String) : c.value ? [String(c.value)] : [];
