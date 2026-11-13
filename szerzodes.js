@@ -86,6 +86,7 @@ window.Szerzodes = (() => {
     o.hp = {max: Math.max(1, num(hp.max, 10)), formula: str(hp.formula)};
     if (hp.cur != null) o.hp.cur = Math.max(0, num(hp.cur, o.hp.max));
     if (num(hp.temp, 0) > 0) o.hp.temp = Math.floor(num(hp.temp, 0));  // csak mentett encounterben (lásd SZERZODES.md)
+    if (num(c.init, null) !== null) o.init = Math.max(-50, Math.min(99, Math.round(num(c.init, 0)))); else delete o.init;  // mentett encounterben számít; máshol (könyvtár) megmarad, de az addToEncounter / normCombatant törli (SZERZODES.md)
     o.ac = num(o.ac, 10) || 10;
     o.legendaryCount = Math.max(0, Math.min(10, Math.floor(num(o.legendaryCount, 0))));
     const sv = isObj(c.saves) ? c.saves : {};
@@ -119,7 +120,7 @@ window.Szerzodes = (() => {
   function normCombatant(x) {
     x = isObj(x) ? x : {};
     const c = normCreature(x.c);
-    delete c.hp.cur; delete c.hp.temp;
+    delete c.hp.cur; delete c.hp.temp; delete c.init;
     const o = {
       cid: safeId(x.cid), num: Math.max(0, Math.floor(num(x.num, 0))), c,
       hp: Math.max(0, num(x.hp, c.hp.max)), temp: Math.max(0, num(x.temp, 0)), init: num(x.init, null),
@@ -130,6 +131,17 @@ window.Szerzodes = (() => {
     if (SIDES.includes(x.side)) o.side = x.side;
     return o;
   }
+  // mentett encounter: a nem játékos lények (normCreature, hp.cur / hp.temp / init-tel), a játékosok hivatkozásként (pcs, csak ha van)
+  const PC_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+  function normSaved(e) {
+    const o = {id: safeId(e?.id), name: str(e?.name), list: (Array.isArray(e?.list) ? e.list : []).map(normCreature)};
+    const pcs = (Array.isArray(e?.pcs) ? e.pcs : []).filter(p => isObj(p) && typeof p.libId === 'string' && PC_ID_RE.test(p.libId)).slice(0, 50).map(p => {
+      const init = num(p.init, null);
+      return {libId: p.libId, name: str(p.name), ...(init !== null ? {init: Math.max(-50, Math.min(99, Math.round(init)))} : {})};
+    });
+    if (pcs.length) o.pcs = pcs;
+    return o;
+  }
   // alap = a hiányzó beállítások helyére kerülő értékek (a DM Screen a mostani beállításait adja; alapból az ALAP_BEALLITASOK)
   const ALAP_BEALLITASOK = Object.freeze({groupInit: true, rollHp: false, magic: 'std', sources: Object.freeze(['MM','VGM','MTF','MPMM'])});
   function sanitizeState(d, alap = ALAP_BEALLITASOK) {
@@ -138,7 +150,7 @@ window.Szerzodes = (() => {
     const list = (Array.isArray(enc.list) ? enc.list : []).map(normCombatant);
     return {
       library: (Array.isArray(d.library) ? d.library : []).map(normCreature),
-      saved: (Array.isArray(d.saved) ? d.saved : []).map(e => ({id: safeId(e?.id), name: str(e?.name), list: (Array.isArray(e?.list) ? e.list : []).map(normCreature)})),
+      saved: (Array.isArray(d.saved) ? d.saved : []).map(normSaved),
       enc: {list, round: Math.max(1, Math.floor(num(enc.round, 1))), active: list.some(x => x.cid === enc.active) ? enc.active : null},
       settings: {
         groupInit: typeof st.groupInit === 'boolean' ? st.groupInit : alap.groupInit,
@@ -171,7 +183,7 @@ window.Szerzodes = (() => {
     };
   }
 
-  if (typeof modul === 'function') modul('szerzodes', 7);
+  if (typeof modul === 'function') modul('szerzodes', 8);
   return {UT, HELYI, MEGJELENITES, CSATORNA, SECTIONS, TEMPLATE, KINDS, SIDES, VIS, ALLAPOTOK, ALAP_BEALLITASOK, str, safeId, blankCreature, splitEntry,
     normInventory, normCreature, normCombatant, sanitizeState, normPublicChar};
 })();

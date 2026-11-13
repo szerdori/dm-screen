@@ -1,7 +1,7 @@
-// Harc (logika, DOM nélkül): kockadobás, initiative-sorrend, encounter, körök, sebzés és gyógyítás.
+// Harc (logika, DOM nélkül): kockadobás, initiative-sorrend, encounter, körök, sebzés és gyógyítás, mentett encounter (a lények HP-val és initiative-val, a játékosok hivatkozásként: pcs).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('harc', N) és az index.html-ben a harc.js?v=N és a VART_MODULOK.
 'use strict';
-modul('harc', 4);
+modul('harc', 5);
 
 // ---------- kocka ----------
 function roll(expr) {
@@ -72,7 +72,7 @@ function addToEncounter(creature, count = 1, mentettHp = false) {  // mentettHp:
     let hp = c.hp.cur ?? c.hp.max;
     if (S.settings.rollHp && c.hp.formula && c.kind !== 'pc' && !(mentettHp && c.hp.cur != null)) hp = Math.max(1, roll(c.hp.formula).total);
     if (c.kind !== 'pc') c.hp.max = Math.max(c.hp.max, hp);
-    delete c.hp.cur; delete c.hp.temp;
+    delete c.hp.cur; delete c.hp.temp; delete c.init;
     const sheet = c.kind === 'pc' && SHEETS[c.libId];  // telefonos lapnál a lap szerinti HP és temp HP
     if (sheet) hp = sheet.hp.cur;
     const x = {cid: uid(), num, c, hp, temp: sheet ? sheet.hp.temp : 0, init: null, cond: sheet ? condsFromSheet(sheet) : [], conc: !!sheet?.concentration, dead: false, notes: '', leg: 0, group: c.kind === 'pc' ? null : group, hiddenP: false, publicName: ''};
@@ -84,28 +84,44 @@ function addToEncounter(creature, count = 1, mentettHp = false) {  // mentettHp:
   return added;
 }
 // ---------- mentett encounterek ----------
-// a nem játékos lények a mostani HP-jukkal (hp.cur), maximumukkal és temp HP-jukkal (hp.temp) – SZERZODES.md
+// a nem játékos lények a mostani HP-jukkal (hp.cur), maximumukkal, temp HP-jukkal (hp.temp) és initiative-jukkal (init);
+// a játékosok csak hivatkozásként (pcs: {libId, name, init?}), a HP-juk a lapról / könyvtárból jön – SZERZODES.md
 function encounterMentese(name) {
+  if (!S.enc.list.length) return null;
   const list = S.enc.list.filter(y => y.c.kind !== 'pc').map(y => {
     const c = structuredClone(y.c);
     c.hp.cur = y.hp;
     if (y.temp > 0) c.hp.temp = y.temp; else delete c.hp.temp;
+    if (y.init != null) c.init = y.init; else delete c.init;
     return c;
   });
-  if (!list.length) return null;
+  const pcs = S.enc.list.filter(y => y.c.kind === 'pc' && y.c.libId).map(y => ({libId: y.c.libId, name: y.c.name, ...(y.init != null ? {init: y.init} : {})}));
   const e = {id: uid(), name: name || 'Encounter ' + (S.saved.length + 1), list};
+  if (pcs.length) e.pcs = pcs;
   S.saved.push(e); save();
   return e;
 }
-// betöltés a mentett HP-val; a régi (HP nélküli) mentés teljes HP-val, mint eddig
+// betöltés a mentett HP-val és initiative-val; a régi (HP / initiative nélküli) mentés teljes HP-val, üres initiative-val, mint eddig.
+// A mentett játékos, ha nincs az encounterben, a könyvtárból jön (a felhasználó döntése, 2026-11-13).
 function encounterBetoltese(enc) {
   const groups = {};
   enc.list.forEach(c => (groups[c.name] = groups[c.name] || []).push(c));
   Object.values(groups).forEach(g => addToEncounter(g[0], g.length, true).forEach((x, i) => {
+    if (x.c.kind === 'pc') return;
+    if (g[i].init != null) x.init = g[i].init;  // futó harcban is a mentett (az addToEncounter addig dobott)
     const h = g[i].hp;
-    if (h.cur == null || x.c.kind === 'pc') return;
+    if (h.cur == null) return;
     x.c.hp.max = h.max; x.hp = h.cur; x.temp = h.temp || 0; x.dead = x.hp === 0;
   }));
+  for (const p of enc.pcs || []) {
+    let x = S.enc.list.find(y => y.c.libId === p.libId);  // kind nélkül: a közben NPC-vé váltott se jöjjön kétszer
+    if (!x) {
+      const lib = S.library.find(c => c.id === p.libId);
+      if (!lib) { Ertesito.naplo(`⚠ ${esc(p.name)} nincs a könyvtárban, kimaradt`); continue; }
+      [x] = addToEncounter(lib, 1);
+    }
+    if (p.init != null) x.init = p.init;
+  }
   save();
 }
 function startTurn(x) {

@@ -228,7 +228,7 @@ const AKCIOK = {
 
   // mentett encounterek
   encSave: () => {
-    if (!encounterMentese($('#encName').value.trim())) { alert('Nincs nem-játékos lény az encounterben.'); return; }
+    if (!encounterMentese($('#encName').value.trim())) { alert('Üres az encounter, nincs mit menteni.'); return; }
     renderLib();
   },
   encLoad: el => {

@@ -826,23 +826,24 @@ describe('Könyvtár', () => {
 
 // ======================================================================
 describe('Mentett encounterek és új harc', () => {
-  test('mentés és betöltés: csoportok és számozás megmarad, játékos nem kerül bele', () => {
-    add(pc('Rella')); add(mk(), 3); add(ogre());
+  test('mentés és betöltés: csoportok és számozás megmarad, a játékos csak hivatkozásként kerül bele', () => {
+    add(W.upsertLibrary(W.normCreature(pc('Rella')))); add(mk(), 3); add(ogre());
     W.openLib('enc'); $('#encName').value = 'Kápolna'; click('[data-act="encSave"]');
     const s = A('S.saved')[0];
     eq([s.name, s.list.length, !!s.id], ['Kápolna', 4, true]);
     eq(W.summarize(s.list), '3× Goblin, Ogre');
+    eq(s.pcs.map(p => [p.name, 'init' in p]), [['Rella', false]]);
     A('S.enc.list = S.enc.list.filter(x => x.c.kind === "pc")'); W.render();
     W.openLib('enc'); click('[data-act="encLoad"]');
     eq(names().sort(), ['Goblin 1', 'Goblin 2', 'Goblin 3', 'Ogre', 'Rella']);
   });
   test('a HP, a maximum és a temp HP lényenként mentődik és töltődik vissza', () => {
-    const [p] = add(pc('Rella')); const g = add(mk(), 3); const [o] = add(ogre());
+    const [p] = add(W.upsertLibrary(W.normCreature(pc('Rella')))); const g = add(mk(), 3); const [o] = add(ogre());
     p.hp = 4; g[0].hp = 3; g[1].hp = 0; g[1].dead = true; g[2].temp = 5; o.c.hp.max = 70; o.hp = 66;
     W.openLib('enc'); $('#encName').value = 'Kápolna'; click('[data-act="encSave"]');
     const s = A('S.saved')[0];
     eq(s.list.map(c => [c.hp.cur, c.hp.max, c.hp.temp]), [[3, 7, undefined], [0, 7, undefined], [7, 7, 5], [66, 70, undefined]]);
-    ok($('[data-enc="0"] small').textContent.includes('3× Goblin, Ogre · 3 sérült'), 'a lista jelzi a sérülteket');
+    ok($('[data-enc="0"] small').textContent.includes('3× Goblin, Ogre + Rella · 3 sérült'), 'a lista jelzi a sérülteket');
     // a mentett encounter tisztítás (Firestore-betöltés) után is ugyanez
     const t = W.Szerzodes.sanitizeState({saved: JSON.parse(JSON.stringify(A('S.saved')))}).saved[0];
     eq(t.list.map(c => [c.hp.cur, c.hp.temp]), [[3, undefined], [0, undefined], [7, 5], [66, undefined]]);
@@ -864,6 +865,47 @@ describe('Mentett encounterek és új harc', () => {
     ok(!$('[data-enc="0"] small').textContent.includes('sérült'), 'nincs sérült-jelzés');
     click('[data-act="encLoad"]');
     eq(A('S.enc.list').map(x => [x.hp, x.c.hp.max]), [[5, 7], [12, 12]]);
+  });
+  test('az initiative mindenkinél mentődik és visszajön (ellenfél, NPC, játékos); a hiányzó játékos a könyvtárból', () => {
+    const rella = W.upsertLibrary(W.normCreature(pc('Rella'))), bor = W.upsertLibrary(W.normCreature(pc('Bor')));
+    const [r] = add(rella); const [b] = add(bor); const g = add(mk(), 2); const [n] = add(mk('Őr', {kind: 'npc'})); const [o] = add(ogre());
+    r.init = 17; g[0].init = 12; g[1].init = 12; n.init = 0; o.init = -1;  // a Bor initiative-ja nincs megadva; a 0 és a negatív is érték
+    W.openLib('enc'); $('#encName').value = 'Híd'; click('[data-act="encSave"]');
+    const s = A('S.saved')[0];
+    eq(s.list.map(c => [c.name, c.init]), [['Goblin', 12], ['Goblin', 12], ['Őr', 0], ['Ogre', -1]]);
+    eq(s.pcs, [{libId: rella.id, name: 'Rella', init: 17}, {libId: bor.id, name: 'Bor'}]);
+    ok($('[data-enc="0"] small').textContent.endsWith(' · initiative-val'), 'a lista jelzi');
+    // tisztítás (Firestore-betöltés) után is ugyanez; rossz értékek kiesnek
+    eq(W.Szerzodes.sanitizeState({saved: JSON.parse(JSON.stringify(A('S.saved')))}).saved[0], JSON.parse(JSON.stringify(s)));
+    const t = W.Szerzodes.sanitizeState({saved: [{name: 'x', list: [{name: 'A', init: 'abc'}, {name: 'B', init: 500}], pcs: [{libId: 'ok_1', init: 'x'}, {libId: '<b>'}, 5, {libId: 7}]}]}).saved[0];
+    eq([t.list.map(c => c.init), t.pcs], [[undefined, 99], [{libId: 'ok_1', name: ''}]]);
+    ok(!('pcs' in W.Szerzodes.sanitizeState({saved: [{name: 'régi', list: []}]}).saved[0]), 'régi mentésben nincs pcs');
+    // csak Rella marad; betöltés futó harcba: a mentett initiative jön, nem dob újra; Bor a könyvtárból jön, initiative nélkül
+    A('S.enc.list = S.enc.list.filter(x => x.c.name === "Rella")'); A('S.enc.list[0].init = 3'); A('S.enc.active = S.enc.list[0].cid'); stubRnd(20, 20, 20, 20, 20);
+    W.openLib('enc'); click('[data-act="encLoad"]');
+    const by = nm => A('S.enc.list').filter(x => W.nameOf(x) === nm);
+    eq(['Rella', 'Bor', 'Goblin 1', 'Goblin 2', 'Őr', 'Ogre'].map(nm => [by(nm).length, by(nm)[0]?.init]), [[1, 17], [1, null], [1, 12], [1, 12], [1, 0], [1, -1]]);
+    ok(!A('S.enc.list').some(x => 'init' in x.c), 'a harcos lényében nincs init');
+    eq(W.normCombatant({c: {name: 'A', init: 5}}).c.init, undefined);
+  });
+  test('mentett játékos, aki a könyvtárból is törlődött: kimarad, naplóba kerül; csak játékosos encounter is menthető', () => {
+    const rella = W.upsertLibrary(W.normCreature(pc('Rella')));
+    const [r] = add(rella); r.init = 9;
+    W.openLib('enc'); $('#encName').value = 'Csak mi'; click('[data-act="encSave"]');
+    eq(A('S.saved').length, 1, 'játékosokkal is ment');
+    A('S.library = []'); A('S.enc.list = []');
+    W.openLib('enc'); click('[data-act="encLoad"]');
+    eq(A('S.enc.list').length, 0);
+    ok($('#log').textContent.includes('Rella nincs a könyvtárban'), 'naplóbejegyzés');
+    // üres encounter: nem ment
+    let uz = ''; const al = W.alert; W.alert = m => uz = m;
+    try { W.openLib('enc'); click('[data-act="encSave"]'); } finally { W.alert = al; }
+    eq([A('S.saved').length, uz], [1, 'Üres az encounter, nincs mit menteni.']);
+    // a mentés óta NPC-vé váltott, már bent lévő játékos nem jön kétszer
+    const npc = W.upsertLibrary(W.normCreature(mk('Volt játékos', {kind: 'npc'})));
+    A('S.enc.list = []'); add(npc);
+    W.encounterBetoltese({id: 'x', name: 'x', list: [], pcs: [{libId: npc.id, name: 'Volt játékos', init: 4}]});
+    eq(A('S.enc.list').map(x => [x.c.name, x.init]), [['Volt játékos', 4]]);
   });
   test('„Új harc”: ellenfelek ki, játékosok maradnak, initiative és kör nullázva', () => {
     const [p] = add(pc('Rella')); add(mk(), 2);
@@ -1383,11 +1425,13 @@ describe('Biztonság (befecskendezett kód ellen)', () => {
     has($('.tile .t-name').textContent, '<img', 'a nevet szövegként kell mutatni');
   });
   test('teljes mentésfájl visszatöltése: semmi nem fut le', async () => {
-    W.importBackup({library: [evilCreature()], saved: [{id: XQ, name: XSS, list: [evilCreature()]}],
+    W.importBackup({library: [evilCreature()], saved: [{id: XQ, name: XSS, list: [evilCreature()], pcs: [{libId: 'nincs_ilyen', name: XSS, init: 5}]}],
       enc: {list: [evilCombatant(), evilCombatant()], round: XSS, active: XQ}, settings: {sources: [XSS, 'MM'], groupInit: XQ, lastExport: XSS}});
     eq([A('S.enc.round'), A('S.settings.sources'), A('S.settings.groupInit'), A('S.settings.lastExport')], [1, ['MM'], true, '']);
     await renderEverywhere();
     assertNoXss();
+    W.encounterBetoltese(A('S.saved')[0]); await renderEverywhere();  // a „nincs a könyvtárban” naplósor a gonosz névvel
+    has($('#log').textContent, 'nincs a könyvtárban'); assertNoXss();
   });
   test('hibás mentésfájl: hibaüzenet, az adatok nem változnak', () => {
     add(mk());
