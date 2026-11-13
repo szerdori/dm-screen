@@ -1,5 +1,7 @@
 # Terv: varázslatsorok (sebzés, támadás, mentő), skill-leírás, initiative a mentett encounterben
 
+**Állapot: kész és élesben (2026-11-13; commitok: 3. lépés, 1. lépés, 2. lépés a `fejlesztesek-2026-11` ágon, a `main`-re összefésülve).**
+
 A felhasználó kérése (2026-11-13). Három külön, egymástól független lépés; mindegyik után `.\teszt.ps1`, új teszt, `ellenorzo` ügynök, és külön jóváhagyás a feltöltésre. Minden kérdés eldőlt (lásd „Döntések” a végén).
 
 ---
