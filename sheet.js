@@ -6,7 +6,7 @@
 window.Sheet = (() => {
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 25;
+  const VERSION = 26;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -284,6 +284,32 @@ window.Sheet = (() => {
   const spellAtk = s => { if (s.auto && s.cache?.spell) return s.cache.spell.atk; const a = spellAbility(s); return a ? pb(s) + mod(s.abilities[a]) : null; };
   // varázslás osztályonként: motoros lapon a cache-ből (multiclassnál több sor), különben egy sor a lap varázsképességével (cls: '')
   const spellCasts = s => s.auto && s.cache?.spells?.length ? s.cache.spells : spellAbility(s) ? [{cls: '', ab: spellAbility(s), dc: spellDc(s), atk: spellAtk(s)}] : [];
+  // ---------- a varázslat sora a telefonos lapon (TERV-fejlesztesek-2026-11.md, 1. lépés): mentő, cantrip-kocka, darabszám, sebzésbónusz ----------
+  // a leírás szövegéből (a szabálykönyv újratöltése nélkül); ami nem olvasható ki, az üres – akkor a régi működés marad
+  // csak a célpont mentője: egyes szám (a „… saving throws” előny vagy jártasság), és nem fix DC („DC 15 Intelligence saving throw”: a varázsló saját mentője)
+  const SPELL_SAVE_RE = /(?<!\bDC\s*\d+\s+)\b(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) saving throw(?!s)/i;
+  const spellSave = tx => { const m = String(tx || '').match(SPELL_SAVE_RE); return m ? m[1].slice(0, 3).toLowerCase() : ''; };
+  // a varázsló osztály DC-je és attackje (multiclassnál a varázslat osztályáé; osztály nélkül az elsőé)
+  const spellCastOf = (s, sp) => { const c = spellCasts(s); return c.find(x => sp?.cls && x.cls === sp.cls) || c[0] || null; };
+  // cantrip sebzése a karakterszinten (PHB 2014: 5. / 11. / 17. szint): „… when you reach 5th level (2d10), 11th level (3d10) …” → a szinthez tartozó kocka, '' = nem nő
+  function cantripKocka(tx, lvl) {
+    let k = '';
+    for (const m of String(tx || '').matchAll(/\b(5|11|17)th level \((\d+d\d+)/gi)) if (lvl >= +m[1]) k = m[2].toLowerCase();
+    return k;
+  }
+  // ahol a darabszám nő, nem a kocka (Eldritch Blast: „two beams at 5th level, three beams at 11th level…”): a szinthez tartozó darab, 1 = nincs
+  const SZAMOK = {two: 2, three: 3, four: 4, five: 5};
+  function cantripDarab(tx, lvl) {
+    let n = 1;
+    for (const m of String(tx || '').matchAll(/\b(two|three|four|five) (?:beams|rays|bolts) at (\d+)(?:st|nd|rd|th) level/gi)) if (lvl >= +m[2]) n = Math.max(n, SZAMOK[m[1].toLowerCase()]);
+    return n;
+  }
+  // a varázslat sebzéséhez járó állandó bónusz: Agonizing Blast (PHB 110. o.) – az Eldritch Blast minden sugarához a CHA-módosító.
+  // A lap jellemzőinek neve szerint, így szabálymotoros (Invocation, Eldritch Adept), kézi és D&D Beyondból importált lapon is. null = nincs
+  function spellDmgBonus(s, nev) {
+    if (!/^\s*eldritch blast\s*$/i.test(nev || '') || !(s.features || []).some(f => /\bagonizing blast\b/i.test(f.name || ''))) return null;
+    return {v: mod(s.abilities.cha), src: 'Agonizing Blast'};
+  }
   // támadás akciónként (Extra Attack, nem halmozódik); kézi lapon 1
   const attacksPerAction = s => s.auto ? s.cache?.atk || 1 : 1;
   const classLabel = s => s.classes.filter(c => c.name).map(c => `${c.name} ${c.level}${c.subclass ? ' (' + c.subclass + ')' : ''}`).join(' / ');
@@ -2062,7 +2088,7 @@ window.Sheet = (() => {
 
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
-    spellAbility, spellDc, spellAtk, spellCasts, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
+    spellAbility, spellDc, spellAtk, spellCasts, spellSave, spellCastOf, cantripKocka, cantripDarab, spellDmgBonus, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, mcCheck, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seMod, seAr, seBolt, seAranyDob, seKosar, seEredmeny,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,

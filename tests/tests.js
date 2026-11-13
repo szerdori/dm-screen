@@ -1295,6 +1295,23 @@ describe('Online (csak  .\\teszt.ps1 -Online  esetén)', () => {
     eq(c.attacks[0].hit, '+5', 'Warhammer: STR 2 + PB 3 (Dwarven Combat Training)');
     ok(c.resources.some(r => r.name === 'Channel Divinity' && r.max === 1), 'Channel Divinity');
   }, {online: true});
+  test('varázslat sora a valódi szabálykönyvvel: minden mentős varázslatnál kiolvasható a mentő, minden sebző cantripnél a szintenkénti kocka (vagy a darabszám)', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet;
+    const mentos = rb.spells.filter(sp => /saving throw/i.test(sp.tx || '') && /\b(make|succeed on|fail) an? \w+ saving throw/i.test(sp.tx || ''));
+    eq(mentos.filter(sp => !H.spellSave(sp.tx)).map(sp => sp.n), [], 'mentő nélkül');
+    ok(mentos.length >= 150, 'mentős varázslatok: ' + mentos.length);
+    // sebző cantrip: van „… damage” a szövegében és nő a szinttel („5th level”)
+    const sebzo = rb.spells.filter(sp => sp.l === 0 && /\d+d\d+ \w+ damage/i.test(sp.tx || '') && /\b5th level\b/i.test(sp.tx || ''));
+    const nemNo = sebzo.filter(sp => !H.cantripKocka(sp.tx, 17) && H.cantripDarab(sp.tx, 17) === 1).map(sp => sp.n);
+    // ezeknél a kocka nem a sebzés kockája nő (pl. pengés cantripek: „At 5th level, the melee attack deals an extra 1d8…”) – a gomb a régi módon (első kocka) marad
+    ok(nemNo.length <= 4, 'nem olvasható ki: ' + nemNo.join(', '));
+    eq([H.cantripKocka(rb.spells.find(s => s.n === 'Fire Bolt').tx, 5), H.cantripDarab(rb.spells.find(s => s.n === 'Eldritch Blast').tx, 11), H.spellSave(rb.spells.find(s => s.n === 'Sacred Flame').tx)], ['2d10', 3, 'dex']);
+    ok(rb.spells.find(s => s.n === 'Eldritch Blast').atk && !rb.spells.find(s => s.n === 'Sacred Flame').atk, 'támadó-e jelölés');
+    // ahol a szöveg említ mentőt, de nem a célpontét (előny, jártasság, a varázsló saját fix DC-s mentője)
+    const nincs = ['Haste', 'Beacon of Hope', "Heroes' Feast", 'Contact Other Plane', "Tenser's Transformation"];
+    ok(nincs.every(n => rb.spells.some(s => s.n === n)), 'a példák megvannak a szabálykönyvben');
+    eq(nincs.map(n => H.spellSave(rb.spells.find(s => s.n === n).tx)), nincs.map(() => ''));
+  }, {online: true});
   test('featek a valódi szabálykönyvben: minden varázslat-választóból van mit választani, és nem marad „varázslat választása” teendő', async () => {
     const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet;
     const valasztok = (fx, hol) => (fx || []).flatMap(x => [...(x.spellChoose ? [[hol, x.spellChoose]] : []), ...Object.entries(x.pickChoose?.then || {}).flatMap(([k, l]) => valasztok(l, hol + ' / ' + k))]);
@@ -4340,6 +4357,42 @@ describe('Szintlépés-engedély a DM Screenben', () => {
   });
 });
 
+describe('Varázslat sora: mentő, cantrip-kocka, darab, sebzésbónusz (sheet.js)', () => {
+  // szintetikus szövegek (nem a PHB-é), csak a felismert minták
+  const TUZ = 'Make a ranged spell attack. Hit: 1d10 fire damage. Grows when you reach 5th level (2d10), 11th level (3d10), and 17th level (4d10).';
+  const EB = 'Make a ranged spell attack. Hit: 1d10 force damage. More: two beams at 5th level, three beams at 11th level, and four beams at 17th level.';
+  test('mentő a szövegből; cantrip-kocka és darabszám a karakterszinten', () => {
+    const H = W.Sheet;
+    eq(['must make a Constitution saving throw', 'a Wisdom saving throw or', 'STRENGTH SAVING THROW', 'no save here', '', null].map(H.spellSave), ['con', 'wis', 'str', '', '', '']);
+    // nem a célpont mentője: előny / jártasság mentőkre (többes szám), fix DC (a varázsló saját mentője); utána a valódi mentő megtalálható
+    eq(['advantage on Dexterity saving throws', 'make a DC 15 Intelligence saving throw', 'proficiency in Constitution saving throws; later a DC 15 Constitution saving throw',
+      'on a failed DC 12 Wisdom saving throw you take damage; the target makes a Strength saving throw'].map(H.spellSave), ['', '', '', 'str']);
+    eq([1, 4, 5, 10, 11, 16, 17, 20].map(l => H.cantripKocka(TUZ, l)), ['', '', '2d10', '2d10', '3d10', '3d10', '4d10', '4d10']);
+    eq([4, 5, 11, 17].map(l => H.cantripKocka(EB, l)), ['', '', '', '']);
+    eq([1, 4, 5, 11, 17, 20].map(l => H.cantripDarab(EB, l)), [1, 1, 2, 3, 4, 4]);
+    eq([H.cantripDarab(TUZ, 17), H.cantripDarab('', 20), H.cantripKocka(undefined, 20)], [1, 1, '']);
+  });
+  test('Agonizing Blast: +CHA az Eldritch Blasthoz (kézi és szabálymotoros lapon is, a jellemzők neve szerint); más varázslat nem kap', () => {
+    const H = W.Sheet, lap = (cha, ...f) => H.norm({abilities: {cha}, features: f.map(name => ({name, text: ''}))});
+    eq(H.spellDmgBonus(lap(16, 'Agonizing Blast'), 'Eldritch Blast'), {v: 3, src: 'Agonizing Blast'});
+    eq(H.spellDmgBonus(lap(8, 'Eldritch Invocations: Agonizing Blast'), 'eldritch blast'), {v: -1, src: 'Agonizing Blast'});
+    eq([H.spellDmgBonus(lap(16), 'Eldritch Blast'), H.spellDmgBonus(lap(16, 'Agonizing Blast'), 'Fire Bolt'), H.spellDmgBonus(lap(16, 'Agonizing Blastless'), 'Eldritch Blast')], [null, null, null]);
+    // szabálymotoros lapon az Invocation-választásból és az Eldritch Adept featből
+    const rb = rbVarazs();
+    rb.feats.push({n: 'Eldritch Adept', s: 'TCE', fx: W.featOptFx({optionalfeatureProgression: [{name: 'Eldritch Invocations', featureType: ['EI'], progression: {'*': 1}}]})});
+    for (const ch of [{'Warlock:opt:Eldritch Invocations': ['Agonizing Blast|PHB']}, {'Fighter:4:asi': {feat: 'Eldritch Adept|TCE'}, 'feat:Eldritch Adept|TCE:opt': ['Agonizing Blast|PHB']}]) {
+      const s = mkS({base: {cha: 16}, levels: ch['Fighter:4:asi'] ? lv('Fighter', 4) : lv('Warlock', 2), ch});
+      const m = H.norm({...s, ...H.materialize(s, H.calc(s, rb))});
+      eq(H.spellDmgBonus(m, 'Eldritch Blast')?.v, 3, Object.keys(ch)[0]);
+    }
+  });
+  test('a varázslat osztályának DC-je és attackje (multiclass); osztály nélkül az elsőé', () => {
+    const H = W.Sheet, s = {auto: true, cache: {spells: [{cls: 'Cleric', dc: 14, atk: 6}, {cls: 'Wizard', dc: 15, atk: 7}]}};
+    eq([H.spellCastOf(s, {cls: 'Wizard'}).dc, H.spellCastOf(s, {cls: ''}).dc, H.spellCastOf(s, {cls: 'Bard'}).dc], [15, 14, 14]);
+    eq(H.spellCastOf(H.norm({}), {cls: ''}), null);
+  });
+});
+
 describe('Telefonos karakterlap (karakter.html)', () => {
   const kq = s => K.document.querySelector(s), kqa = s => [...K.document.querySelectorAll(s)];
   const kclick = el => { const _k = el; if (typeof el === 'string') el = kq(el); ok(el, 'nincs ilyen elem' + (typeof _k === 'string' ? ': ' + _k : '')); el.dispatchEvent(new K.MouseEvent('click', {bubbles: true, cancelable: true})); };
@@ -5672,6 +5725,67 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     eq(K.eval('tamadasFx')(K.eval('sheets.get("p1")'), {name: 'Bite', dmg: '1d6+2 piercing', note: ''}), {dt: 'piercing', dk: 'nat'});
     // a közös döntés (Sheet.fegyverFajta): a Slam a telefonon is természetes, mint a DM Screenen
     eq(K.eval('tamadasFx')(K.eval('sheets.get("p1")'), {name: 'Slam', dmg: '1d8+3 bludgeoning', note: ''}), {dt: 'bludgeoning', dk: 'nat'});
+  });
+  ktest('varázslat sora (TERV-fejlesztesek-2026-11.md): a cantrip sebzése a szinthez igazodik, ×N darab, Agonizing Blast +CHA, spell attack gomb, mentő és DC', () => {
+    const rb = rbVarazs(), sp = (n, l, tx, atk = false) => ({n, s: 'PHB', l, sc: 'evocation', cl: ['Warlock'], tx, atk});
+    // szintetikus szövegek (nem a PHB-é), csak a felismert minták
+    rb.spells.push(sp('Eldritch Blast', 0, 'Make a ranged spell attack. Hit: 1d10 force damage. More: two beams at 5th level, three beams at 11th level, and four beams at 17th level.', true),
+      sp('Teszt Tűz', 0, 'Make a ranged spell attack. Hit: 1d10 fire damage. Grows when you reach 5th level (2d10), 11th level (3d10), and 17th level (4d10).', true),
+      sp('Teszt Láng', 0, 'The target must succeed on a Dexterity saving throw or take 1d8 radiant damage. Grows when you reach 5th level (2d8), 11th level (3d8), and 17th level (4d8).'),
+      sp('Teszt Bénítás', 2, 'The target must succeed on a Wisdom saving throw or be held.'), sp(XSS, 0, 'Make a melee spell attack. Hit: 1d6 cold damage. ' + XSS, true));
+    K.KApp.setRulebook({version: 'v', rb});
+    const lap = (level, cha = 16, features = [{name: 'Agonizing Blast', text: ''}]) => {
+      openSheet({classes: [{name: 'Warlock', level}], abilities: {str: 10, dex: 10, con: 10, int: 10, wis: 10, cha}, features, spellcasting: {ability: '', slots: [], used: [], pact: {level: 1, max: 1, used: 0}},
+        spells: ['Eldritch Blast', 'Teszt Tűz', 'Teszt Láng', XSS].map(name => ({name, level: 0})).concat({name: 'Teszt Bénítás', level: 2, prepared: true})});
+      kclick('[data-tab="var"]');
+    };
+    const sor = n => kqa('details').find(d => d.dataset.key === 'sp:' + n).querySelector('summary');
+    const r = n => { const e = sor(n); return {t: e.querySelector('.nm').textContent, dmg: e.querySelector('[data-act="dmg"]')?.dataset.expr, atk: e.querySelector('[data-act="d20"]')?.dataset.bonus}; };
+    lap(4);  // PB 2, CHA +3: attack +5, DC 13
+    eq([r('Eldritch Blast').dmg, r('Eldritch Blast').atk], ['1d10+3', '5']); has(r('Eldritch Blast').t, 'Agonizing Blast: +3');
+    ok(!r('Eldritch Blast').t.includes('(×'), '4. szinten nincs darab');
+    eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk], ['1d10', '5']);
+    eq([r('Teszt Láng').dmg, r('Teszt Láng').atk], ['1d8', undefined]); has(r('Teszt Láng').t, 'DEX 13');
+    eq([r('Teszt Bénítás').dmg, r('Teszt Bénítás').atk], [undefined, undefined]); has(r('Teszt Bénítás').t, 'WIS 13');
+    ok(!r('Teszt Tűz').t.includes('Agonizing'), 'más varázslat nem kap bónuszt');
+    // a spell attack gombja dob, és a DM Screenre is felkerül
+    K.rnd = () => 3; kclick(sor('Eldritch Blast').querySelector('[data-act="d20"]'));
+    eq([lastUpdate().rolls[0].label, lastUpdate().rolls[0].total], ['Eldritch Blast – spell attack', '8']);
+    kclick(sor('Eldritch Blast').querySelector('[data-act="dmg"]'));
+    eq([lastUpdate().rolls[0].total, lastUpdate().rolls[0].dt], ['6', 'force']);
+    lap(5);  // PB 3: +6, DC 14; a cantrip erősödik, az Eldritch Blast két sugár
+    has(r('Eldritch Blast').t, '(×2)'); eq([r('Eldritch Blast').dmg, r('Eldritch Blast').atk], ['1d10+3', '6']);
+    eq([r('Teszt Tűz').dmg, r('Teszt Láng').dmg], ['2d10', '2d8']); has(r('Teszt Láng').t, 'DEX 14');
+    lap(17);
+    has(r('Eldritch Blast').t, '(×4)'); eq([r('Teszt Tűz').dmg, r('Teszt Láng').dmg], ['4d10', '4d8']);
+    lap(4, 8); eq(r('Eldritch Blast').dmg, '1d10-1');
+    lap(4, 16, []); eq(r('Eldritch Blast').dmg, '1d10'); ok(!r('Eldritch Blast').t.includes('Agonizing'), 'Invocation nélkül nincs bónusz');
+    lap(4, 10); eq(r('Eldritch Blast').dmg, '1d10'); ok(!r('Eldritch Blast').t.includes('Agonizing'), '+0-nál nincs kiírva');
+    ok(!K.__xss && !kq('main img'), 'gonosz név nem fut');
+    // multiclass (Cleric 3 / Wizard 2, karakterszint 5, PB 3): a varázslat osztályának DC-je és attackje, a cantrip a teljes karakterszinten
+    openSheet({auto: true, build: {base: {wis: 14, int: 16}, levels: [...lv('Cleric', 3), ...lv('Wizard', 2)], spells: {}}, classes: [{name: 'Cleric', level: 3}, {name: 'Wizard', level: 2}],
+      spells: [{name: 'Teszt Tűz', level: 0, cls: 'Wizard'}, {name: 'Teszt Láng', level: 0, cls: 'Cleric'}]});
+    kclick('[data-tab="var"]');
+    eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk, r('Teszt Láng').dmg], ['2d10', '6', '2d8']); has(r('Teszt Láng').t, 'DEX 13');
+  });
+  ktest('varázslat sora 320 px-en, normál és nagy betűvel: a leveles, támadó, koncentrációs sor sem lóg ki, a név nem törik betűnként', async () => {
+    const rb = rbVarazs();
+    rb.spells.push({n: 'Teszt Villámcsapás Hosszú Névvel', s: 'PHB', l: 1, sc: 'evocation', cl: ['Warlock'], atk: true, k: true, tx: 'Make a ranged spell attack. Hit: 1d12 lightning damage.'});
+    K.KApp.setRulebook({version: 'v', rb});
+    const fr = document.getElementById('karakter'), w0 = fr.width;
+    try {
+      for (const meret of ['', 'nagy']) {
+        megjTorol(); if (meret) K.megjAllit('betumeret', meret);
+        openSheet({classes: [{name: 'Warlock', level: 3}], abilities: {str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 16}, spellcasting: {ability: '', slots: [], used: [], pact: {level: 2, max: 2, used: 0}},
+          spells: [{name: 'Teszt Villámcsapás Hosszú Névvel', level: 1, prepared: true}]});
+        kclick('[data-tab="var"]'); fr.width = 320; await wait(50);
+        const sum = kqa('details').find(d => d.dataset.key.startsWith('sp:Teszt Villám')).querySelector('summary');
+        ok(sum.querySelector('[data-act="d20"]') && sum.querySelector('[data-act="dmg"]'), 'attack és sebzés gomb');
+        ok(K.document.documentElement.scrollWidth <= K.document.documentElement.clientWidth + 1, `${meret || 'normál'}: nincs vízszintes görgetés (${K.document.documentElement.scrollWidth})`);
+        ok(sum.querySelector('.nm').getBoundingClientRect().width >= 100, `${meret || 'normál'}: a név legalább 100 px széles`);
+        fr.width = w0;
+      }
+    } finally { fr.width = w0; megjTorol(); }
   });
   ktest('a fegyver sebzésgombja: közelharci (wdmg:melee, a Rage és más melee-hatás ide jön) vagy távolra is használható (wdmg; a dobófegyver is)', () => {
     const at = (name, note = '') => ({name, hit: '+5', dmg: '1d6+3 piercing', note});

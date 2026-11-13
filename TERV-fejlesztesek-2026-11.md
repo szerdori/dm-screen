@@ -27,7 +27,7 @@ Minden a varázslat sorában (`spellRow`), a Varázslat fülön; a Harc fül nem
 - A mentő fajtája, a cantrip kockái szintenként és a sugarak: **a leírás szövegéből** olvassa ki („…make a Wisdom saving throw”, „…increases by 1d10 when you reach 5th level (2d10)…”, „two beams at 5th level”). Így **nem kell újratölteni a szabálykönyvet**. Az online teszt (`teszt.ps1 -Online`) a tükörből minden PHB / XGE / TCE varázslaton ellenőrzi, hogy a mentős és a sebző cantripeknél sikerül-e kiolvasni; ha valamelyiknél nem, az a régi módon (első kocka, mentő nélkül) jelenik meg, hiba nélkül.
 
 ### Érintett fájlok
-`sheet.js` (`spellDmgBonus`, `spellScale` / `spellSave` szövegelemzők, `Sheet.VERSION` 25 → 26), `js/lap/lap-rajz.js` (`spellRow`), `js/lap/lap-dobas.js` (ha a d20-gombnak új fajta kell), verziószámok, `?v=`, `VART_MODULOK`.
+`sheet.js` (`spellDmgBonus`, `spellCastOf`, a `spellSave` / `cantripKocka` / `cantripDarab` szövegelemzők, `Sheet.VERSION` 25 → 26), `js/lap/lap-rajz.js` (`spellRow`), `js/lap/lap-dobas.js` (ha a d20-gombnak új fajta kell), verziószámok, `?v=`, `VART_MODULOK`.
 
 ### Tesztek
 - Agonizing Blast: CHA 16 → `1d10+3`; nélküle `1d10`; CHA 8 → `1d10-1`; szabálymotoros lapon az Invocationből és az Eldritch Adept featből is.

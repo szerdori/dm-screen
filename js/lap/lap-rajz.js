@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-rajz, a karakter.html része): a szabálykönyv segédei és a lap rajzolása (fülek)
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-rajz', N) és a karakter.html-ben a lap-rajz.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-rajz', 3);
+modul('lap-rajz', 4);
 
 // ---------- szabálykönyv ----------
 const RB = () => rbInfo?.rb || null;
@@ -128,11 +128,24 @@ function castChoices(s, sp, r) {
   if (r?.ri) out.push({how: 'ritual', text: 'Rituáléként (+10 perc, nincs slot)'});
   return out;
 }
+// a varázslat sorának dobásai (TERV-fejlesztesek-2026-11.md): a cantrip sebzése a karakterszinthez igazodik, a darabszám (×2) a név után,
+// az Agonizing Blast bónusza a kockához; spell attack gomb a támadó varázslatnál, mentő és DC (pl. „WIS 15”) a mentősnél
+function spellDobasok(sp, r, s) {
+  const tx = r?.tx || '', lvl = H.level(s), cast = H.spellCastOf(s, sp);
+  let kocka = diceOf(tx);
+  const szintes = kocka && !sp.level ? H.cantripKocka(tx, lvl) : '';
+  if (szintes) kocka = kocka.replace(/^\d*d\d+/i, szintes);
+  const bon = kocka ? H.spellDmgBonus(s, sp.name) : null;
+  if (bon?.v) kocka += H.sgn(bon.v);
+  return {kocka, bon, darab: sp.level ? 1 : H.cantripDarab(tx, lvl), cast,
+    atk: !!cast && (!!r?.atk || /\bspell attack\b/i.test(tx)), mento: cast ? H.spellSave(tx) : ''};
+}
 function spellRow(sp, i, ed, s) {
-  const r = rbSpell(sp);
+  const r = rbSpell(sp), d = spellDobasok(sp, r, s);
+  const info = [r ? H.spellLine(r) : '', d.mento ? `${d.mento.toUpperCase()} ${d.cast.dc}` : '', d.bon?.v ? `${d.bon.src}: ${H.sgn(d.bon.v)}` : '', sp.always ? 'mindig bekészítve' : '', sp.note];
   const sum = `${sp.level ? `<input type="checkbox" data-act="prep" data-i="${i}" ${sp.prepared || sp.always ? 'checked' : ''} ${sp.always || !ed ? 'disabled' : ''} title="Bekészítve">` : ''}
-    <span class="nm"><b>${esc(sp.name)}</b><small>${esc([r ? H.spellLine(r) : '', sp.always ? 'mindig bekészítve' : '', sp.note].filter(Boolean).join(' · '))}</small></span>
-    ${r && diceOf(r.tx) ? dmgBtn(diceOf(r.tx), sp.name, '', H.dmgType(r.tx) ? {dt: H.dmgType(r.tx), dk: varazsFajta(r.tx)} : {}) : ''}${ed && sp.level ? `<button class="small cast ${castOpen === i ? 'on' : ''}" data-act="castOpen" data-i="${i}">✨ Cast</button>`
+    <span class="nm"><b>${esc(sp.name)}${d.darab > 1 ? ` <span class="hint">(×${d.darab})</span>` : ''}</b><small>${esc(info.filter(Boolean).join(' · '))}</small></span>
+    ${d.atk ? rollBtn(d.cast.atk, sp.name + ' – spell attack', undefined, 'atk') : ''}${d.kocka ? dmgBtn(d.kocka, sp.name, '', H.dmgType(r.tx) ? {dt: H.dmgType(r.tx), dk: varazsFajta(r.tx)} : {}) : ''}${ed && sp.level ? `<button class="small cast ${castOpen === i ? 'on' : ''}" data-act="castOpen" data-i="${i}">✨ Cast</button>`
       : ed && (r?.k || H.effectOf(sp.name)) ? `<button class="small cast" data-act="cast" data-i="${i}" data-how="0">✨ Cast</button>` : ''}${r?.k ? '<span class="hint" title="koncentráció">🌀</span>' : ''}`;
   const ch = ed && sp.level && castOpen === i ? castChoices(s, sp, r) : null;
   const pick = ch ? `<div class="row castpick">${ch.map(c => `<button class="small" data-act="cast" data-i="${i}" data-how="${esc(c.how)}">${esc(c.text)}</button>`).join('')
