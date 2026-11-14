@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 14);
+modul('lapszinkron', 15);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -125,7 +125,7 @@ function syncSheets(ops) {
   }
   for (const id of sheetOps.set) if (SHEETS[id] && Tar.kapcsolva()) ops.push(Tar.lapok.ir(id, JSON.parse(JSON.stringify({...SHEETS[id], updatedAt: now, updatedBy: by}))));
   if (Tar.kapcsolva()) sheetOps.set.clear();
-  try { localStorage.setItem(HELYI.lapok, JSON.stringify(SHEETS)); } catch {}
+  try { Bongeszotar.ir(HELYI.lapok, JSON.stringify(SHEETS)); } catch {}  // régi kozos.js mellett se akadjon el a mentés
 }
 // élő figyelés: a teljes sheets gyűjtemény minden változáskor
 function onSheets(docs) {

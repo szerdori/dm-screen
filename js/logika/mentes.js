@@ -1,7 +1,7 @@
 // Mentés és betöltés (logika, DOM nélkül): változott dokumentumok írása a Tar-on át, helyi másolat, mentésfájl, napi felhős mentések, mentett encounterek.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('mentes', N) és az index.html-ben a mentes.js?v=N és a VART_MODULOK.
 'use strict';
-modul('mentes', 3);
+modul('mentes', 4);
 
 // ---------- mentés: Firebase (Firestore), plusz másolat a böngészőben ----------
 // A felhőbe a Tar (js/adat/tar.js) ír: állapot (encounter + beállítások), könyvtár, mentett encounterek, és a játékos appnak
@@ -45,7 +45,8 @@ async function doSave() {
   ensureIds();
   const ops = [];
   syncSheets(ops);
-  try { localStorage.setItem(HELYI.allapot, JSON.stringify(S)); } catch {}
+  // try: egy régi (gyorsítótárazott) kozos.js mellett nincs Bongeszotar – a helyi másolat ilyenkor kimarad, a felhős mentés nem
+  try { Bongeszotar.ir(HELYI.allapot, JSON.stringify(S)); } catch {}
   if (!Tar.kapcsolva()) { Ertesito.mentesAllapot(authInfo.status === 'unconfigured' ? '✓ böngészőben mentve' : ''); return; }
   try {
     const state = JSON.stringify({enc: S.enc, settings: S.settings});
@@ -70,9 +71,9 @@ function importBackup(obj) {
   save();
 }
 function loadLocal() {
-  try { const t = localStorage.getItem(HELYI.allapot); if (t) applyLoaded(JSON.parse(t)); } catch {}
+  try { const t = Bongeszotar.olvas(HELYI.allapot); if (t) applyLoaded(JSON.parse(t)); } catch {}
   try {
-    const t = localStorage.getItem(HELYI.lapok), o = t ? JSON.parse(t) : null;
+    const t = Bongeszotar.olvas(HELYI.lapok), o = t ? JSON.parse(t) : null;
     if (isObj(o)) restoreSheets(Object.entries(o).map(([id, s]) => ({...s, id})));
   } catch {}
 }

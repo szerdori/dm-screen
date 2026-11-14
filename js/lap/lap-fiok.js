@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-fiok, a karakter.html része): felugró leírás, Fiók menü, teendők, Felépítés fül, Alapadatok űrlap
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-fiok', N) és a karakter.html-ben a lap-fiok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-fiok', 4);
+modul('lap-fiok', 5);
 
 // ---------- felugró leírás (i gomb): a teendők és a szabad szöveges mezők magyarázata; a szövegek a sheet.js-ben (Sheet.todoInfo, freeInfo, MEZO_INFO) ----------
 const infoReg = new Map();
@@ -21,7 +21,7 @@ function megjAllit(k, v) {
   if (!Object.hasOwn(MEGJ_ATTR, k) || !ertekek.includes(v)) return;
   const d = document.documentElement, kulcs = SZ?.HELYI?.[k];
   if (v) d.dataset[MEGJ_ATTR[k]] = v; else delete d.dataset[MEGJ_ATTR[k]];
-  if (kulcs) try { if (v) localStorage.setItem(kulcs, v); else localStorage.removeItem(kulcs); } catch {}
+  if (kulcs) { if (v) Bongeszotar.ir(kulcs, v); else Bongeszotar.torol(kulcs); }
   $('meta[name="theme-color"]').content = getComputedStyle(d).getPropertyValue('--bg').trim() || '#0e1013';
 }
 function fiokMutat() {

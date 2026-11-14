@@ -1,18 +1,18 @@
 // Telefonos karakterlap (lap-szintlepes, a karakter.html része): a szintlépés-varázsló
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-szintlepes', N) és a karakter.html-ben a lap-szintlepes.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-szintlepes', 2);
+modul('lap-szintlepes', 3);
 
 // ---------- szintlépés-varázsló: a piszkozat (lu) egy ideiglenes felépítés; a mentésig a lap nem változik, és a telefonon megmarad (újratöltés, elalvó telefon) ----------
 let lu = null;  // {id, from, step, cls, how: 'avg'|'roll'|'manual'|'', die, build, saving}
 const LU_STEPS = [['cls', 'Osztály'], ['hp', 'HP'], ['ch', 'Választások'], ['sp', 'Varázslatok'], ['ft', 'Jellemzők'], ['sum', 'Összegzés']];
 const luFile = id => window.Szerzodes.HELYI.szintlepes(id);
-function luStore() { try { localStorage.setItem(luFile(lu.id), JSON.stringify(lu)); } catch {} }
-function luDrop(id) { try { localStorage.removeItem(luFile(id)); } catch {} }
+function luStore() { Bongeszotar.ir(luFile(lu.id), JSON.stringify(lu)); }
+function luDrop(id) { Bongeszotar.torol(luFile(id)); }
 // a tárolt piszkozat csak akkor él, ha ugyanarról a szintről indult (másik eszközön már léphetett); a kézzel átírt tárolót sem hisszük el
 function luLoad(id, s) {
   let d = null;
-  try { d = JSON.parse(localStorage.getItem(luFile(id))); } catch {}
+  try { d = JSON.parse(Bongeszotar.olvas(luFile(id))); } catch {}
   const L = H.level(s);
   const uj = () => {
     lu = {id, from: L, step: 'cls', cls: '', how: '', die: null, build: null, base: ''};

@@ -67,7 +67,7 @@ A fájlok (a 4. lépés után, 2026-10-30; betöltési sorrendben, ≈ sor):
 
 Az `index.html`-ben a HTML-váz, a stílus, egy inline `<script>` a `VART_MODULOK`-kal (szándékosan inline és a fájlok előtt, lásd `docs/dontesek/0005`), a `<script src>` sorok és a Firebase-modul maradt. A felületi fájlok eseményfigyelői `…Esemenyek()` függvényekben vannak, az `indulas.js` kapcsolja fel őket a régi sorrendben.
 
-**A 6. lépés után nyitva maradt:** a `fiveResults` (keresési találatok) felületi állapot a logikában; a `localStorage` (helyi másolat) a logikában van, később a `Tar` alá kerülhet; a napló szövege (HTML) a logikában készül, és az `Ertesito`-n át jut a felületre (`docs/dontesek/0006`).
+**A 6. lépés után nyitva maradt:** ~~a `fiveResults` (keresési találatok) felületi állapot a logikában~~ (2026-11-14: a felületen, `TERV-refaktor-2.md` 4. lépés); ~~a `localStorage` (helyi másolat) a logikában van, később a `Tar` alá kerülhet~~ (2026-11-14: a tárolót csak a `kozos.js` `Bongeszotar`-ja hívja, `TERV-refaktor-2.md` 3. lépés); a napló szövege (HTML) a logikában készül, és az `Ertesito`-n át jut a felületre (`docs/dontesek/0006`).
 
 A `karakter.html` szkriptje (2026-11-08-án 1613 sor) a 8. lépésben a `js/lap/` alá került, betöltési sorrendben: `lap-alap`, `lap-dobas`, `lap-rajz`, `lap-felepites`, `lap-szintlepes`, `lap-ujkarakter`, `lap-elozmenyek`, `lap-fiok`, `lap-iras`, `lap-utvonal`, `lap-gesztus`, `lap-akciok`, `lap-indulas` (az utolsó: `KApp`, a figyelők felkapcsolása, első rajzolás). A sorok betűre változatlanok; a figyelők `…Esemenyek()` függvényekbe kerültek, a `sheetStale` az indításkor számolódik. A rétegteszt: csak a `lap-indulas.js` futtat kódot betöltéskor.
 

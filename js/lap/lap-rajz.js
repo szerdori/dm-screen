@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-rajz, a karakter.html része): a szabálykönyv segédei és a lap rajzolása (fülek)
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-rajz', N) és a karakter.html-ben a lap-rajz.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-rajz', 5);
+modul('lap-rajz', 6);
 
 // ---------- szabálykönyv ----------
 const RB = () => rbInfo?.rb || null;
@@ -153,9 +153,13 @@ function spellRow(sp, i, ed, s) {
   return det('sp:' + sp.name, sum, `${r ? `<div class="tx">${esc(r.tx)}</div>` : '<div class="hint">Nincs leírás a szabálykönyvben.</div>'}${ed && !sp.auto ? `<div class="row" style="margin-top:8px"><button class="small" data-act="spellRm" data-i="${i}">🗑 Eltávolítás</button></div>` : ''}`) + pick;
 }
 // a „csak a bekészítettek” szűrő eszközönként marad meg (böngésző-tároló; ha nem elérhető, alapból minden látszik)
-let csakBekTartalek = false;
-function csakBekeszitett() { try { return localStorage.getItem(window.Szerzodes.HELYI.csakBekeszitett) === '1'; } catch { return csakBekTartalek; } }
-function csakBekeszitettAllit(v) { csakBekTartalek = v; try { if (v) localStorage.setItem(window.Szerzodes.HELYI.csakBekeszitett, '1'); else localStorage.removeItem(window.Szerzodes.HELYI.csakBekeszitett); } catch {} }
+// (ha a tárolóba nem sikerül írni, a választás a memóriában marad, amíg az oldal nyitva van)
+let csakBekTartalek = null;
+function csakBekeszitett() { return csakBekTartalek ?? Bongeszotar.olvas(window.Szerzodes.HELYI.csakBekeszitett) === '1'; }
+function csakBekeszitettAllit(v) {
+  const k = window.Szerzodes.HELYI.csakBekeszitett, sikerult = v ? Bongeszotar.ir(k, '1') : Bongeszotar.torol(k);
+  csakBekTartalek = sikerult ? null : v;
+}
 function tabVar(s, ed) {
   const sc = s.spellcasting, dis = ed ? '' : 'disabled', ab = H.spellAbility(s);
   const slots = sc.slots.map((n, l) => n ? `<div class="li"><span class="nm"><b>${H.ORD[l + 1]} level</b><small>${n - sc.used[l]} / ${n} szabad</small></span>

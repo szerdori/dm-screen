@@ -20,4 +20,11 @@ function modul(nev, v) { MODULOK[nev] = v; }
 function elteroModulok(vart) { return Object.keys(vart).filter(n => MODULOK[n] !== vart[n]); }
 // rövid véletlen azonosító (lények, encounterek, mentések)
 const uid = () => Math.random().toString(36).slice(2, 10);
-modul('kozos', 3);
+// ---------- böngésző-tároló (localStorage) egy helyen: hibatűrő – privát ablakban, tiltott vagy megtelt tárolónál sem dob ----------
+// A kulcsok: Szerzodes.HELYI (szerzodes.js). Csak ezen át nyúlj a tárolóhoz (a rétegteszt figyeli).
+const Bongeszotar = {
+  olvas(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  ir(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } },
+  torol(k) { try { localStorage.removeItem(k); return true; } catch { return false; } },
+};
+modul('kozos', 4);

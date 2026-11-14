@@ -33,6 +33,46 @@ describe('Szerződés (szerzodes.js)', () => {
       eq(talal(kod, HIVAS_RE), [], f + ': a logika nem hívja a felületet');
     }
   });
+  test('böngésző-tároló: a js/ fájlok csak a közös Bongeszotar-on át nyúlnak a localStorage-hoz (kozos.js), és az elérhetetlen tároló mellett sem dobnak', async () => {
+    const szoveg = async f => (await fetch('../' + f, {cache: 'no-store'})).text();
+    const fajlok = new Set();
+    for (const lap of ['index.html', 'karakter.html', 'player.html'])
+      for (const m of (await szoveg(lap)).matchAll(/<script src="(js\/[\w\/-]+\.js)\?v=\d+"><\/script>/g)) fajlok.add(m[1]);
+    ok(fajlok.size >= 30, 'megtalálta a fájlokat: ' + fajlok.size);
+    for (const f of fajlok) eq([...(await szoveg(f)).replace(/^\s*\/\/.*$/gm, '').matchAll(/\blocalStorage\b/g)].length, 0, f + ': közvetlen localStorage');
+    has(await szoveg('kozos.js'), 'localStorage.getItem(', 'a kozos.js a tároló egyetlen helye');
+    // működés: írás, olvasás, törlés; tiltott tárolónál (privát mód) null / false, kivétel nélkül
+    for (const w of [W, K]) {
+      const B = w.eval('Bongeszotar'), k = 'dmscreen-proba-kulcs';
+      eq([B.ir(k, 'x'), B.olvas(k), B.torol(k), B.olvas(k)], [true, 'x', true, null]);
+      const orig = Object.getOwnPropertyDescriptor(w, 'localStorage');
+      try {
+        Object.defineProperty(w, 'localStorage', {configurable: true, get() { throw new Error('tiltva'); }});
+        eq([B.ir(k, 'x'), B.olvas(k), B.torol(k)], [false, null, false]);
+      } finally { if (orig) Object.defineProperty(w, 'localStorage', orig); else delete w.localStorage; }
+    }
+  });
+  test('böngésző-tároló: ha a helyi másolat írása dob (pl. régi, gyorsítótárazott kozos.js, Bongeszotar nélkül), a felhős mentés akkor is megy', async () => {
+    const f = makeFakeDb({'dmscreen/state': {enc: {list: [], round: 1, active: null}, settings: {}}});
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await mentve(); f.log.splice(0);
+    const B = A('Bongeszotar'), ir = B.ir;
+    try {
+      B.ir = () => { throw new ReferenceError('Bongeszotar is not defined'); };
+      add(mk('Tároló nélkül')); await mentve();
+      ok(f.log.includes('set dmscreen/state'), 'a felhőbe írt: ' + f.log.join(', '));
+      ok(Object.keys(f.store).some(k => k.startsWith('dmscreen_library/')) || f.store['dmscreen/state'].enc.list.length === 1, 'az encounter a felhőben');
+    } finally { B.ir = ir; }
+  });
+  test('telefonos lap: a „csak a bekészítettek” szűrő tiltott tárolónál a memóriában marad, amíg az oldal nyitva van', () => {
+    const orig = Object.getOwnPropertyDescriptor(K, 'localStorage');
+    try {
+      Object.defineProperty(K, 'localStorage', {configurable: true, get() { throw new Error('tiltva'); }});
+      eq(K.csakBekeszitett(), false, 'alapból minden látszik');
+      K.csakBekeszitettAllit(true); eq(K.csakBekeszitett(), true, 'bekapcsolva');
+      K.csakBekeszitettAllit(false); eq(K.csakBekeszitett(), false, 'kikapcsolva');
+    } finally { if (orig) Object.defineProperty(K, 'localStorage', orig); else delete K.localStorage; K.csakBekeszitettAllit(false); }
+    eq([K.csakBekeszitett(), K.localStorage.getItem(K.Szerzodes.HELYI.csakBekeszitett)], [false, null], 'a tároló visszaállt');
+  });
   test('Értesítő: a logika üzenetei eljutnak a felületre (napló, mentésjelző, telefonos lap változása)', () => {
     A(`Ertesito.naplo('üzenet', 'warn')`);
     eq([lastLog(), A('logLines[0].cls')], ['üzenet', 'warn']);
