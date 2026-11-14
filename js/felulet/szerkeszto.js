@@ -1,7 +1,7 @@
 // Lényszerkesztő (felület): a szerkesztő ablak, a megosztási mezők és a portré.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('szerkeszto', N) és az index.html-ben a szerkeszto.js?v=N és a VART_MODULOK.
 'use strict';
-modul('szerkeszto', 4);
+modul('szerkeszto', 5);
 
 // ---------- portré ----------
 function setPortrait(v) {
@@ -64,10 +64,11 @@ function shareFieldsHtml(c, note = '') {
       <div class="w4"><b>📱 Játékos app</b> <span class="hint">– mi látszik a játékosok telefonján</span></div>
       <label class="w2" data-for="pc">A játékos Google-fiókja (e-mail)<input type="email" name="owner" value="${esc(c.owner || '')}" placeholder="pl. jatekos@gmail.com"></label>
       <label>Ki láthatja<select name="shareVis">${opt('party', 'az egész csapat', sh.vis)}${opt('dm', 'csak a DM', sh.vis)}</select></label>
-      <label data-for="npc">HP a játékosoknak<select name="shareHp">${opt('exact', 'pontos érték', sh.hp)}${opt('label', 'csak állapot (Sérült…)', sh.hp)}</select></label>
+      <label data-for="npc">HP a játékosoknak<select name="shareHp">${opt('exact', 'pontos érték', sh.hp)}${opt('label', 'csak állapot (Sérült…)', sh.hp)}${opt('hidden', 'rejtve', sh.hp)}</select></label>
+      <label data-for="pc">HP a többieknek<select name="shareHpPc">${opt('exact', 'pontos érték', sh.hp === 'hidden' ? 'hidden' : 'exact')}${opt('hidden', 'rejtve', sh.hp === 'hidden' ? 'hidden' : 'exact')}</select></label>
       <label data-for="npc">AC a játékosoknak<select name="shareAc">${opt('1', 'látszik', sh.ac ? '1' : '0')}${opt('0', 'rejtve', sh.ac ? '1' : '0')}</select></label>
-      <p class="hint w4" data-for="pc">A játékos a saját karakterét mindig látja. „Csak a DM” esetén a többi játékos nem látja.</p>
-      <p class="hint w4" data-for="npc">„Csak a DM” esetén a játékosok egyáltalán nem látják ezt az NPC-t. A statok, akciók és jegyzetek sosem látszanak.</p>
+      <p class="hint w4" data-for="pc">A játékos a saját karakterét mindig látja (a saját HP-ját a lapján akkor is, ha rejtve van). „Csak a DM” esetén a többi játékos nem látja. A HP-beállítás az Initiative trackerre is szól.</p>
+      <p class="hint w4" data-for="npc">„Csak a DM” esetén a játékosok egyáltalán nem látják ezt az NPC-t. A statok, akciók és jegyzetek sosem látszanak. A HP-beállítás az Initiative trackerre is szól.</p>
       ${!c.libId && c.owner && SHEETS[c.id] ? `<p class="hint w4" data-for="npc" style="border:1px solid var(--accent);border-radius:6px;padding:6px 8px">📱 ${esc(c.owner)} telefonos lapja megmarad, de amíg NPC, a játékos nem látja és nem szerkeszti. Játékosra visszaállítva ugyanúgy látja és szerkesztheti (a szint, a választások, a varázslatok és a tárgyak megmaradnak).</p>` : ''}
       ${note ? `<p class="hint w4">${esc(note)}</p>` : ''}
     </div>`;
@@ -138,7 +139,7 @@ function readEditor() {
   SECTIONS.forEach(k => c[k] = textToSection(v('sec_' + k)));
   if (fm.elements.shareVis) {
     c.owner = v('owner');
-    c.share = {vis: v('shareVis'), hp: v('shareHp'), ac: v('shareAc') === '1'};
+    c.share = {vis: v('shareVis'), hp: v('kind') === 'pc' ? v('shareHpPc') : v('shareHp'), ac: v('shareAc') === '1'};
   }
   return normCreature(c);
 }

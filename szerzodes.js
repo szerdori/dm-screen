@@ -61,6 +61,7 @@ window.Szerzodes = (() => {
 
   // ---------- tisztítók ----------
   const KINDS = ['monster', 'npc', 'pc'], SIDES = ['enemy', 'ally'], VIS = ['dm', 'party'];
+  const HP_MODOK = ['exact', 'label', 'hidden'];   // share.hp: pontos, csak állapot, rejtve (hpLathato)
   const str = v => v == null ? '' : typeof v === 'object' ? '' : String(v);
   const safeId = v => { const s = typeof v === 'number' ? String(v) : v; return typeof s === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(s) ? s : uid(); };
   function normInventory(list) {
@@ -111,7 +112,7 @@ window.Szerzodes = (() => {
     if (o.kind === 'monster') delete o.share;
     else {
       const sh = isObj(c.share) ? c.share : {}, npc = o.kind === 'npc';
-      o.share = {vis: VIS.includes(sh.vis) ? sh.vis : npc ? 'dm' : 'party', hp: ['exact', 'label'].includes(sh.hp) ? sh.hp : npc ? 'label' : 'exact', ac: typeof sh.ac === 'boolean' ? sh.ac : !npc};
+      o.share = {vis: VIS.includes(sh.vis) ? sh.vis : npc ? 'dm' : 'party', hp: HP_MODOK.includes(sh.hp) ? sh.hp : npc ? 'label' : 'exact', ac: typeof sh.ac === 'boolean' ? sh.ac : !npc};
     }
     // NPC-ből lett játékos (a szerkesztő állítja be NPC → Játékos váltáskor): a 🎁 szinthez illő felszerelés gomb csak nála látszik (TERV-kezdo-felszereles.md); NPC-vé visszaváltva is megmarad
     if (o.kind !== 'monster' && c.fromNpc === true) o.fromNpc = true; else delete o.fromNpc;
@@ -183,7 +184,17 @@ window.Szerzodes = (() => {
     };
   }
 
-  if (typeof modul === 'function') modul('szerzodes', 8);
+  // mennyi látszik egy lény HP-jából a játékosoknak (a telefonok nyilvános része és az Initiative tracker): 'exact' | 'label' (állapotcímke) | 'hidden'.
+  // A könyvtári beállítás (share.hp) dönt; szörnynél nincs ilyen: állapotcímke. Játékosnál csak a „rejtve” számít, különben pontos –
+  // a régi játékosoknál a tárolt 'label' sosem jelentett címkét (a felhasználó döntése, 2026-11-14: a könyvtári beállítás szól a trackerre is).
+  function hpLathato(c) {
+    const hp = c?.share?.hp;
+    if (c?.kind === 'pc') return hp === 'hidden' ? 'hidden' : 'exact';
+    if (c?.kind === 'npc') return HP_MODOK.includes(hp) ? hp : 'label';
+    return 'label';
+  }
+
+  if (typeof modul === 'function') modul('szerzodes', 9);
   return {UT, HELYI, MEGJELENITES, CSATORNA, SECTIONS, TEMPLATE, KINDS, SIDES, VIS, ALLAPOTOK, ALAP_BEALLITASOK, str, safeId, blankCreature, splitEntry,
-    normInventory, normCreature, normCombatant, sanitizeState, normPublicChar};
+    normInventory, normCreature, normCombatant, sanitizeState, normPublicChar, HP_MODOK, hpLathato};
 })();

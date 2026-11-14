@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-iras, a karakter.html része): újraszámolás és írás (helyben és a felhőbe), koncentráció, sebzés
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-iras', N) és a karakter.html-ben a lap-iras.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-iras', 1);
+modul('lap-iras', 2);
 
 // ---------- szabálymotor (auto lap): a számolt értékek a lap mezőibe (Sheet.calc + Sheet.materialize) ----------
 // Újraszámolás, ha a felépítés, a felülírás, a felszerelés vagy a szabálykönyv-verzió változott (betöltéskor is: a kiírt értékek ellenőrzése).
@@ -50,9 +50,11 @@ function write(id, p) {
 }
 // a csapat felé látszó rész (characters/{id}) is frissül: HP, AC, név, szint
 // az AC az aktív hatásokkal együtt (pl. Mage Armor, Shield of Faith)
+// a HP csak akkor, ha a DM a nyilvános részbe is pontos HP-t ír: rejtett HP-nál (share.hp 'hidden', 2026-11-14) a DM hp: null-t ír, azt a telefon nem írja felül
 function pubSheet(id, next) {
-  if (!chars.some(c => c.id === id)) return;
-  const pub = {hp: {cur: next.hp.cur, max: next.hp.max}, ac: H.effects(next, RB()).ac, name: next.name, level: 'Szint ' + H.level(next)};
+  const c0 = chars.find(c => c.id === id);
+  if (!c0) return;
+  const pub = {...(c0.hp ? {hp: {cur: next.hp.cur, max: next.hp.max}} : {}), ac: H.effects(next, RB()).ac, name: next.name, level: 'Szint ' + H.level(next)};
   try { window.KDB?.pub(id, pub); } catch {}
   chars = chars.map(c => c.id === id ? normChar({...c, ...pub}) : c);
 }

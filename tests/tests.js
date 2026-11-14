@@ -993,6 +993,31 @@ describe('Initiative tracker', () => {
     eq([v[0].hp, v[0].max, v[0].temp, v[0].status], [12, 30, 4, null]);
     eq([v[1].hp, v[1].max], [null, null]);
   });
+  test('HP rejtve (2026-11-14): a könyvtári „HP a játékosoknak” beállítás a trackerre is szól – NPC: pontos / állapot / rejtve, játékos: pontos / rejtve, szörny: állapot', () => {
+    const {hpLathato, normCreature} = W.Szerzodes;
+    // a tisztító: 'hidden' megmarad, ismeretlen érték alapra áll
+    eq(['exact', 'label', 'hidden', 'x'].map(h => normCreature({kind: 'npc', share: {hp: h}}).share.hp), ['exact', 'label', 'hidden', 'label']);
+    eq(normCreature({kind: 'pc', share: {hp: 'x'}}).share.hp, 'exact');
+    eq([['npc', 'exact'], ['npc', 'label'], ['npc', 'hidden'], ['pc', 'exact'], ['pc', 'label'], ['pc', 'hidden'], ['monster', 'hidden']].map(([kind, hp]) => hpLathato({kind, share: {hp}})),
+      ['exact', 'label', 'hidden', 'exact', 'exact', 'hidden', 'label'], 'a régi játékos „label”-je pontos marad');
+    eq([hpLathato(null), hpLathato({kind: 'npc'})], ['label', 'label']);
+    const lib = (n, kind, hp) => W.upsertLibrary(W.normCreature({...mk(n, {kind, hp: {max: 20}}), share: {vis: 'party', hp}}));
+    const [nh] = add(lib('Rejtett NPC', 'npc', 'hidden')), [ne] = add(lib('Pontos NPC', 'npc', 'exact')), [ph] = add(lib('Rejtett hős', 'pc', 'hidden')), [pl] = add(lib('Régi hős', 'pc', 'label')), [m] = add(mk('Ork', {hp: {max: 20}}));
+    [nh, ne, ph, pl, m].forEach((x, i) => { x.hp = 12; x.init = 20 - i; });
+    const v = () => Object.fromEntries(W.publicView().list.map(e => [e.name, [e.hp, e.max, e.status]]));
+    eq(v(), {'Rejtett NPC': [null, null, null], 'Pontos NPC': [12, 20, null], 'Rejtett hős': [null, null, null], 'Régi hős': [12, 20, null], 'Ork': [null, null, 'hurt']});
+    // a könyvtár mostani értéke számít (harc közben átállítva is)
+    A(`S.library.find(c => c.name === 'Rejtett NPC').share.hp = 'label'`);
+    eq(v()['Rejtett NPC'], [null, null, 'hurt']);
+    const pub = Object.fromEntries(A('Tar.karakterek.nyilvanosResz(S.library)').map(p => [p.name, [p.hp, p.status]]));
+    eq(pub, {'Rejtett NPC': [null, 'healthy'], 'Pontos NPC': [{cur: 20, max: 20}, null], 'Rejtett hős': [null, null], 'Régi hős': [{cur: 20, max: 20}, null]});
+    // rejtett HP-jú legyőzött ellenfél: „Halott” (a tracker szürkíti és átugorja); csapattárs 0 HP-n: semmi
+    A(`S.library.find(c => c.name === 'Rejtett NPC').share.hp = 'hidden'`); nh.side = 'enemy'; nh.hp = 0; nh.dead = true;
+    eq(v()['Rejtett NPC'], [null, null, 'dead']);
+    ph.hp = 0; eq(v()['Rejtett hős'], [null, null, null]);
+    ph.hp = 12; nh.hp = 12; nh.dead = false;
+    eq(W.Szerzodes.normPublicChar({id: 'a', kind: 'npc', hp: null, status: null}).status, null, 'se HP, se állapot');
+  });
   test('rejtett lény kimarad, álnév érvényesül, koncentráció állapotként', () => {
     const [a, b] = add(mk(), 2); a.hiddenP = true; b.publicName = 'Csuklyás alak'; b.conc = true;
     const v = W.publicView().list;
@@ -1945,7 +1970,10 @@ describe('Játékos app: láthatóság és közzététel', () => {
     const fm = $('#edForm');
     ok($('#shareBox').hidden, 'szörnynél rejtve');
     setVal(fm.elements.kind, 'pc');
-    ok(!$('#shareBox').hidden); ok(!fm.elements.owner.closest('label').hidden); ok(fm.elements.shareHp.closest('label').hidden, 'HP-választó csak NPC-nél');
+    ok(!$('#shareBox').hidden); ok(!fm.elements.owner.closest('label').hidden); ok(fm.elements.shareHp.closest('label').hidden, 'az NPC HP-választója rejtve');
+    ok(!fm.elements.shareHpPc.closest('label').hidden, 'játékosnál a saját HP-választó (pontos / rejtve)');
+    eq([...fm.elements.shareHpPc.options].map(o => o.value), ['exact', 'hidden']);
+    fm.elements.shareHpPc.value = 'hidden';
     fm.elements.name.value = 'Rella'; fm.elements.owner.value = 'rossz cím';
     let msg = ''; W.alert = m => msg = m;
     click('[data-act="edSave"]');
@@ -1953,11 +1981,16 @@ describe('Játékos app: láthatóság és közzététel', () => {
     fm.elements.owner.value = 'Rella@Example.com'; fm.elements.shareVis.value = 'dm';
     click('[data-act="edSave"]');
     const c = A('S.library').find(x => x.name === 'Rella');
-    eq([c.owner, c.share.vis], ['rella@example.com', 'dm']);
+    eq([c.owner, c.share.vis, c.share.hp], ['rella@example.com', 'dm', 'hidden']);
     W.openLib('lib'); has($('#libRows').textContent, 'csak DM'); has($('#libRows').textContent, 'rella@example.com');
     click('[data-act="libEdit"]');
+    eq($('#edForm').elements.shareHpPc.value, 'hidden', 'visszatöltve');
     setVal($('#edForm').elements.kind, 'npc');
     ok($('#edForm').elements.owner.closest('label').hidden); ok(!$('#edForm').elements.shareAc.closest('label').hidden);
+    ok(!$('#edForm').elements.shareHp.closest('label').hidden && $('#edForm').elements.shareHpPc.closest('label').hidden, 'NPC-nél a hármas választó');
+    eq([...$('#edForm').elements.shareHp.options].map(o => o.value), ['exact', 'label', 'hidden']);
+    $('#edForm').elements.shareHp.value = 'hidden'; click('[data-act="edSave"]');
+    eq(A('S.library').find(x => x.name === 'Rella').share.hp, 'hidden', 'NPC-nél a hármas választóból');
   });
   test('harcbeli szerkesztő: ugyanaz a játékos app rész, a könyvtárból töltve, és oda azonnal visszaírva', () => {
     A(`S.library = [normCreature(${JSON.stringify(pc('Rella', 3, {id: 'p1', owner: 'a@x.hu', share: {vis: 'party'}}))})]`);
@@ -5672,6 +5705,17 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     has(kq('main').textContent, 'Extra 3d6 damage.');
     hasNot(kq('main').textContent, '{{');
     eq(K.eval('sheets.get("p1")').features[0].text, 'Extra {{scalevalue}} damage.');
+  });
+  ktest('rejtett HP-jú játékos (2026-11-14): a telefon a HP-t nem írja a csapat felé látszó részbe, a többit igen; pontos HP-nál igen', () => {
+    openSheet({hp: {max: 24, cur: 24, temp: 0}});
+    K.KApp.setChars([{id: 'p1', kind: 'pc', owner: 'a@x.hu', visibility: 'party', name: 'Minta Tolvaj', ac: 14, hp: null, status: null}]); K.route();
+    kclick('[data-tab="harc"]');
+    kset('#hpIn', '5', 'input'); kclick('[data-act="hpDmg"]');
+    eq(lastUpdate().hp.cur, 19, 'a lapra kiírta');
+    const pub = klog.filter(l => l[0] === 'pub').at(-1)?.[2];
+    ok(pub && !('hp' in pub), 'nincs HP a nyilvános írásban: ' + JSON.stringify(pub));
+    eq([pub.name, pub.ac], ['Minta Tolvaj', 14]);
+    eq(K.eval('chars')[0].hp, null, 'a helyi másolatban sem jelent meg');
   });
   ktest('HP: sebzés, gyógyítás, temp; mezőnként menti, a csapat felé is; 0 HP-n halálmentők', () => {
     openSheet({hp: {max: 24, cur: 24, temp: 0}});

@@ -15,18 +15,18 @@ window.Tar = (() => {
 
   // a karakter nyilvános része (characters/{id}) a könyvtári lényből; formája: Szerzodes.normPublicChar
   // Játékos karakter: a gazdája mindig látja; „csapat” láthatóságnál a többi játékos is.
-  // NPC: csak „csapat” láthatóságnál jelenik meg, a HP pontosan vagy csak állapotként, az AC ki-be kapcsolható.
+  // NPC: csak „csapat” láthatóságnál jelenik meg, a HP pontosan, csak állapotként vagy sehogy (Szerzodes.hpLathato; játékosnál pontos vagy rejtve), az AC ki-be kapcsolható.
   // A titkos rész (statok, jegyzetek, akciók) a dmscreen_library-ben marad, azt csak a DM olvashatja.
   function nyilvanosResz(library) {
     return library.filter(c => c.kind === 'pc' ? c.owner || c.share.vis === 'party' : c.kind === 'npc' && c.share.vis === 'party').map(c => {
-      const pc = c.kind === 'pc', cur = c.hp.cur ?? c.hp.max, exact = pc || c.share.hp === 'exact';
+      const pc = c.kind === 'pc', cur = c.hp.cur ?? c.hp.max, mod = Szerzodes.hpLathato(c);  // 'hidden': se HP, se állapot
       return {id: c.id, kind: c.kind, owner: pc ? c.owner || '' : '', visibility: c.share.vis, name: c.name, portrait: c.portrait || '',
         level: pc ? c.cr : '', ac: pc || c.share.ac ? c.ac : null,
-        hp: exact ? {cur, max: c.hp.max} : null, status: exact ? null : Sheet.hpStatus(cur, c.hp.max)};
+        hp: mod === 'exact' ? {cur, max: c.hp.max} : null, status: mod === 'label' ? Sheet.hpStatus(cur, c.hp.max) : null};
     });
   }
 
-  if (typeof modul === 'function') modul('tar', 4);
+  if (typeof modul === 'function') modul('tar', 5);
   return {
     kapcsol: port => { db = port || null; },
     kapcsolva: () => !!db,
