@@ -73,6 +73,17 @@ describe('Szerződés (szerzodes.js)', () => {
     } finally { if (orig) Object.defineProperty(K, 'localStorage', orig); else delete K.localStorage; K.csakBekeszitettAllit(false); }
     eq([K.csakBekeszitett(), K.localStorage.getItem(K.Szerzodes.HELYI.csakBekeszitett)], [false, null], 'a tároló visszaállt');
   });
+  test('sheet-adat.js: a sheet.js adattáblái innen jönnek (ugyanaz az objektum a Sheet alatt), csak adat (függvény nélkül), mindkét oldalon', () => {
+    for (const w of [W, K]) {
+      const D = w.SheetAdat, H = w.Sheet;
+      ok(D && Object.keys(D).length >= 10, 'betöltve');
+      for (const n of ['SKILL_INFO', 'FEATURE_FX', 'TCE_FX', 'TCE_CSERE', 'TCE_LISTA', 'MEZO_INFO', 'FX_LABEL']) ok(H[n] === D[n], 'Sheet.' + n + ' = SheetAdat.' + n);
+      const fuggveny = (x, ut) => typeof x === 'function' ? [ut] : x && typeof x === 'object' && !(x instanceof w.RegExp) ? Object.entries(x).flatMap(([k, v]) => fuggveny(v, ut + '.' + k)) : [];
+      eq(fuggveny(D, 'SheetAdat'), [], 'függvény az adatban');
+      eq(w.eval('MODULOK')['sheet-adat'], 1);
+    }
+    ok(Object.keys(W.SheetAdat.LAND_SPELLS).length === 8 && W.SheetAdat.FEATURE_FX['Druid|Land|Circle Spells'], 'a FEATURE_FX a LAND_SPELLS-ből épül');
+  });
   test('rétegek: a keresések találatai (fiveResults, itemResults) felületi állapot – a felület deklarálja, a logika nem ismeri', async () => {
     const szoveg = async f => (await (await fetch('../' + f, {cache: 'no-store'})).text()).replace(/\/\/.*$/gm, '');
     const html = await szoveg('index.html');

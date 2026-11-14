@@ -3,7 +3,7 @@
 'use strict';
 modul('lap-fiok', 5);
 
-// ---------- felugró leírás (i gomb): a teendők és a szabad szöveges mezők magyarázata; a szövegek a sheet.js-ben (Sheet.todoInfo, freeInfo, MEZO_INFO) ----------
+// ---------- felugró leírás (i gomb): a teendők és a szabad szöveges mezők magyarázata; a szövegek: Sheet.todoInfo, freeInfo (sheet.js), Sheet.MEZO_INFO (a szövege a sheet-adat.js-ben) ----------
 const infoReg = new Map();
 const HOL_HU = {app: '✅ Megcsinálható az appban', homebrew: '✍ Kézzel, saját (homebrew) tételként viszed fel', dm: '🛡 Csak a DM tudja megcsinálni', vegyes: '✅🛡 Te is megoldhatod, a szabálykönyvet csak a DM tölti újra'};
 function iGomb(info) {

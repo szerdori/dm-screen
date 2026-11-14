@@ -182,7 +182,7 @@ function spellFilter(s) {
     sch: f.school ? f.school.split(';').map(x => SCHOOL[x.trim().toUpperCase()]).filter(Boolean) : [], atk: !!f['spell attack']});
 }
 // additionalSpells → {spells: [{t: prepared|known|innate|expanded, lvl, sp: [nevek]}], ab}; a választást kérők teendőként
-// (faj, alosztály, optional feature: ezek választását a sheet.js FEATURE_FX adja, a teendőt az RB_FX_OFF szűri – ezért itt nem változik)
+// (faj, alosztály, optional feature: ezek választását a FEATURE_FX adja, a teendőt az RB_FX_OFF szűri – mindkettő a sheet-adat.js-ben – ezért itt nem változik)
 function addSpellsFx(list, featNev = '') {
   if (featNev) return featSpellsFx(list, featNev);
   const as = first(list);
