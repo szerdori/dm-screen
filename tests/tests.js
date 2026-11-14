@@ -388,15 +388,48 @@ describe('Ellenfél / csapattárs és nehézség (DMG 2014)', () => {
     eq(W.difficulty().mult, 0.5);
   });
   test('15+ ellenfél: ×4', () => { ['A', 'B', 'C', 'D'].forEach(n => add(pc(n, 5))); add(mk(), 15); eq(W.difficulty().mult, 4); });
-  test('csapattársnak állított szörny nem számít', () => {
+  test('csapattársnak állított szörny és a csapattárs NPC a csapatba számít, szintje = a CR-je (2026-11-14)', () => {
+    eq(['1/4', '0', '1/2', '1', '5', 'CR 7', '25', 'x', ''].map(W.crSzint), [1, 1, 1, 1, 5, 7, 20, null, null]);
     add(pc('A', 3)); add(pc('B', 3)); add(pc('C', 3)); const [g] = add(mk()); add(ogre());
-    g.side = 'ally'; const d = W.difficulty();
-    eq([d.enemies.length, d.party.length, d.base], [1, 3, 450]);
+    g.side = 'ally'; let d = W.difficulty();
+    eq([d.enemies.length, d.party.length, d.allies.length, d.members.length, d.base], [1, 3, 1, 4, 450]);
+    // 3 × 3. szint + 1 × 1. szint (CR 1/4): [75·3+25, 150·3+50, 225·3+75, 400·3+100]
+    eq([d.thresh, d.pSize, d.mult, d.adj, d.rating], [[250, 500, 750, 1300], 4, 1, 450, 'easy']);
+    // csapattárs NPC CR 2 → 2. szint; ismeretlen CR-ű NPC figyelmeztet
+    add(mk('Őr', {kind: 'npc', cr: '2'})); add(mk('Titkos NPC', {kind: 'npc', cr: ''}));
+    d = W.difficulty();
+    eq([d.members.length, d.pSize, d.thresh[0], d.noLevel], [6, 5, 250 + 50, ['Titkos NPC']]);
+    click('#diff'); has($('#modalBox').textContent, 'ebből 3 csapattárs NPC / szörny'); has($('#modalBox').textContent, 'CR 2');
+  });
+  test('aktuális HP (2026-11-14): arányosan számít; a fejlécben a mostani, az ablakban mindkettő; a jutalom a teljes érték', () => {
+    const p = ['A', 'B', 'C', 'D'].map(n => add(pc(n, 3))[0]); const g = add(mk(), 4); const [o] = add(ogre());
+    // HP-arány: temp HP-val legfeljebb 1, halott 0
+    p[0].hp = 15; eq(W.hpArany(p[0]), 0.5); p[0].temp = 40; eq(W.hpArany(p[0]), 1); p[0].temp = 0; p[0].hp = 30;
+    g[0].dead = true; eq(W.hpArany(g[0]), 0); g[0].dead = false;
+    eq([W.difficulty().most.adj, W.difficulty().most.rating], [1300, 'hard'], 'teljes HP-n a kettő ugyanaz');
+    ok(!$('#diff').title, 'nincs eltérés, nincs tooltip');
+    // két goblin halott, két játékos 0 HP-n: most 2 · 50 + 450 = 550 XP, 3 ellenfél (×2), 2 fős csapat (+1 fok: ×2,5) = 1375 → Halálos (2 × 3. szint: 400 felett)
+    g[0].hp = 0; g[0].dead = true; g[1].hp = 0; g[1].dead = true; p[0].hp = 0; p[1].hp = 0;
+    let d = W.difficulty();
+    eq([d.adj, d.rating, d.base], [1300, 'hard', 650], 'tervezve: a régi');
+    eq([d.most.xp, d.most.counted, d.most.pSize, d.most.mult, d.most.adj, d.most.thresh, d.most.rating], [550, 3, 2, 2.5, 1375, [150, 300, 450, 800], 'deadly']);
+    W.render(); has($('#diff').textContent, 'Halálos · 1375 XP'); has($('#diff').title, 'Tervezve, teljes HP-val: Nehéz · 1300 XP');
+    // fél HP-s ogre: az XP-je fele
+    o.hp = Math.round(o.c.hp.max / 2); d = W.difficulty();
+    eq(d.most.xp, 100 + Math.round(450 * o.hp / o.c.hp.max));
+    click('#diff');
+    const t = $('#modalBox').textContent;
+    has(t, 'Most (aktuális HP)'); has(t, 'Tervezve (teljes HP)'); has(t, 'Összesen, aktuális HP-val'); has(t, 'Jutalom: 650 XP'); has(t, 'fejenként 162 XP');
   });
   test('hiányzó szint / CR figyelmeztetés', () => {
     add(pc('A', 3, {cr: ''})); add(mk('Titok', {cr: ''}));
     const d = W.difficulty(); eq([d.noLevel, d.noCr], [['A'], ['Titok']]);
     has($('#diff').textContent, '⚠');
+  });
+  test('nehézség-ablak gonosz névvel és CR-rel (csapattárs NPC, ellenfél, játékos): semmi nem fut le', () => {
+    add(pc(XSS, 3)); add(mk(XSS, {kind: 'npc', cr: XSS})); add(mk(XQ, {cr: XQ})); add(mk('Ork'));
+    W.render(); click('#diff');
+    has($('#modalBox').textContent, '<img'); assertNoXss();
   });
   test('részletes ablak megnyílik', () => {
     add(pc('A', 3)); add(mk()); click('#diff');
@@ -7264,7 +7297,7 @@ async function run() {
   for (const k of ['rnd', 'loadFiveSource', 'loadFiveIndex', 'loadLoot', 'confirm', 'alert', 'download', 'buildRulebook']) ORIG[k] = W[k];
   K.addEventListener('unhandledrejection', e => appErrors.push('karakter.html promise: ' + (e.reason?.message || e.reason)));
   // a „const f = ...” segédfüggvények nem window-tulajdonságok, ezért elérhetővé tesszük őket W.f néven
-  for (const k of ['normCreature', 'normCombatant', 'splitEntry', 'sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp', 'hpStatus', 'playerEmails', 'stableJson', 'sharingDirty', 'lenySablon']) W[k] = A(k);
+  for (const k of ['normCreature', 'normCombatant', 'splitEntry', 'sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crSzint', 'hpArany', 'tagSzint', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp', 'hpStatus', 'playerEmails', 'stableJson', 'sharingDirty', 'lenySablon']) W[k] = A(k);
   for (const t of TESTS) {
     if (t.online && !ONLINE) { skip++; continue; }
     try {

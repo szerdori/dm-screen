@@ -1,7 +1,7 @@
 // Harctér (felület): a fő képernyő rajzolása – csempék, részletes adatlap, napló és dobáslinkek, nehézség, mentésjelző, belépő-ablak.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('harcter', N) és az index.html-ben a harcter.js?v=N és a VART_MODULOK.
 'use strict';
-modul('harcter', 2);
+modul('harcter', 3);
 
 // ---------- fejléc: mentésjelző, emlékeztető a fájlba mentésre, belépő-ablak ----------
 const setSaveState = t => $('#saveState').textContent = t;
@@ -51,36 +51,43 @@ function aktivCsempeMutat() { document.querySelector('.tile.active')?.scrollInto
 // ---------- nehézség (megjelenítés) ----------
 const DIFF_HU = {trivial: 'Triviális', easy: 'Könnyű', medium: 'Közepes', hard: 'Nehéz', deadly: 'Halálos'};
 function renderDiff() {
-  const d = difficulty(), el = $('#diff');
-  el.className = d.rating ? 'd-' + d.rating : '';
-  el.textContent = d.rating ? `${DIFF_HU[d.rating]} · ${d.adj} XP` : 'Nehézség: –';
+  // a fejlécben a mostani (aktuális HP-s) nehézség; harc előtt (mindenki teljes HP-n) ez ugyanaz, mint a tervezett
+  const d = difficulty(), m = d.most, el = $('#diff');
+  el.className = m.rating ? 'd-' + m.rating : '';
+  el.textContent = m.rating ? `${DIFF_HU[m.rating]} · ${m.adj} XP` : 'Nehézség: –';
+  el.title = d.rating && (d.rating !== m.rating || d.adj !== m.adj) ? `Most (aktuális HP-val). Tervezve, teljes HP-val: ${DIFF_HU[d.rating]} · ${d.adj} XP` : '';
   if (d.noLevel.length || d.noCr.length) el.textContent += ' ⚠';
 }
 function openDiffInfo() {
-  const d = difficulty();
-  const lvlNames = ['Könnyű', 'Közepes', 'Nehéz', 'Halálos'], keys = ['easy', 'medium', 'hard', 'deadly'];
+  const d = difficulty(), m = d.most;
+  const lvlNames = ['Könnyű', 'Közepes', 'Nehéz', 'Halálos'];
+  const szazalek = x => Math.round(hpArany(x) * 100) + '%';
   const warn = [
-    !d.party.length ? 'Nincs játékos a csapattársak között – a nehézséghez a játékosok szintje kell.' : '',
+    !d.members.length ? 'Nincs csapattárs (játékos vagy NPC) – a nehézséghez a csapat kell.' : '',
     !d.enemies.length ? 'Nincs ellenfél az encounterben.' : '',
-    d.noLevel.length ? `Ismeretlen szint (nem számolva): ${d.noLevel.join(', ')} – az adatlapon a „CR / szint” mezőbe írd be a szintet.` : '',
+    d.noLevel.length ? `Ismeretlen szint / CR (nem számolva): ${d.noLevel.join(', ')} – játékosnál a „CR / szint” mezőbe a szintet, NPC-nél a CR-t írd be.` : '',
     d.noCr.length ? `Ismeretlen CR (nem számolva): ${d.noCr.join(', ')} – az adatlapon add meg a CR-t.` : ''
   ].filter(Boolean);
+  const eredmeny = (cim, e) => `${cim}: ${e.rating ? `<b class="d-${e.rating}" style="padding:2px 8px;border-radius:6px">${DIFF_HU[e.rating]}</b> <span class="muted">${e.adj} korrigált XP</span>` : '<span class="muted">–</span>'}`;
+  const tagSor = x => { const l = tagSzint(x), pc = x.c.kind === 'pc';
+    return `<tr><td>${esc(nameOf(x))}${pc ? '' : ` <span class="muted">(${esc(x.c.kind === 'npc' ? 'NPC' : 'szörny')}, CR ${esc(x.c.cr || '?')})</span>`}</td><td class="n">${l ?? '?'}</td><td class="n">${szazalek(x)}</td>${[0, 1, 2, 3].map(i => `<td class="n">${l ? XP_THRESH[l][i] : '–'}</td>`).join('')}</tr>`; };
   openModal(`<h2>Encounter nehézsége</h2>
-    ${d.rating ? `<p style="font-size:18px">Eredmény: <b class="d-${d.rating}" style="padding:2px 8px;border-radius:6px">${DIFF_HU[d.rating]}</b> &nbsp; <span class="muted">${d.adj} korrigált XP</span></p>` : ''}
+    <p style="font-size:18px">${eredmeny('Most (aktuális HP)', m)}</p>
+    <p>${eredmeny('Tervezve (teljes HP)', d)}</p>
     ${warn.map(w => `<p style="color:var(--orange)">⚠ ${esc(w)}</p>`).join('')}
-    <h3>Csapat (${d.party.length} fő) – küszöbök</h3>
-    <table class="dt"><tr><th>Játékos</th><th class="n">Szint</th>${lvlNames.map(l => `<th class="n">${l}</th>`).join('')}</tr>
-      ${d.party.map(x => { const l = pcLevel(x.c); return `<tr><td>${esc(nameOf(x))}</td><td class="n">${l ?? '?'}</td>${[0, 1, 2, 3].map(i => `<td class="n">${l ? XP_THRESH[l][i] : '–'}</td>`).join('')}</tr>`; }).join('')}
-      <tr class="hl"><td>Összesen</td><td></td>${d.thresh.map((v, i) => `<td class="n">${v}</td>`).join('')}</tr></table>
+    <h3>Csapat (${d.members.length} fő${d.allies.length ? `, ebből ${d.allies.length} csapattárs NPC / szörny` : ''}) – küszöbök</h3>
+    <table class="dt"><tr><th>Név</th><th class="n">Szint</th><th class="n">HP</th>${lvlNames.map(l => `<th class="n">${l}</th>`).join('')}</tr>
+      ${d.members.map(tagSor).join('')}
+      <tr class="hl"><td>Összesen, teljes HP-val</td><td></td><td></td>${d.thresh.map(v => `<td class="n">${v}</td>`).join('')}</tr>
+      <tr class="hl"><td>Összesen, aktuális HP-val</td><td></td><td></td>${m.thresh.map(v => `<td class="n">${v}</td>`).join('')}</tr></table>
     <h3>Ellenfelek (${d.enemies.length})</h3>
-    <table class="dt"><tr><th>Ellenfél</th><th class="n">CR</th><th class="n">XP</th></tr>
-      ${d.enemies.map(x => `<tr><td>${esc(nameOf(x))}${x.dead ? ' <span class="muted">(halott)</span>' : ''}</td><td class="n">${esc(x.c.cr || '?')}</td><td class="n">${crXp(x.c.cr) ?? '–'}</td></tr>`).join('')}
-      <tr><td>Alap XP (ennyit kap a csapat)</td><td></td><td class="n">${d.base}</td></tr>
-      <tr><td>Szorzó (${d.counted} ellenfél, ${d.party.length} fős csapat)</td><td></td><td class="n">×${d.mult}</td></tr>
-      <tr class="hl"><td>Korrigált XP (ez számít a nehézséghez)</td><td></td><td class="n">${d.adj}</td></tr></table>
-    <p class="hint">A Dungeon Master's Guide (2014) 5. fejezete szerint. A korrigált XP-t a csapat küszöbeivel hasonlítja össze; a szorzó az ellenfelek számától függ, és 3 főnél kisebb csapatnál egy fokkal nő, 6 főnél nagyobbnál egy fokkal csökken.
-    Csak a csapattárs <b>játékosok</b> számítanak a csapatba, és minden ellenfél beleszámít (a halottak is, hiszen a harc egészét értékeli). Az ellenfél / csapattárs oldalt a csempe bal alsó gombjával váltod.
-    Fejenként ${d.party.length ? Math.floor(d.base / d.party.length) : 0} XP jár a legyőzött ellenfelekért.</p>
+    <table class="dt"><tr><th>Ellenfél</th><th class="n">CR</th><th class="n">HP</th><th class="n">XP</th><th class="n">Most</th></tr>
+      ${d.enemies.map(x => { const xp = crXp(x.c.cr); return `<tr><td>${esc(nameOf(x))}${x.dead ? ' <span class="muted">(halott)</span>' : ''}</td><td class="n">${esc(x.c.cr || '?')}</td><td class="n">${szazalek(x)}</td><td class="n">${xp ?? '–'}</td><td class="n">${xp == null ? '–' : Math.round(xp * hpArany(x))}</td></tr>`; }).join('')}
+      <tr><td>Alap XP</td><td></td><td></td><td class="n">${d.xp}</td><td class="n">${m.xp}</td></tr>
+      <tr><td>Szorzó (teljes HP: ${d.counted} ellenfél, ${d.pSize} fős csapat · most: ${m.counted} ellenfél, ${m.pSize} fő)</td><td></td><td></td><td class="n">×${d.mult}</td><td class="n">×${m.mult}</td></tr>
+      <tr class="hl"><td>Korrigált XP (ez számít a nehézséghez)</td><td></td><td></td><td class="n">${d.adj}</td><td class="n">${m.adj}</td></tr></table>
+    <p class="hint">A Dungeon Master's Guide (2014) 5. fejezete szerint, két kiegészítéssel (a DMG ezekről nem szól). <b>Csapattárs NPC / szörny:</b> úgy számít, mint egy játékos, akinek a szintje a CR-je (CR 1 alatt 1., 20 fölött 20. szint) – nő a csapat küszöbe és a létszáma. <b>Aktuális HP:</b> mindenki a HP-ja arányában számít (a temp HP hozzáadódik, legfeljebb a maximumig): a fél HP-s ellenfél az XP-je felével, a fél HP-s csapattag a küszöbei felével; a halott ellenfél és a 0 HP-s csapattag sehogy, a szorzóba sem. A korrigált XP-t a csapat küszöbeivel hasonlítja össze; a szorzó az ellenfelek számától függ, és 3 főnél kisebb csapatnál egy fokkal nő, 6 főnél nagyobbnál egy fokkal csökken. Az ellenfél / csapattárs oldalt a csempe bal alsó gombjával váltod.
+    Jutalom: ${d.base} XP a legyőzött ellenfelekért (teljes érték), ${d.party.length ? `fejenként ${Math.floor(d.base / d.party.length)} XP a ${d.party.length} játékosnak` : 'nincs játékos'}.</p>
     <div class="toolbar"><button data-act="edCancel">Bezárás</button></div>`);
 }
 function crLabel(c) {
