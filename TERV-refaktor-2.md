@@ -1,6 +1,6 @@
 # Refaktor, második kör – terv
 
-*Készült: 2026-11-14. Állapot: **elfogadva 2026-11-14** (1–7. lépés), munka a `refaktor-2` ágon. Előzmény: `TERV-refaktor.md` (0–8. lépés, kész).*
+*Készült: 2026-11-14. Állapot: **kész 2026-11-14** (1–7. lépés; a 6. egy függvényen, a többi menet közben), élesítve. Előzmény: `TERV-refaktor.md` (0–8. lépés, kész).*
 
 ## Mi lett belőle (2026-11-14)
 
@@ -56,9 +56,7 @@ A `TERV-teszt-gyorsitas.md` 1–4. lépése előbb (gyorsabb teszt mellett minde
 - **Régi worktree-k és ágak törlése: igen**, egyenkénti ellenőrzés után (ami nincs a `main`-en, az marad).
 - Sorrend: előbb a `TERV-teszt-gyorsitas.md` 1–4. lépése.
 
-## Döntés, ami még a felhasználóra vár
-
-1. **A többi lépés (1–4., 7.; a 6. menet közben)?** Javaslat: igen, ebben a sorrendben.
+- **1–6. lépés (2026-11-14):** a felhasználó jóváhagyta a megbeszéltek szerint, fázisonkénti commit-tal és a végén élesítéssel.
 
 ## Kész, ha
 
