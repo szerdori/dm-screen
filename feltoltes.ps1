@@ -30,6 +30,9 @@ if (-not $TesztNelkul) {
   Write-Host ''
 }
 
+# figyelmeztetés (nem állítja meg a feltöltést), ha egy közös fájl változott az élő változathoz képest, de a száma nem (verzio.ps1)
+try { & (Join-Path $PSScriptRoot 'verzio.ps1') -Ellenoriz } catch { }
+
 Write-Host 'Ezek a fájlok változtak:' -ForegroundColor Cyan
 & $git status --short
 
