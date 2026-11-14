@@ -1,6 +1,24 @@
 # Gyorsabb teszt és ellenőrző – terv
 
-*Készült: 2026-11-14. Állapot: **javaslat**, a felhasználó még nem fogadta el. Kódváltozás nincs.*
+*Készült: 2026-11-14. Állapot: **elfogadva 2026-11-14** (1–4. lépés és az ellenőrző gyorsítása, 6–8.; az 5. csak ha kell). Az 1–4. lépés kész a `teszt-gyorsitas` ágon (lásd „Mi lett belőle”); a 6–8. még nincs.*
+
+## Mi lett belőle (1–4. lépés, 2026-11-14)
+
+**A terv első feltevése téves volt.** A régi futtató 147 mp-éből (egymás mellett lemérve) 120 mp nem a tesztekre ment, hanem a futás végén a kis webszerver leállítására: a kérésre váró szerveren a `Stop-Job` pontosan 2 percig vár. A `--virtual-time-budget` nem volt lassú. A javítás: a futtató egy saját kéréssel (`/__leall`) állítja le a szervert, és a Chrome-ot a segédfolyamataival együtt zárja be.
+
+| Állapot | Teljes futás (kívülről mérve) |
+|---|---|
+| régi `teszt.ps1` | 147 mp |
+| 1. lépés (DevTools-protokoll, azonnali szerverleállítás) | 59 mp |
+| 2. lépés (`mentve()` a fix várakozások helyett, 57 helyen) | 29 mp (467 teszt) |
+| szűrt futás (`-Csoport "Zsákmány"`) | 6 mp |
+
+Eltérések a tervtől:
+- **2. lépés:** a `mentve()` segéd a késleltetett mentést nem kivárja, hanem rögtön lefuttatja (`doSave()`, ahogy az oldal bezárásakor az app is) – a 400 ms-os késleltetés kivárásával alig lett volna nyereség. A késleltetést magát külön teszt nézi („Felhő mentés”). Ellenőrzés: négy szándékos elrontással (a mentés, a lapszinkron, a lapfigyelő és a törlés kikapcsolva) az átírás előtt és után ugyanazok a tesztek buktak.
+- **4. lépés:** az eredmény a `.git` mappába kerül (`dmscreen-teszt-eredmeny.txt`), így sosem kerül a tárolóba. Az ujjlenyomat a fájlok tartalmából készül (követett + új fájlok), a `*.md` nélkül: a dokumentáció írása nem érvénytelenít egy sikeres futást (a tesztek nem olvasnak `.md`-t). A sikeres futás 24 óráig érvényes.
+- Minden futás saját portot és Chrome-profilt kap (két session egyszerre is futtathat).
+
+## Az eredeti terv
 
 A felhasználó kérése: a tesztek és az ellenőrző fussanak gyorsabban, vagy legalább úgy, hogy Claude-nak ne kelljen rájuk várnia.
 
@@ -62,11 +80,11 @@ Az `ellenorzo` ügynök nyolc pontjából több gépiesen eldönthető; ezeket e
 | 7 | **Szűkebb ügynök** | Az `ellenorzo.md` a gépi pontokat nem nézi újra (a szkript kimenetét megkapja), marad: XSS és tisztító, szerződés és sorrend, a teszt tényleg azt nézi-e, viselkedésváltozás refaktorban, a tudás helye. A hívó a `git diff`-et adja át, a `CLAUDE.md`-ből és a `SZERZODES.md`-ből csak a változáshoz tartozó részt kell elolvasnia. |
 | 8 | **Arányosság** | Csak dokumentációt érintő változásnál elég a gépi előellenőrzés. Több commitból álló lépésnél az ügynök a lépés végén fut egyszer a teljes változásra (ez a `CLAUDE.md` mostani szabálya is: „egy lépés végén”). |
 
-## Döntések, amik a felhasználóra várnak
+## A felhasználó döntései (2026-11-14)
 
-1. **Meddig menjünk?** Javaslat: 1–4. és 6–8. lépés; az 5. (párhuzamos futás) csak akkor, ha a ≈ 30 mp még zavaró.
-2. **A `feltoltes.ps1` kihagyhatja-e a tesztet**, ha ugyanarra az állapotra van friss, sikeres futás (4. lépés)? Javaslat: igen. A másik lehetőség: mindig futtat, ahogy most – biztosabb, de feltöltésenként +30–60 mp.
-3. **Az ellenőrző ügynök futhat-e kisebb, gyorsabb modellen?** Javaslat: nem – az XSS és a szerződés megítélése a legfontosabb dolga, ott a pontosság többet ér a gyorsaságnál; a gyorsítás a 6–8. lépésből jöjjön.
+1. **Meddig menjünk?** Az 1–4. és a 6–8. lépés; az 5. (párhuzamos futás) csak akkor, ha kell.
+2. **A `feltoltes.ps1` kihagyhatja a tesztet**, ha ugyanarra az állapotra van friss, sikeres, teljes futás (4. lépés).
+3. Az ellenőrző ügynök modelljéről nem született döntés; a javaslat szerint marad a mostani.
 
 ## Kész, ha
 

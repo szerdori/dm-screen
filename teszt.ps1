@@ -1,13 +1,21 @@
 ﻿# DM Screen – regressziós tesztek futtatása (feltöltés előtt a feltoltes.ps1 is lefuttatja).
-# Használat:  .\teszt.ps1              helyi tesztek, láthatatlan Chrome-ban
-#             .\teszt.ps1 -Online      + az 5e.tools adatok elérhetőségének ellenőrzése (internet kell)
-#             .\teszt.ps1 -Bongeszo    a teszteket látható böngészőben nyitja meg (hibakereséshez)
-#             .\teszt.ps1 -Lefedettseg a tesztek mellett megméri, a kód mekkora részét futtatják le (riport: %TEMP%\dmscreen-lefedettseg.html)
+# Használat:  .\teszt.ps1                    minden helyi teszt, láthatatlan Chrome-ban
+#             .\teszt.ps1 -Csoport "Zsákmány"  csak azok a csoportok, amelyek nevében ez szerepel (részleges futás, fejlesztés közben)
+#             .\teszt.ps1 -Szuro "initiative"  csak azok a tesztek, amelyek nevében ez szerepel (a kettő együtt is adható)
+#             .\teszt.ps1 -Online            + az 5e.tools adatok elérhetőségének ellenőrzése (internet kell)
+#             .\teszt.ps1 -Bongeszo          a teszteket látható böngészőben nyitja meg (hibakereséshez)
+#             .\teszt.ps1 -Lefedettseg       a tesztek mellett megméri, a kód mekkora részét futtatják le (riport: %TEMP%\dmscreen-lefedettseg.html)
 # Új teszteket a tests\tests.js fájlba lehet írni.
-param([switch]$Online, [switch]$Bongeszo, [switch]$Lefedettseg, [int]$Port = 8767)
+# A futtató a Chrome DevTools-protokollján át figyeli, mikor kész az oldal (tests\lefedettseg.cs, Cdp), és rögtön kilép.
+# Minden futás saját portot és Chrome-profilt kap, így két egyidejű futás (két session) nem akad össze.
+# Az utolsó futás eredményét megjegyzi (tests\ujjlenyomat.ps1); ha az teljes és hibátlan volt, a feltoltes.ps1 ugyanarra az állapotra nem futtat újra.
+# (Egy későbbi részleges futás felülírja: utána a feltöltés újra tesztel.)
+param([switch]$Online, [switch]$Bongeszo, [switch]$Lefedettseg, [string]$Csoport, [string]$Szuro, [int]$Port = 0)
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
+. (Join-Path $root 'tests\ujjlenyomat.ps1')
+$ora = [Diagnostics.Stopwatch]::StartNew()
 
 $chrome = @(
   "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
@@ -17,6 +25,14 @@ $chrome = @(
   "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe"
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $chrome) { Write-Host 'Nem találtam Chrome-ot vagy Edge-et a tesztekhez.' -ForegroundColor Red; exit 2 }
+
+# szabad port a gépen (a rendszer ad egyet)
+function SzabadPort { $l = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::Loopback), 0; $l.Start(); $p = $l.LocalEndpoint.Port; $l.Stop(); $p }
+if (-not $Port) { $Port = SzabadPort }
+$reszleges = [bool]($Csoport -or $Szuro)
+# az ujjlenyomat a futás ELEJÉN készül: ha közben változik egy fájl, az eredmény nem arra az állapotra szól
+$ujjlenyomat = ''
+if (-not $Bongeszo) { try { $ujjlenyomat = Get-DmUjjlenyomat $root } catch { Write-Host "Megjegyzés: $($_.Exception.Message) A tesztek futnak, de az eredményt nem jegyzem meg." -ForegroundColor Yellow } }
 
 # kis helyi webszerver a háttérben (a GitHub Pages-t utánozza)
 $job = Start-Job -ArgumentList $root, $Port -ScriptBlock {
@@ -29,6 +45,8 @@ $job = Start-Job -ArgumentList $root, $Port -ScriptBlock {
     $c = $l.GetContext()
     try {
       $p = [Uri]::UnescapeDataString($c.Request.Url.AbsolutePath.TrimStart('/'))
+      # a futtató a végén ezzel állítja le a szervert (lásd lent: a Stop-Job 2 percig várna)
+      if ($p -eq '__leall') { $c.Response.StatusCode = 204; $c.Response.OutputStream.Close(); $l.Stop(); break }
       if (-not $p -or $p.EndsWith('/')) { $p += 'index.html' }
       $f = Join-Path $root $p
       if ((Test-Path -LiteralPath $f -PathType Leaf) -and -not $p.StartsWith('adatok')) {
@@ -44,11 +62,17 @@ $job = Start-Job -ArgumentList $root, $Port -ScriptBlock {
   }
 }
 
+$proc = $null
+$profil = Join-Path $env:TEMP "dmscreen-teszt-profil-$PID"
 try {
-  $url = "http://localhost:$Port/tests/index.html" + $(if ($Online) { '?online=1' } else { '' })
+  $q = @()
+  if ($Online) { $q += 'online=1' }
+  if ($Csoport) { $q += 'csoport=' + [Uri]::EscapeDataString($Csoport) }
+  if ($Szuro) { $q += 'szuro=' + [Uri]::EscapeDataString($Szuro) }
+  $url = "http://localhost:$Port/tests/index.html" + $(if ($q.Count) { '?' + ($q -join '&') } else { '' })
   $up = $false
   for ($i = 0; $i -lt 50 -and -not $up; $i++) {
-    try { Invoke-WebRequest -UseBasicParsing $url -TimeoutSec 2 | Out-Null; $up = $true } catch { Start-Sleep -Milliseconds 200 }
+    try { Invoke-WebRequest -UseBasicParsing "http://localhost:$Port/tests/index.html" -TimeoutSec 2 | Out-Null; $up = $true } catch { Start-Sleep -Milliseconds 200 }
   }
   if (-not $up) { Write-Host "Nem indult el a tesztszerver (foglalt a $Port port?)." -ForegroundColor Red; exit 2 }
 
@@ -58,40 +82,64 @@ try {
     exit 0
   }
 
+  if ($Lefedettseg) { Write-Host 'Tesztek futtatása lefedettségméréssel…' -ForegroundColor Cyan }
+  elseif ($reszleges) { Write-Host "RÉSZLEGES FUTÁS (csoport: '$Csoport', szűrő: '$Szuro') – commit előtt a teljes futás kell." -ForegroundColor Yellow }
+  else { Write-Host 'Tesztek futtatása…' -ForegroundColor Cyan }
+
+  # a Chrome indítása és kapcsolódás a DevTools-protokollon
+  Add-Type -Path (Join-Path $root 'tests\lefedettseg.cs') -ReferencedAssemblies System.Web.Extensions, System.Net.WebSockets, System.Core
+  $dbgPort = SzabadPort
+  $proc = Start-Process -FilePath $chrome -PassThru -ArgumentList @('--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+    '--disable-extensions', "--user-data-dir=`"$profil`"", '--window-size=1600,1000', "--remote-debugging-port=$dbgPort", 'about:blank')
+  $lap = $null
+  for ($i = 0; $i -lt 75 -and -not $lap; $i++) {
+    try { $lap = (Invoke-RestMethod "http://127.0.0.1:$dbgPort/json/list") | Where-Object { $_.type -eq 'page' } | Select-Object -First 1 } catch { Start-Sleep -Milliseconds 200 }
+  }
+  if (-not $lap) { Write-Host 'Nem sikerült kapcsolódni a Chrome-hoz.' -ForegroundColor Red; exit 2 }
+  $cdp = New-Object Cdp $lap.webSocketDebuggerUrl
+  [void]$cdp.Call('Runtime.enable', '{}')
   if ($Lefedettseg) {
-    Write-Host 'Tesztek futtatása lefedettségméréssel (1–3 perc)…' -ForegroundColor Cyan
-    Add-Type -Path (Join-Path $root 'tests\lefedettseg.cs') -ReferencedAssemblies System.Web.Extensions, System.Net.WebSockets, System.Core
-    $dbgPort = $Port + 1
-    $profil = Join-Path $env:TEMP 'dmscreen-lefedettseg-profil'
-    $proc = Start-Process -FilePath $chrome -PassThru -ArgumentList @('--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-      '--disable-extensions', "--user-data-dir=`"$profil`"", '--window-size=1600,1000', "--remote-debugging-port=$dbgPort", 'about:blank')
-    try {
-      $lap = $null
-      for ($i = 0; $i -lt 50 -and -not $lap; $i++) {
-        try { $lap = (Invoke-RestMethod "http://127.0.0.1:$dbgPort/json/list") | Where-Object { $_.type -eq 'page' } | Select-Object -First 1 } catch { Start-Sleep -Milliseconds 200 }
-      }
-      if (-not $lap) { Write-Host 'Nem sikerült kapcsolódni a Chrome-hoz.' -ForegroundColor Red; exit 2 }
-      $cdp = New-Object Cdp $lap.webSocketDebuggerUrl
-      foreach ($m in 'Runtime.enable', 'Debugger.enable', 'Profiler.enable') { [void]$cdp.Call($m, '{}') }
-      [void]$cdp.Call('Debugger.setSkipAllPauses', '{"skip":true}')
-      [void]$cdp.Call('Profiler.startPreciseCoverage', '{"callCount":true,"detailed":true}')
-      [void]$cdp.Call('Page.navigate', "{`"url`":`"$url`"}")
-      $t0 = Get-Date
-      do {
-        Start-Sleep -Milliseconds 500
-        $kesz = try { $cdp.Eval("document.body && document.body.dataset.done || ''") } catch { '' }
-      } while ($kesz -ne '1' -and ((Get-Date) - $t0).TotalMinutes -lt 6)
-      if ($kesz -ne '1') { Write-Host 'A tesztek nem fejeződtek be 6 percen belül.' -ForegroundColor Red; exit 2 }
-      $riport = $cdp.Eval("document.getElementById('report').textContent")
-      # a mért fájlok: az oldalak és minden saját .js (a tests\, az adatok\ és a ponttal kezdődő mappák – pl. .claude\worktrees – kivételével; a firebase-config.js csak beállítás)
-      $sajatJs = Get-ChildItem -Path $root -Recurse -Filter *.js | ForEach-Object { $_.FullName.Substring($root.Length + 1).Replace('\', '/') } |
-        Where-Object { $_ -ne 'firebase-config.js' -and $_ -notmatch '^(tests|adatok|\.[^/]+)/' }
-      $fajlok = [string[]]@(@('index.html', 'karakter.html', 'player.html') + @($sajatJs))
-      $eredm = [Coverage]::Build($root, $fajlok, $cdp, $cdp.Call('Profiler.takePreciseCoverage', '{}'))
-    } finally { if (-not $proc.HasExited) { $proc.Kill() } }
+    foreach ($m in 'Debugger.enable', 'Profiler.enable') { [void]$cdp.Call($m, '{}') }
+    [void]$cdp.Call('Debugger.setSkipAllPauses', '{"skip":true}')
+    [void]$cdp.Call('Profiler.startPreciseCoverage', '{"callCount":true,"detailed":true}')
+  }
+  [void]$cdp.Call('Page.navigate', "{`"url`":`"$url`"}")
+
+  # várunk, amíg az oldal jelzi, hogy kész (data-done) – nem tovább
+  $korlat = if ($Lefedettseg) { 6 } else { 4 }
+  $t0 = Get-Date; $elakadt = $false
+  do {
+    Start-Sleep -Milliseconds 250
+    # ha az oldal 60 mp-ig nem válaszol (pl. végtelen ciklus egy tesztben), a Cdp időtúllépést dob: nem várunk tovább
+    $kesz = try { $cdp.Eval("document.body && document.body.dataset.done || ''") } catch { if ("$_" -match 'nem valaszolt') { $elakadt = $true }; '' }
+  } while ($kesz -ne '1' -and -not $elakadt -and -not $proc.HasExited -and ((Get-Date) - $t0).TotalMinutes -lt $korlat)
+  if ($kesz -ne '1') {
+    if ($elakadt) { Write-Host 'A tesztoldal 60 mp-ig nem válaszolt (végtelen ciklus egy tesztben vagy az appban?) – leállítottam.' -ForegroundColor Red }
+    else { Write-Host "A tesztek nem fejeződtek be $korlat percen belül (vagy a Chrome leállt)." -ForegroundColor Red }
+    if (-not $elakadt) { try { Write-Host ($cdp.Eval("document.getElementById('report').textContent")) } catch { } }
+    exit 2
+  }
+  $riport = $cdp.Eval("document.getElementById('report').textContent")
+  if ($riport -notmatch 'ÖSSZESEN: (\d+) sikeres, (\d+) hibás') {
+    Write-Host 'Nem sikerült kiolvasni a teszteredményt.' -ForegroundColor Red
+    if ($riport) { Write-Host $riport }
+    exit 2
+  }
+  $sikeres = [int]$Matches[1]; $hibas = [int]$Matches[2]
+  $osszSor = $riport -split "`n" | Where-Object { $_ -like 'ÖSSZESEN*' } | Select-Object -First 1
+  if ($sikeres + $hibas -eq 0) { Write-Host "Egy teszt sem futott le (csoport: '$Csoport', szűrő: '$Szuro') – elírás?" -ForegroundColor Red; exit 2 }
+  # az eredmény megjegyzése: a feltoltes.ps1 csak a teljes, hibátlan futást fogadja el
+  if ($ujjlenyomat) { Write-DmEredmeny $root $ujjlenyomat (-not $reszleges) $sikeres $hibas }
+
+  if ($Lefedettseg) {
+    # a mért fájlok: az oldalak és minden saját .js (a tests\, az adatok\ és a ponttal kezdődő mappák – pl. .claude\worktrees – kivételével; a firebase-config.js csak beállítás)
+    $sajatJs = Get-ChildItem -Path $root -Recurse -Filter *.js | ForEach-Object { $_.FullName.Substring($root.Length + 1).Replace('\', '/') } |
+      Where-Object { $_ -ne 'firebase-config.js' -and $_ -notmatch '^(tests|adatok|\.[^/]+)/' }
+    $fajlok = [string[]]@(@('index.html', 'karakter.html', 'player.html') + @($sajatJs))
+    $eredm = [Coverage]::Build($root, $fajlok, $cdp, $cdp.Call('Profiler.takePreciseCoverage', '{}'))
 
     $riport -split "`n" | Where-Object { $_ -like 'HIBA*' -or $_ -match '^\s+→' } | ForEach-Object { Write-Host $_ -ForegroundColor Red }
-    Write-Host ($riport -split "`n" | Where-Object { $_ -like 'ÖSSZESEN*' })
+    Write-Host $osszSor
     Write-Host ''
     $pct = { param($a, $b) if ($b) { '{0,5:N1}%' -f (100 * $a / $b) } else { '   – ' } }
     $sor = '{0,-15} {1} {2,13}   {3}    {4} {5,11}'
@@ -109,33 +157,9 @@ try {
     [IO.File]::WriteAllText($txt, [Coverage]::Missed($eredm), [Text.Encoding]::UTF8)
     Write-Host "`nRészletes riport: $html`nLe nem futott függvények: $txt"
     # hibás teszt mellett a lefedettségmérés se jelezzen sikert
-    if ($riport -notmatch 'ÖSSZESEN: \d+ sikeres, 0 hibás') { Write-Host "`nNEM MINDEN TESZT SIKERES." -ForegroundColor Red; exit 1 }
+    if ($hibas -ne 0) { Write-Host "`nNEM MINDEN TESZT SIKERES." -ForegroundColor Red; exit 1 }
     exit 0
   }
-
-  Write-Host 'Tesztek futtatása…' -ForegroundColor Cyan
-  $profil = Join-Path $env:TEMP 'dmscreen-teszt-profil'
-  $kimenet = Join-Path $env:TEMP 'dmscreen-teszt-eredmeny.html'
-  $hibak = Join-Path $env:TEMP 'dmscreen-teszt-chrome.log'
-  if ([IO.File]::Exists($kimenet)) { [IO.File]::Delete($kimenet) }
-  $chromeArgs = @('--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-extensions',
-    "--user-data-dir=`"$profil`"", '--window-size=1600,1000', '--virtual-time-budget=120000', '--dump-dom', $url)
-  $proc = Start-Process -FilePath $chrome -ArgumentList $chromeArgs -RedirectStandardOutput $kimenet -RedirectStandardError $hibak -NoNewWindow -PassThru
-  if (-not $proc.WaitForExit(240000)) { $proc.Kill(); Write-Host 'A tesztek nem fejeződtek be 4 percen belül.' -ForegroundColor Red; exit 2 }
-
-  # a Chrome egy segédfolyamata a kilépés után még pár pillanatig fogva tarthatja a kimeneti fájlt: néhányszor újrapróbáljuk
-  $html = ''
-  for ($i = 0; $i -lt 25 -and (Test-Path $kimenet); $i++) {
-    try { $html = [IO.File]::ReadAllText($kimenet, [Text.Encoding]::UTF8); break } catch [IO.IOException] { Start-Sleep -Milliseconds 200 }
-  }
-  $m = [regex]::Match($html, '<pre id="report">([\s\S]*?)</pre>')
-  $riport = [Net.WebUtility]::HtmlDecode($m.Groups[1].Value)
-  if (-not $m.Success -or $riport -notmatch 'ÖSSZESEN: (\d+) sikeres, (\d+) hibás') {
-    Write-Host 'Nem sikerült kiolvasni a teszteredményt.' -ForegroundColor Red
-    if ($riport) { Write-Host $riport }
-    exit 2
-  }
-  $sikeres = [int]$Matches[1]; $hibas = [int]$Matches[2]
 
   foreach ($sor in $riport -split "`n") {
     if ($sor -like 'OK*') { Write-Host $sor -ForegroundColor DarkGreen }
@@ -144,11 +168,29 @@ try {
     elseif ($sor.Trim()) { Write-Host $sor }
   }
   Write-Host ''
-  if ($hibas -eq 0) { Write-Host "MINDEN TESZT SIKERES ($sikeres db)." -ForegroundColor Green; exit 0 }
-  Write-Host "$hibas TESZT HIBÁS (és $sikeres sikeres)." -ForegroundColor Red
+  $ido = '{0:N0} mp' -f $ora.Elapsed.TotalSeconds
+  if ($reszleges) { Write-Host "RÉSZLEGES FUTÁS: $osszSor" -ForegroundColor Yellow }
+  if ($hibas -eq 0) {
+    if ($reszleges) { Write-Host "A kiválasztott tesztek sikeresek ($sikeres db, $ido) – ez NEM a teljes futás." -ForegroundColor Yellow }
+    else { Write-Host "MINDEN TESZT SIKERES ($sikeres db, $ido)." -ForegroundColor Green }
+    exit 0
+  }
+  Write-Host "$hibas TESZT HIBÁS (és $sikeres sikeres, $ido)." -ForegroundColor Red
   exit 1
 }
 finally {
-  Stop-Job $job -ErrorAction SilentlyContinue
+  # a Chrome-ot a segédfolyamataival együtt állítjuk le: ha azok bent maradnak, fogva tartják a kimenetet (a hívó percekig vár) és a profilmappát
+  if ($proc) { try { & "$env:SystemRoot\System32\taskkill.exe" /PID $proc.Id /T /F 2>$null | Out-Null } catch { }; try { if (-not $proc.HasExited) { $proc.Kill() }; [void]$proc.WaitForExit(3000) } catch { } }
+  # a szervert saját kéréssel állítjuk le: a kérésre váró szerveren a Stop-Job pontosan 2 percig várna (2026-11-14-ig ez volt a futás nagyobb része)
+  try { Invoke-WebRequest -UseBasicParsing "http://localhost:$Port/__leall" -TimeoutSec 2 | Out-Null } catch { }
+  [void](Wait-Job $job -Timeout 3)
+  if ($job.State -eq 'Running') { Stop-Job $job -ErrorAction SilentlyContinue }
   Remove-Job $job -Force -ErrorAction SilentlyContinue
+  # a futás saját Chrome-profilja (és a korábbi, bent ragadt profilok) törlése
+  # (.NET-hívásokkal: a PowerShell saját parancsai a rövidített, „~”-os TEMP-útvonalon elakadhatnak)
+  try {
+    foreach ($d in @([IO.Directory]::GetDirectories($env:TEMP, 'dmscreen-teszt-profil*')) + @([IO.Directory]::GetDirectories($env:TEMP, 'dmscreen-lefedettseg-profil*'))) {
+      if ($d -eq $profil -or [IO.Directory]::GetLastWriteTime($d) -lt (Get-Date).AddHours(-6)) { try { [IO.Directory]::Delete($d, $true) } catch { } }
+    }
+  } catch { }
 }

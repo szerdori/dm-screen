@@ -8,9 +8,13 @@
 // ---------- mini tesztkeret ----------
 const TESTS = [];
 let GROUP = '';
-const ONLINE = new URLSearchParams(location.search).has('online');
+const PARAMS = new URLSearchParams(location.search);
+const ONLINE = PARAMS.has('online');
+// részleges futás fejlesztés közben (.\teszt.ps1 -Csoport "…" -Szuro "…"): a csoport, illetve a teszt nevének részlete, kis- és nagybetűtől függetlenül
+const CSOPORT = PARAMS.get('csoport') || '', SZURO = PARAMS.get('szuro') || '';
+const szurtTeszt = (t, csoport, szuro) => { const b = (miben, mi) => !mi || miben.toLowerCase().includes(mi.toLowerCase()); return b(t.group, csoport) && b(t.name, szuro); };
 function describe(name, fn) { GROUP = name; fn(); GROUP = ''; }
-function test(name, fn, opts = {}) { TESTS.push({name: `${GROUP} › ${name}`, fn, online: !!opts.online}); }
+function test(name, fn, opts = {}) { TESTS.push({name: `${GROUP} › ${name}`, group: GROUP, fn, online: !!opts.online}); }
 class Fail extends Error {}
 const fmt = v => { try { return JSON.stringify(v); } catch { return String(v); } };
 function ok(cond, msg = 'a feltétel nem teljesült') { if (!cond) throw new Fail(msg); }
@@ -22,6 +26,18 @@ async function until(fn, ms = 4000, what = 'feltétel') {
   const t0 = Date.now();
   while (Date.now() - t0 < ms) { try { if (await fn()) return; } catch {} await wait(25); }
   throw new Fail('időtúllépés: ' + what);
+}
+// Megvárja, amíg a DM Screen minden függő írása lefutott – fix várakozás (wait(500)) helyett ezt használd.
+// A késleltetett mentést (save() → 400 ms múlva doSave) nem várja ki, hanem rögtön lefuttatja, ahogy az oldal bezárásakor az app is;
+// az ál-adatbázis írásai mikrofeladatok, két wait(0) alatt befejeződnek. (A 400 ms-os késleltetést külön teszt nézi: „Felhő mentés”.)
+// Nem erre való: a másik ablakba (Initiative tracker, telefonos lap) átmenő üzenetre várni – ott until() kell.
+async function mentve() {
+  for (let i = 0; i < 7; i++) {
+    await wait(0); await wait(0);
+    if (!A('saveTimer')) return;
+    if (i < 6) { A('clearTimeout(saveTimer)'); await W.doSave(); }
+  }
+  throw new Fail('a mentés nem áll le (minden mentés újabb mentést indít)');
 }
 
 // ---------- az app betöltése ----------
@@ -963,7 +979,7 @@ describe('Felhő mentés (ál-adatbázissal)', () => {
     const f = fakeDb();
     W.localStorage.setItem('dmscreen', JSON.stringify({library: [{id: 'a1', name: 'Rella', kind: 'pc'}], enc: {list: [], round: 1, active: null}, saved: [{name: 'Régi', list: []}], settings: {}}));
     await W.DMApp.setAuth({status: 'signedIn', email: 'teszt@example.com', db: f.db});
-    await wait(500);
+    await mentve();
     W.localStorage.removeItem('dmscreen');
     ok(Object.keys(f.store).includes('dmscreen_library/a1') && Object.keys(f.store).includes('dmscreen/state'), 'nem töltődött fel: ' + Object.keys(f.store));
     eq(Object.keys(f.store).filter(k => k.startsWith('dmscreen_saved/')).length, 1);
@@ -973,13 +989,27 @@ describe('Felhő mentés (ál-adatbázissal)', () => {
     const f = fakeDb();
     f.store['dmscreen_library/a'] = {name: 'A'}; f.store['dmscreen_library/b'] = {name: 'B'}; f.store['dmscreen/state'] = {enc: {list: [], round: 1, active: null}, settings: {}};
     await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db});
-    await wait(500); eq(f.log.splice(0).filter(l => !l.includes('backup')), [], 'betöltés után (a napi mentésen kívül) nem kellene írni');
-    A('S.library.find(c => c.id === "a").ac = 17; save()'); await wait(500);
+    await mentve(); eq(f.log.splice(0).filter(l => !l.includes('backup')), [], 'betöltés után (a napi mentésen kívül) nem kellene írni');
+    A('S.library.find(c => c.id === "a").ac = 17; save()'); await mentve();
     eq(f.log.splice(0), ['set dmscreen_library/a']);
-    add(mk()); await wait(500);
+    add(mk()); await mentve();
     eq(f.log.splice(0), ['set dmscreen/state']);
-    A('S.library = S.library.filter(c => c.id !== "b"); save()'); await wait(500);
+    A('S.library = S.library.filter(c => c.id !== "b"); save()'); await mentve();
     eq(f.log.splice(0), ['del dmscreen_library/b']);
+  });
+  // a többi teszt a mentve() segéddel rögtön lefuttatja a mentést; a késleltetést magát ez a teszt nézi, valódi idővel
+  test('késleltetett mentés: a save() 400 ms múlva ír, a gyors egymás utáni hívásokból egy írás lesz', async () => {
+    const f = fakeDb();
+    f.store['dmscreen_library/a'] = {name: 'A'}; f.store['dmscreen/state'] = {enc: {list: [], round: 1, active: null}, settings: {}};
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db});
+    await mentve(); f.log.splice(0);
+    A('S.library[0].ac = 11; save()'); await wait(150);
+    A('S.library[0].ac = 12; save()'); await wait(150);
+    A('S.library[0].ac = 13; save()'); await wait(150);
+    eq(f.log, [], 'az utolsó hívás után 400 ms-ig még nem ír');
+    ok(A('saveTimer'), 'a mentés be van időzítve');
+    await until(() => f.log.length, 2000, 'a késleltetett mentés');
+    eq([f.log, f.store['dmscreen_library/a'].ac, A('saveTimer')], [['set dmscreen_library/a'], 13, null]);
   });
   test('betöltés a felhőből visszaadja a könyvtárat és az encountert', async () => {
     const f = fakeDb();
@@ -1002,7 +1032,7 @@ describe('Felhő mentés (ál-adatbázissal)', () => {
     const f = fakeDb();
     await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db});
     f.db.set = async () => { const e = new Error('x'); e.code = 'unavailable'; throw e; };
-    add(mk()); await wait(500);
+    add(mk()); await mentve();
     has($('#saveState').textContent, 'sikertelen');
     eq(A('lastSaved.state'), '');
   });
@@ -1533,18 +1563,18 @@ describe('Biztonsági mentések', () => {
   const withData = () => ({'dmscreen_library/a': {name: 'Zombie', kind: 'monster'}, 'dmscreen/state': {enc: {list: [], round: 1, active: null}, settings: {}}});
   test('betöltéskor elkészül a napi felhős mentés, ugyanaznap nem ismétlődik', async () => {
     const f = makeFakeDb(withData());
-    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await mentve();
     const today = A('localDate()');
     ok(f.store['dmscreen_backup/' + today], 'nincs mai mentés');
     eq(f.store['dmscreen/backups'].items.map(b => [b.id, b.note, b.library]), [[today, 'napi', 1]]);
     eq(JSON.parse(f.store['dmscreen_backup/' + today].data).library[0].name, 'Zombie');
     f.log.length = 0;
-    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await mentve();
     eq(f.log.filter(l => l.includes('backup')), []);
   });
   test('üres adatnál nem készül mentés', async () => {
     const f = makeFakeDb();
-    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await mentve();
     ok(!f.store['dmscreen/backups'], 'üres állapotról is készült mentés');
   });
   test('legfeljebb 14 mentés marad, a legrégebbiek törlődnek', async () => {
@@ -1552,7 +1582,7 @@ describe('Biztonsági mentések', () => {
     for (let i = 1; i <= 14; i++) { const id = `2020-01-${String(i).padStart(2, '0')}`; items.push({id, note: 'napi'}); init['dmscreen_backup/' + id] = {data: '{}'}; }
     init['dmscreen/backups'] = {items};
     const f = makeFakeDb(init);
-    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(300);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await mentve();
     const ids = f.store['dmscreen/backups'].items.map(b => b.id);
     eq(ids.length, 14); eq(ids[0], A('localDate()')); ok(!ids.includes('2020-01-01'), 'a legrégebbi megmaradt');
     ok(!f.store['dmscreen_backup/2020-01-01'], 'a legrégebbi mentés dokumentuma nem törlődött');
@@ -1561,7 +1591,7 @@ describe('Biztonsági mentések', () => {
   test('túl nagy adatnál a felhős mentés kimarad, figyelmeztetéssel', async () => {
     const init = withData(); init['dmscreen_library/a'].notes = 'x'.repeat(950000);
     const f = makeFakeDb(init);
-    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await mentve();
     ok(!f.store['dmscreen/backups'], 'a túl nagy mentés mégis elkészült');
     has(A('backupWarn'), 'túl nagy');
   });
@@ -1570,20 +1600,20 @@ describe('Biztonsági mentések', () => {
     const init = withData(); init['dmscreen_library/b'] = {name: 'Új Ghoul'};
     init['dmscreen_backup/2026-01-01'] = {data: JSON.stringify(old)}; init['dmscreen/backups'] = {items: [{id: '2026-01-01', note: 'napi'}]};
     const f = makeFakeDb(init);
-    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
-    await W.restoreBackup('2026-01-01'); await wait(500);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await mentve();
+    await W.restoreBackup('2026-01-01'); await mentve();
     eq([A('S.library').map(c => c.name), A('S.enc.round')], [['Régi Zombie'], 4]);
     ok(!f.store['dmscreen_library/b'], 'a régi mentésben nem szereplő lény nem törlődött a felhőből');
     ok(f.store['dmscreen/backups'].items.some(b => b.note === 'visszaállítás előtt'), 'nem készült mentés a visszaállítás előtt');
   });
   test('Menü: mentések listája, „Mentés most”, visszaállítás gomb', async () => {
     const f = makeFakeDb(withData());
-    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(200);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await mentve();
     W.openMenu(); click('[data-act="openBackups"]'); await until(() => $$('[data-backup]').length === 1, 2000, 'lista');
     click('[data-act="backupNow"]'); await until(() => $$('[data-backup]').length === 2, 2000, '„Mentés most”');
     has($('#modalBox').textContent, 'kézi mentés');
     add(mk('Utána'));
-    click($$('[data-act="backupRestore"]')[1]); await wait(300);
+    click($$('[data-act="backupRestore"]')[1]); await mentve();
     has(allLog(), 'visszaállítva');
     ok(!$$('.tile').some(t => t.textContent.includes('Utána')), 'a visszaállítás után a csempék frissülnek');
   });
@@ -1914,7 +1944,7 @@ describe('Csapat: tagok és rendezés', () => {
   });
   test('felhőbe is elmentődik a tagság', async () => {
     const f = makeFakeDb(); await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db});
-    setupParty(); W.openParty(); click($$('[data-act="partyRemove"]')[0]); await wait(500);
+    setupParty(); W.openParty(); click($$('[data-act="partyRemove"]')[0]); await mentve();
     eq(f.store['dmscreen/state'].settings.partyIds.length, 2);
   });
   test('passzív táblázat rendezése oszlopra: először csökkenő, újra kattintva növekvő; név szerint', () => {
@@ -1976,24 +2006,24 @@ describe('Játékos app: láthatóság és közzététel', () => {
     const f = makeFakeDb({'dmscreen/state': {enc: {list: [], round: 1, active: null}, settings: {}},
       'dmscreen_library/p1': pc('Rella', 3, {owner: 'b@x.hu'}), 'dmscreen_library/p2': pc('Bori', 2, {owner: 'a@x.hu'}),
       'dmscreen_library/n1': npc('Kalauz', {vis: 'party'})});
-    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(600);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await mentve();
     eq(f.log.splice(0).filter(l => !l.includes('backup')).sort(), ['set access/players', 'set characters/n1', 'set characters/p1', 'set characters/p2'], 'első betöltéskor közzéteszi');
     eq(f.store['access/players'], {emails: ['a@x.hu', 'b@x.hu']});
-    A('S.library.find(c => c.id === "p1").notes = "titok"; save()'); await wait(500);
+    A('S.library.find(c => c.id === "p1").notes = "titok"; save()'); await mentve();
     eq(f.log.splice(0), ['set dmscreen_library/p1'], 'a titkos rész változása nem írja a nyilvánost');
-    A('S.library.find(c => c.id === "n1").share.vis = "dm"; save()'); await wait(500);
+    A('S.library.find(c => c.id === "n1").share.vis = "dm"; save()'); await mentve();
     eq(f.log.splice(0).sort(), ['del characters/n1', 'set dmscreen_library/n1']);
-    A('S.library.find(c => c.id === "p2").owner = "c@x.hu"; save()'); await wait(500);
+    A('S.library.find(c => c.id === "p2").owner = "c@x.hu"; save()'); await mentve();
     eq(f.log.splice(0).sort(), ['set access/players', 'set characters/p2', 'set dmscreen_library/p2']);
     eq(f.store['access/players'], {emails: ['b@x.hu', 'c@x.hu']});
   });
   test('újratöltéskor a más mezősorrendben tárolt közzétett adat nem íródik újra', async () => {
     const f = makeFakeDb({'dmscreen/state': {enc: {list: [], round: 1, active: null}, settings: {}}, 'dmscreen_library/p1': pc('Rella', 3, {owner: 'a@x.hu'})});
-    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(500);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await mentve();
     ok(f.store['characters/p1'], 'közzétette');
     f.store['characters/p1'] = Object.fromEntries(Object.entries(f.store['characters/p1']).reverse());
     fresh(); f.log.splice(0);
-    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await wait(500);
+    await W.DMApp.setAuth({status: 'signedIn', email: 't', db: f.db}); await mentve();
     eq(f.log.filter(l => !l.includes('backup')), []);
     ok(!W.sharingDirty());
   });
@@ -3803,7 +3833,7 @@ describe('Szabálykönyv és tárgy-import', () => {
   });
   test('Menü → Szabálykönyv: frissítés gomb letölt és feltölt', async () => {
     const rb = await fakeRb(), f = makeFakeDb(emptyState());
-    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(300);
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await mentve();
     W.buildRulebook = async () => rb;
     W.openMenu(); click('[data-act="rulebook"]'); await until(() => $('[data-act="rbUpdate"]'), 2000, 'a szabálykönyv ablak');
     has($('#modalBox').textContent, 'Még nincs feltöltve');
@@ -3836,7 +3866,7 @@ describe('Szabálykönyv és tárgy-import', () => {
 describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
   const loadWith = async (extra = {}) => {
     const f = makeFakeDb({...emptyState(), 'dmscreen_library/p1': pc('Régi név', 1, {id: 'p1', owner: 'a@x.hu', ac: 10, hp: {max: 5}}), 'sheets/p1': sheetDoc(), ...extra});
-    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(500);
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await mentve();
     return f;
   };
   const lib = () => A('S.library[0]');
@@ -3855,13 +3885,13 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     f.log.splice(0);
     const [x] = W.addToEncounter(lib(), 1);
     eq([x.hp, x.temp], [24, 0]);
-    W.damage(x, 5); W.save(); await wait(500);
+    W.damage(x, 5); W.save(); await mentve();
     ok(f.log.includes('update sheets/p1 hp.cur,hp.temp'), f.log.join('; '));
     eq([f.store['sheets/p1'].hp, f.store['sheets/p1'].updatedBy], [{max: 24, cur: 19, temp: 0}, 'dm@x.hu']);
     eq([lib().hp.cur, f.store['characters/p1'].hp], [19, {cur: 19, max: 24}], 'a könyvtárba és a csapat felé is');
     f.log.splice(0);
     f.store['sheets/p1'].hp = {max: 24, cur: 22, temp: 3}; f.store['sheets/p1'].inventory.push({name: 'Rope', qty: 1}); f.store['sheets/p1'].ac = 15;
-    f.emit('sheets'); await wait(500);
+    f.emit('sheets'); await mentve();
     eq([A('S.enc.list[0].hp'), A('S.enc.list[0].temp'), A('S.enc.list[0].c.ac')], [22, 3, 15]);
     has($('.tile .hpbar').textContent, '22 / 24', 'a csempe a telefonos változás után frissül');
     ok(lib().inventory.some(i => i.name === 'Rope'));
@@ -3873,7 +3903,7 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     f.log.splice(0);
     const [x] = W.addToEncounter(lib(), 1);
     eq([x.hp, x.temp], [20, 5]);
-    W.damage(x, 7); W.save(); await wait(500);
+    W.damage(x, 7); W.save(); await mentve();
     eq(f.store['sheets/p1'].hp, {max: 24, cur: 18, temp: 0});
   });
   test('Játékos → NPC → Játékos: NPC-ként a lap gazda nélküli (a játékos nem látja), az e-mail megmarad; visszaállítva ugyanaz a lap, semmi nem vész el', async () => {
@@ -3888,20 +3918,20 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     // → NPC: a szerkesztő szól, az e-mail megmarad, a lap és a nyilvános rész gazda nélküli
     let fm = await tipus('npc');
     has(fm.textContent, 'a@x.hu telefonos lapja megmarad, de amíg NPC, a játékos nem látja');
-    f.log.splice(0); click('[data-act="edSave"]'); await wait(500);
+    f.log.splice(0); click('[data-act="edSave"]'); await mentve();
     eq([lib().kind, lib().owner], ['npc', 'a@x.hu']);
     eq(f.store['sheets/p1'].owner, '', 'a játékos nem látja / nem szerkeszti (a szabály a lap gazdáját nézi)');
     ok(f.log.includes('update sheets/p1 owner'), f.log.join('; '));
     ok(!f.store['characters/p1'] || f.store['characters/p1'].owner === '', 'a nyilvános rész sem az övé');
     eq(nelkul(f.store['sheets/p1']), eredeti, 'a lap többi része változatlan');
     // a lap változása (pl. a DM írja a telefonján) nem állítja vissza Játékosra
-    f.store['sheets/p1'].hp.cur = 16; f.emit('sheets'); await wait(500);
+    f.store['sheets/p1'].hp.cur = 16; f.emit('sheets'); await mentve();
     eq([lib().kind, lib().owner, f.store['sheets/p1'].owner], ['npc', 'a@x.hu', '']);
-    f.store['sheets/p1'].hp.cur = 17; f.emit('sheets'); await wait(500);
+    f.store['sheets/p1'].hp.cur = 17; f.emit('sheets'); await mentve();
     // → Játékos: a lap visszakapja a gazdát, minden más ugyanaz
     fm = await tipus('pc');
     eq(fm.elements.owner.value, 'a@x.hu', 'az e-mail újra beírás nélkül ott van');
-    f.log.splice(0); click('[data-act="edSave"]'); await wait(500);
+    f.log.splice(0); click('[data-act="edSave"]'); await mentve();
     eq([lib().kind, f.store['sheets/p1'].owner, f.store['characters/p1'].owner], ['pc', 'a@x.hu', 'a@x.hu']);
     eq(nelkul(f.store['sheets/p1']), eredeti, 'szint, választások, varázslatok, tárgyak, pénz, HP, engedély: semmi nem veszett el');
     ok(!f.log.some(l => /update sheets\/p1 (?!owner$)/.test(l)), 'csak a gazda íródott: ' + f.log.join('; '));
@@ -3909,40 +3939,40 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
   test('NPC-vé tett játékos betöltéskor: ha a lapon még ott a gazda (pl. elmaradt írás), mentéskor lekerül; a régebben NPC-vé tett e-mailje a lapról átmentődik', async () => {
     let f = await loadWith({'dmscreen_library/p1': pc('Régi név', 1, {id: 'p1', owner: 'a@x.hu', kind: 'npc'})});
     eq([lib().kind, lib().owner], ['npc', 'a@x.hu']);
-    A('save()'); await wait(500);
+    A('save()'); await mentve();
     eq(f.store['sheets/p1'].owner, '');
     eq(W.playerEmails(), [], 'NPC gazdája nem kerül a játékosok listájára');
     // a régi kód az NPC-ről letörölte az e-mailt, a lapon viszont megmaradt: most a könyvtárba kerül, a lapról lekerül
     f = await loadWith({'dmscreen_library/p1': pc('Régi név', 1, {id: 'p1', kind: 'npc'})});
-    A('save()'); await wait(500);
+    A('save()'); await mentve();
     eq([lib().owner, f.store['sheets/p1'].owner], ['a@x.hu', '']);
   });
   test('NPC-ként a DM szerkesztése (AC, tárgy) továbbra is a lapra kerül, a harcbeli HP nem; törölt, majd NPC-vé tett karakter visszahozva gazda nélküli lapot kap', async () => {
     const f = await loadWith({'dmscreen_library/p1': pc('Régi név', 1, {id: 'p1', owner: 'a@x.hu', kind: 'npc'})});
-    A('save()'); await wait(500); f.log.splice(0);
-    A('S.library[0].ac = 18; save()'); await wait(500);
+    A('save()'); await mentve(); f.log.splice(0);
+    A('S.library[0].ac = 18; save()'); await mentve();
     eq([f.store['sheets/p1'].ac, f.store['sheets/p1'].owner], [18, '']);
     const [x] = W.addToEncounter(lib(), 1), hp0 = f.store['sheets/p1'].hp.cur;
-    W.damage(x, 3); W.save(); await wait(500);
+    W.damage(x, 3); W.save(); await mentve();
     eq(f.store['sheets/p1'].hp.cur, hp0, 'NPC-ként a harcbeli sebzés nem a lapé');
     // visszahozás NPC-ként
     A('SHEETS.p1 = Sheet.norm({...SHEETS.p1, owner: "", deleted: {owner: "a@x.hu", vis: "party", at: "2026-11-01T00:00:00.000Z", by: "a@x.hu"}})');
-    ok(W.lapVisszahoz('p1')); await wait(300);
+    ok(W.lapVisszahoz('p1')); await mentve();
     eq([lib().owner, f.store['sheets/p1'].owner, f.store['sheets/p1'].deleted ?? null], ['a@x.hu', '', null]);
   });
   test('DM oldali módosítás (tárgy a Tárgyak fülről, gazda, AC a szerkesztőben) mezőnként a lapra kerül', async () => {
     const f = await loadWith();
     f.log.splice(0);
-    W.addItemTo('p1', {n: 'Bag of Holding', s: 'DMG', mag: true, rar: 'uncommon'}, 1); await wait(500);
+    W.addItemTo('p1', {n: 'Bag of Holding', s: 'DMG', mag: true, rar: 'uncommon'}, 1); await mentve();
     ok(f.log.includes('update sheets/p1 inventory'), f.log.join('; '));
     ok(f.store['sheets/p1'].inventory.some(i => i.name === 'Bag of Holding' && i.ref === 'Bag of Holding|DMG'));
     f.log.splice(0);
-    A('S.library[0].owner = "b@x.hu"; save()'); await wait(500);
+    A('S.library[0].owner = "b@x.hu"; save()'); await mentve();
     ok(f.log.includes('update sheets/p1 owner'), f.log.join('; ')); eq(f.store['sheets/p1'].owner, 'b@x.hu');
     f.log.splice(0);
     W.openLib('lib'); click('[data-act="libEdit"]');
     has($('#edForm').textContent, 'telefonos karakterlapja van');
-    $('#edForm').elements.ac.value = '17'; click('[data-act="edSave"]'); await wait(500);
+    $('#edForm').elements.ac.value = '17'; click('[data-act="edSave"]'); await mentve();
     ok(f.log.includes('update sheets/p1 ac'), f.log.join('; ')); eq(f.store['sheets/p1'].ac, 17);
   });
   test('szabálymotoros lap: mentők és skillek a cache-ből; a DM AC- és képesség-átírása felülírásként (ov) megy a lapra', async () => {
@@ -3952,16 +3982,16 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     eq([lib().skillMods.persuasion, lib().skillMods.stealth], [{b: 3, p: 0}, {b: 0, p: 0}]);
     f.log.splice(0);
     W.openLib('lib'); click('[data-act="libEdit"]');
-    $('#edForm').elements.ac.value = '19'; click('[data-act="edSave"]'); await wait(500);
+    $('#edForm').elements.ac.value = '19'; click('[data-act="edSave"]'); await mentve();
     ok(f.log.includes('update sheets/p1 ac,ov.ac'), f.log.join('; '));
     eq([f.store['sheets/p1'].ac, f.store['sheets/p1'].ov], [19, {ac: 19}]);
     f.log.splice(0);
-    A('S.library[0].abilities.str = 14; save()'); await wait(500);
+    A('S.library[0].abilities.str = 14; save()'); await mentve();
     ok(f.log.includes('update sheets/p1 abilities,cache,ov.ab:str'), f.log.join('; '));
     eq([f.store['sheets/p1'].ov, f.store['sheets/p1'].cache], [{ac: 19, 'ab:str': 14}, null]);
     // HP a harcból: nem felülírás
     f.log.splice(0);
-    const [x] = W.addToEncounter(lib(), 1); W.damage(x, 5); W.save(); await wait(500);
+    const [x] = W.addToEncounter(lib(), 1); W.damage(x, 5); W.save(); await mentve();
     ok(f.log.includes('update sheets/p1 hp.cur,hp.temp'), f.log.join('; '));
   });
   test('aktív hatás a lapon (Mage Armor) → a könyvtári AC; koncentráció a harcba és vissza (a DM kikapcsolja → a lapon is vége)', async () => {
@@ -3970,9 +4000,9 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     f.log.splice(0);
     const [x] = W.addToEncounter(lib(), 1);
     eq(x.conc, true, 'a lap koncentrációjával indul');
-    W.save(); await wait(500);
+    W.save(); await mentve();
     ok(!f.log.some(l => /sheets\//.test(l)), 'nem ír vissza: ' + f.log);
-    x.conc = false; W.save(); await wait(500);
+    x.conc = false; W.save(); await mentve();
     ok(f.log.includes('update sheets/p1 concentration,conditions'), f.log.join('; '));
     eq([f.store['sheets/p1'].concentration, f.store['sheets/p1'].conditions], ['', ['Mage Armor']]);
   });
@@ -3982,17 +4012,17 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     f.log.splice(0);
     const [x] = W.addToEncounter(lib(), 1);
     eq(x.cond, [{name: 'Shield of Faith', rounds: null}], 'a lap állapotaival indul');
-    x.cond.push({name: 'Prone', rounds: 2}); W.save(); await wait(500);
+    x.cond.push({name: 'Prone', rounds: 2}); W.save(); await mentve();
     ok(f.log.includes('update sheets/p1 conditions'), f.log.join('; '));
     eq(f.store['sheets/p1'].conditions, ['Shield of Faith', 'Prone']);
     f.log.splice(0);
-    f.store['sheets/p1'].conditions = ['Shield of Faith', 'Prone', 'Poisoned']; f.emit('sheets'); await wait(500);
+    f.store['sheets/p1'].conditions = ['Shield of Faith', 'Prone', 'Poisoned']; f.emit('sheets'); await mentve();
     eq(A('S.enc.list[0].cond'), [{name: 'Shield of Faith', rounds: null}, {name: 'Prone', rounds: 2}, {name: 'Poisoned', rounds: null}], 'a telefonos állapot átjön, a DM körszáma marad');
     ok(!f.log.some(l => /sheets\//.test(l)), 'nem ír vissza: ' + f.log);
-    A('S.enc.list[0].cond.splice(1, 1); save()'); await wait(500);
+    A('S.enc.list[0].cond.splice(1, 1); save()'); await mentve();
     eq(f.store['sheets/p1'].conditions, ['Shield of Faith', 'Poisoned'], 'a DM levette a Prone-t');
     W.openLib('lib'); click('[data-act="libEdit"]');
-    $('#edForm').elements.ac.value = '17'; click('[data-act="edSave"]'); await wait(500);
+    $('#edForm').elements.ac.value = '17'; click('[data-act="edSave"]'); await mentve();
     eq([f.store['sheets/p1'].ac, lib().ac], [15, 17], 'a lapon 15 (+2 Shield of Faith = 17)');
   });
   test('karakterlap létrehozása meglévő (D&D Beyond-os) játékosból: osztály, mentők, skillek, támadás, spellek', async () => {
@@ -4050,7 +4080,7 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     const c = pc('Thorin', 3, {id: 'p7', owner: 'a@x.hu', type: 'Hill Dwarf — Fighter 3 (Champion)', abilities: {str: 16, dex: 12, con: 16, int: 10, wis: 12, cha: 8}, ac: 18, hp: {max: 31, cur: 25}});
     const f = makeFakeDb({...emptyState(), 'dmscreen_library/p7': c});
     A('rulebook = null');
-    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(300);
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await mentve();
     try {
       await W.uploadRulebook(rb); A('rulebook = null');
       W.openLib('lib'); click('[data-act="libSheet"]');
@@ -4070,10 +4100,10 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
   });
   test('JSON-import: karakterlap-sablon → játékos + lap a felhőben; azonos névnél rákérdez', async () => {
     const f = makeFakeDb(emptyState());
-    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(300);
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await mentve();
     const [c] = await W.importAny(W.Sheet.TEMPLATE);
     eq([c.kind, c.name, c.cr], ['pc', 'Minta Tolvaj', 'Szint 3']);
-    await wait(500);
+    await mentve();
     const doc = f.store['sheets/' + c.id];
     ok(doc, 'a lap felkerült'); eq(doc.format, 'dmscreen-karakter'); hasNot(JSON.stringify(doc), '_leiras');
     let asked = ''; W.confirm = m => { asked = m; return true; };
@@ -4090,9 +4120,9 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     eq([file.sheets.length, file.sheets[0].id, file.sheets[0].name], [1, 'p1', 'Minta Tolvaj']);
     f.log.splice(0);
     W.prompt = () => 'Delete';
-    W.openLib('lib'); click('[data-act="libDel"]'); await wait(500);
+    W.openLib('lib'); click('[data-act="libDel"]'); await mentve();
     ok(f.log.includes('del sheets/p1'), f.log.join('; ')); eq(A('Object.keys(SHEETS)'), []);
-    W.importBackup(JSON.parse(JSON.stringify(file))); await wait(500);
+    W.importBackup(JSON.parse(JSON.stringify(file))); await mentve();
     ok(A('SHEETS.p1') && f.store['sheets/p1'], 'visszaállt');
     const bk = Object.entries(f.store).find(([k]) => k.startsWith('dmscreen_backup/'));
     ok(bk && JSON.parse(bk[1].data).sheets.length === 1, 'a napi felhős mentésben is benne van');
@@ -4100,7 +4130,7 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
   test('régi szabályok (a lapok nem olvashatók): a DM Screen így is betölt, a Menü szól', async () => {
     const f = makeFakeDb({...emptyState(), 'dmscreen_library/a': mk()});
     const orig = f.db.list; f.db.list = async c => { if (c === 'sheets') throw Object.assign(new Error('x'), {code: 'permission-denied'}); return orig(c); };
-    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(300);
+    await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await mentve();
     ok($('#gate').hidden); eq(A('S.library').length, 1);
     W.openMenu(); has($('#modalBox').textContent, 'firestore.rules');
   });
@@ -7064,11 +7094,11 @@ describe('Szerződés (szerzodes.js)', () => {
     f.db.set = async (p, d) => { ellenoriz(p, d); return set(p, d); };
     f.db.update = async (p, d) => { await update(p, d); ellenoriz(p, f.store[p]); };
     try {
-      await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await wait(500);
+      await W.DMApp.setAuth({status: 'signedIn', email: 'dm@x.hu', db: f.db}); await mentve();
       A(`S.library.push(normCreature(${JSON.stringify(mk('Goblin', {id: 'g1'}))}), normCreature({id: 'n1', name: 'Őr', kind: 'npc', hp: {max: 20, cur: 8}, share: {vis: 'party', hp: 'label'}}))`);
       A(`S.saved.push({id: 's1', name: 'Les', list: [S.library[1]]})`);
       const [x] = W.addToEncounter(A('S.library[0]'), 1); W.addToEncounter(A('S.library[1]'), 2);
-      W.damage(x, 4); W.save(); await wait(500);
+      W.damage(x, 4); W.save(); await mentve();
       await W.addBackup('2026-10-29', 'teszt');
     } finally { f.db.set = set; f.db.update = update; }
     eq(hibak, [], 'a tisztítón átmenve megváltozna');
@@ -7274,6 +7304,14 @@ describe('Általános', () => {
     } finally { K.eval('MODULOK.sheet = VART_MODULOK.sheet'); }
     ok(!K.regiFajl(), 'karakter.html: visszaállítva nem régi');
   });
+  test('tesztfuttató: a részleges futás szűrője (teszt.ps1 -Csoport / -Szuro) a csoport és a teszt nevének részletére illeszt, kis- és nagybetűtől függetlenül', () => {
+    const t = {group: 'Zsákmány (DMG 2014 kincstáblák)', name: 'Zsákmány (DMG 2014 kincstáblák) › egyéni kincs: érmék'};
+    eq([szurtTeszt(t, '', ''), szurtTeszt(t, 'zsákmány', ''), szurtTeszt(t, 'Harc', ''), szurtTeszt(t, '', 'ÉRMÉK'), szurtTeszt(t, 'dmg', 'initiative'), szurtTeszt(t, 'kincs', 'egyéni')],
+      [true, true, false, true, false, true]);
+    // a csoportszűrő a csoport nevét nézi, nem a teszt teljes nevét (amiben a csoport is benne van)
+    ok(!szurtTeszt({group: 'Harc', name: 'Harc › zsákmány a végén'}, 'zsákmány', ''), 'a csoportszűrő csak a csoportnévre illeszt');
+    ok(TESTS.every(x => x.group && x.name.startsWith(x.group + ' › ')), 'minden tesztnek van csoportja');
+  });
   test('nem volt JavaScript-hiba az app futása közben', () => eq(appErrors, []));
 });
 
@@ -7298,7 +7336,9 @@ async function run() {
   K.addEventListener('unhandledrejection', e => appErrors.push('karakter.html promise: ' + (e.reason?.message || e.reason)));
   // a „const f = ...” segédfüggvények nem window-tulajdonságok, ezért elérhetővé tesszük őket W.f néven
   for (const k of ['normCreature', 'normCombatant', 'splitEntry', 'sideOf', 'mod', 'sgn', 'initBonusOf', 'nameOf', 'byId', 'crXp', 'pcLevel', 'crSzint', 'hpArany', 'tagSzint', 'crToPb', 'ordinal', 'is5e', 'isDDB', 'crBand', 'dmgTable', 'coinStr', 'noTreasure', 'skillLabel', 'passiveScore', 'partyMembers', 'coinsGp', 'hpStatus', 'playerEmails', 'stableJson', 'sharingDirty', 'lenySablon']) W[k] = A(k);
+  let kiszurt = 0;
   for (const t of TESTS) {
+    if (!szurtTeszt(t, CSOPORT, SZURO)) { kiszurt++; continue; }
     if (t.online && !ONLINE) { skip++; continue; }
     try {
       fresh();
@@ -7310,11 +7350,11 @@ async function run() {
     out.textContent = lines.join('\n');
   }
   fresh();
-  const total = `ÖSSZESEN: ${pass} sikeres, ${fail} hibás${skip ? `, ${skip} kihagyva (online)` : ''}`;
+  const total = `ÖSSZESEN: ${pass} sikeres, ${fail} hibás${skip ? `, ${skip} kihagyva (online)` : ''}${kiszurt ? `, ${kiszurt} kihagyva (szűrő – részleges futás)` : ''}`;
   lines.push('', total);
   out.textContent = lines.join('\n');
   sum.textContent = total; sum.className = fail ? 'bad' : 'ok';
   document.title = (fail ? 'HIBA' : 'OK') + ' – DM Screen tesztek';
   document.body.dataset.done = '1';
 }
-run().catch(e => { document.getElementById('summary').textContent = 'A TESZTFUTTATÁS ELAKADT: ' + (e.message || e); document.getElementById('report').textContent += '\nHIBA  a tesztfuttatás elakadt: ' + (e.message || e) + (appErrors.length ? ' – az app hibái: ' + appErrors.join(' | ') : '') + '\nÖSSZESEN: 0 sikeres, 1 hibás'; });
+run().catch(e => { document.getElementById('summary').textContent = 'A TESZTFUTTATÁS ELAKADT: ' + (e.message || e); document.getElementById('report').textContent += '\nHIBA  a tesztfuttatás elakadt: ' + (e.message || e) + (appErrors.length ? ' – az app hibái: ' + appErrors.join(' | ') : '') + '\nÖSSZESEN: 0 sikeres, 1 hibás'; document.body.dataset.done = '1'; });

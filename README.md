@@ -10,11 +10,12 @@ Harckezelő D&D 5e (2014) mesélőknek: initiative-sorrend csempéken, HP, AC, t
 - A játékosok a telefonjukon kezelik a karakterüket (`karakter.html`); a DM engedélyére szintlépés-varázslóval lépnek szintet (új osztályt is felvehetnek: multiclass, a PHB-feltételt a program jelzi), és az utolsó szintlépés visszavonható.
 - Új játékost a DM üres lappal hoz létre (Új lény → Játékos), a tulajdonos a telefonján varázslóval állítja be. A varázsló a PHB kezdő felszerelését is a lapra teszi (vagy arany helyett vásárolhat). NPC-ből lett játékos karakter a DMG szerinti, szinthez illő felszerelést kaphat (🎁 a Könyvtárban). A karakterről mentés (backup) készíthető, visszaállítható és JSON-ba letölthető; a játékos törölheti a karakterét, véglegesen csak a DM.
 
-Frissítés feltöltése: `.\feltoltes.ps1 "Mit változtattunk"` – előtte automatikusan lefutnak a tesztek, és hiba esetén nem tölt fel.
+Frissítés feltöltése: `.\feltoltes.ps1 "Mit változtattunk"` – előtte automatikusan lefutnak a tesztek, és hiba esetén nem tölt fel (ha pontosan erre az állapotra a teljes teszt 24 órán belül már sikeresen lefutott, nem futtatja újra).
 
 ## Tesztek
 
 - `.\teszt.ps1` (vagy dupla kattintás a `teszt.cmd`-n): lefuttatja a regressziós teszteket láthatatlan Chrome-ban, kb. fél perc.
+- `.\teszt.ps1 -Csoport "Zsákmány"` / `-Szuro "initiative"`: csak a megadott csoport, illetve a megadott nevű tesztek (részleges futás, pár másodperc; feltöltés előtt a teljes futás kell).
 - `.\teszt.ps1 -Online`: az 5e.tools adatok elérhetőségét is ellenőrzi.
 - `.\teszt.ps1 -Bongeszo`: látható böngészőben futtatja (hibakereséshez).
 - `.\teszt.ps1 -Lefedettseg`: megméri, hogy a tesztek a kód hány százalékát futtatják le (fájlonként: sorok, kód, függvények); a részletes riport (piros = nem futott le) a `%TEMP%\dmscreen-lefedettseg.html` fájlban.

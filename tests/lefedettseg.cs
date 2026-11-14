@@ -14,6 +14,7 @@ public class Cdp {
   readonly ClientWebSocket ws = new ClientWebSocket();
   readonly JavaScriptSerializer js = new JavaScriptSerializer { MaxJsonLength = int.MaxValue, RecursionLimit = 1000 };
   int nextId = 1;
+  public int TimeoutMs = 60000;                        // egy válaszra legfeljebb ennyit várunk
   public readonly Dictionary<string, Dictionary<string, object>> Scripts = new Dictionary<string, Dictionary<string, object>>();
 
   public Cdp(string url) { ws.ConnectAsync(new Uri(url), CancellationToken.None).Wait(); }
@@ -21,7 +22,10 @@ public class Cdp {
   string Recv() {
     var ms = new MemoryStream(); var buf = new byte[1 << 16];
     while (true) {
-      var r = ws.ReceiveAsync(new ArraySegment<byte>(buf), CancellationToken.None).Result;
+      // időkorláttal: ha az oldal szinkron végtelen ciklusba kerül, a Chrome nem válaszol – a futtató ne várjon örökké
+      var t = ws.ReceiveAsync(new ArraySegment<byte>(buf), CancellationToken.None);
+      if (!t.Wait(TimeoutMs)) throw new TimeoutException("a Chrome " + (TimeoutMs / 1000) + " mp alatt nem valaszolt");
+      var r = t.Result;
       ms.Write(buf, 0, r.Count);
       if (r.EndOfMessage) break;
     }
