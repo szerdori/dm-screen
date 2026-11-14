@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-rajz, a karakter.html része): a szabálykönyv segédei és a lap rajzolása (fülek)
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-rajz', N) és a karakter.html-ben a lap-rajz.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-rajz', 6);
+modul('lap-rajz', 7);
 
 // ---------- szabálykönyv ----------
 const RB = () => rbInfo?.rb || null;
@@ -160,32 +160,48 @@ function csakBekeszitettAllit(v) {
   const k = window.Szerzodes.HELYI.csakBekeszitett, sikerult = v ? Bongeszotar.ir(k, '1') : Bongeszotar.torol(k);
   csakBekTartalek = sikerult ? null : v;
 }
-function tabVar(s, ed) {
-  const sc = s.spellcasting, dis = ed ? '' : 'disabled', ab = H.spellAbility(s);
+// ---------- Varázslat fül: a részei (a tabVar rakja össze; TERV-refaktor-2.md, 6. lépés) ----------
+// a spell slotok és a Pact Magic sorai ('' = nincs slot)
+function varSlotok(s, dis) {
+  const sc = s.spellcasting;
   const slots = sc.slots.map((n, l) => n ? `<div class="li"><span class="nm"><b>${H.ORD[l + 1]} level</b><small>${n - sc.used[l]} / ${n} szabad</small></span>
     <span class="pips">${pipRow(n, sc.used[l], `data-act="slot" data-l="${l}"`, dis, (l + 1) + '. szintű slot')}</span></div>` : '').join('');
   const pact = sc.pact.max ? `<div class="li"><span class="nm"><b>Pact Magic (${H.ORD[sc.pact.level] || '?'} level)</b><small>${sc.pact.max - sc.pact.used} / ${sc.pact.max} szabad · short restnél visszatöltődik</small></span>
     <span class="pips">${pipRow(sc.pact.max, sc.pact.used, 'data-act="pact"', dis, 'Pact slot')}</span></div>` : '';
-  // „csak a bekészítettek”: a cantripek mindig látszanak (nem kell bekészíteni őket)
-  const csak = csakBekeszitett(), latszik = sp => !csak || !sp.level || sp.prepared || sp.always;
-  // szintenként; multiclassnál előbb osztályonként (TERV-multiclass.md: mindegyik a saját DC-jével), a nem besorolt varázslatok az „Egyéb” alatt
+  return slots + pact;
+}
+// a fejléc: varázsképesség, spell save DC, spell attack (multiclassnál osztályonként, a bekészítettek számával)
+function varFej(s, casts) {
+  const ab = H.spellAbility(s);
+  const bek = cls => s.spells.filter(sp => sp.level && sp.prepared && !sp.always && sp.cls === cls).length;
+  return casts.length > 1 ? casts.map(c => `<p class="mcfej"><b>${esc(c.cls)}</b>${c.ab ? ` (${esc(H.ABIL_FULL[c.ab] || c.ab)})` : ''}: spell save DC <b>${esc(c.dc)}</b> · spell attack ${rollBtn(c.atk, `Spell attack (${c.cls})`, undefined, 'atk')}${c.prep ? ` · bekészítve ${esc(bek(c.cls))} / ${esc(c.prep)}` : ''}</p>`).join('')
+    : ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>';
+}
+// a varázslatok listája: szintenként; multiclassnál előbb osztályonként (TERV-multiclass.md: mindegyik a saját DC-jével), a nem besorolt varázslatok az „Egyéb” alatt
+// csak: „csak a bekészítettek” – a cantripek mindig látszanak (nem kell bekészíteni őket)
+function varLista(s, ed, casts, csak) {
+  const latszik = sp => !csak || !sp.level || sp.prepared || sp.always;
   const szintek = idx => { const by = {}; idx.forEach(i => { const sp = s.spells[i]; if (latszik(sp)) (by[sp.level] = by[sp.level] || []).push(spellRow(sp, i, ed, s)); });
     return Object.keys(by).sort((a, b) => a - b).map(l => `<h3 class="sub2">${l == 0 ? 'Cantripek' : H.ORD[l] + ' level'}</h3><div class="list">${by[l].join('')}</div>`).join(''); };
-  const casts = H.spellCasts(s), multi = casts.length > 1, minden = s.spells.map((_, i) => i);
-  const bek = cls => s.spells.filter(sp => sp.level && sp.prepared && !sp.always && sp.cls === cls).length;
-  const fej = multi ? casts.map(c => `<p class="mcfej"><b>${esc(c.cls)}</b>${c.ab ? ` (${esc(H.ABIL_FULL[c.ab] || c.ab)})` : ''}: spell save DC <b>${esc(c.dc)}</b> · spell attack ${rollBtn(c.atk, `Spell attack (${c.cls})`, undefined, 'atk')}${c.prep ? ` · bekészítve ${esc(bek(c.cls))} / ${esc(c.prep)}` : ''}</p>`).join('')
-    : ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>';
-  const lista = multi ? [...casts.map(c => [c.cls, minden.filter(i => s.spells[i].cls === c.cls)]), ['Egyéb', minden.filter(i => !casts.some(c => c.cls === s.spells[i].cls))]]
+  const minden = s.spells.map((_, i) => i);
+  return casts.length > 1 ? [...casts.map(c => [c.cls, minden.filter(i => s.spells[i].cls === c.cls)]), ['Egyéb', minden.filter(i => !casts.some(c => c.cls === s.spells[i].cls))]]
     .map(([n, idx]) => { const t = szintek(idx); return t ? `<h3 class="mcosz">${esc(n)}</h3>${t}` : ''; }).join('') : szintek(minden);
+}
+// varázslat felvétele: kereső a szabálykönyvben, saját / homebrew varázslat (csak szerkeszthető lapon)
+function varFelvetel() {
+  return `<h3>＋ Varázslat hozzáadása</h3>${rbNote()}
+      ${RB() ? `<div class="row"><input id="spellQ" class="grow" placeholder="Keresés név szerint (angolul)…" autocomplete="off"><label class="hint"><input type="checkbox" id="spellMine" ${searchQ.all ? '' : 'checked'}> csak az osztályaim listája</label></div><div class="list" id="spellRes" style="margin-top:6px"></div>` : ''}
+      <div class="row" style="margin-top:8px"><input id="spellNew" class="grow" placeholder="Saját / homebrew varázslat neve">${iGomb(H.MEZO_INFO.spell)}<select id="spellNewL">${H.ORD.map((o, l) => `<option value="${l}">${l ? o + ' level' : 'Cantrip'}</option>`).join('')}</select><button data-act="spellCustom">＋</button></div>`;
+}
+function tabVar(s, ed) {
+  const casts = H.spellCasts(s), csak = csakBekeszitett(), slotok = varSlotok(s, ed ? '' : 'disabled'), lista = varLista(s, ed, casts, csak);
   const prepared = s.spells.filter(sp => sp.level && (sp.prepared || sp.always)).length, rejtett = s.spells.filter(sp => sp.level && !sp.prepared && !sp.always).length;
-  return `${fej}
-    ${slots || pact ? `<h3>Spell slotok</h3><div class="list">${slots}${pact}</div>` : ''}
+  return `${varFej(s, casts)}
+    ${slotok ? `<h3>Spell slotok</h3><div class="list">${slotok}</div>` : ''}
     <h3>Varázslatok <span class="hint">(${prepared} bekészítve)</span></h3>
     ${s.spells.some(sp => sp.level) ? `<label class="hint"><input type="checkbox" data-act="csakBek" ${csak ? 'checked' : ''}> csak a bekészítettek${csak && rejtett ? ` (${rejtett} elrejtve)` : ''}</label>` : ''}
     ${lista || `<p class="hint">${s.spells.length ? 'Nincs bekészített varázslat.' : 'Még nincs varázslat a lapon.'}</p>`}
-    ${ed ? `<h3>＋ Varázslat hozzáadása</h3>${rbNote()}
-      ${RB() ? `<div class="row"><input id="spellQ" class="grow" placeholder="Keresés név szerint (angolul)…" autocomplete="off"><label class="hint"><input type="checkbox" id="spellMine" ${searchQ.all ? '' : 'checked'}> csak az osztályaim listája</label></div><div class="list" id="spellRes" style="margin-top:6px"></div>` : ''}
-      <div class="row" style="margin-top:8px"><input id="spellNew" class="grow" placeholder="Saját / homebrew varázslat neve">${iGomb(H.MEZO_INFO.spell)}<select id="spellNewL">${H.ORD.map((o, l) => `<option value="${l}">${l ? o + ' level' : 'Cantrip'}</option>`).join('')}</select><button data-act="spellCustom">＋</button></div>` : ''}`;
+    ${ed ? varFelvetel() : ''}`;
 }
 function spellResults(s) {
   const q = $('#spellQ')?.value || '', mine = $('#spellMine')?.checked;
