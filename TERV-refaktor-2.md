@@ -1,6 +1,10 @@
 # Refaktor, második kör – terv
 
-*Készült: 2026-11-14. Állapot: **javaslat**, a felhasználó még nem fogadta el. Kódváltozás nincs. Előzmény: `TERV-refaktor.md` (0–8. lépés, kész).*
+*Készült: 2026-11-14. Állapot: **elfogadva 2026-11-14** (1–7. lépés), munka a `refaktor-2` ágon. Előzmény: `TERV-refaktor.md` (0–8. lépés, kész).*
+
+## Mi lett belőle (2026-11-14)
+
+- **1. és 7. lépés – kész.** A `tests/tests.js` helyett `tests/keret.js` (mini tesztkeret, közös segédek, `run()`, `APP_NEVEK`, `appNevTipp`), 11 csoportfájl a `tests/csoportok/` alatt (33–76 KB) és `tests/indit.js`. **Eltérés a tervtől:** nincs `tests/segedek.js` – a segédek ott maradtak, ahol először kellenek (a fájlok az eredeti sorrendben töltődnek, egy fájl a korábbiak segédeit használhatja), így a tesztek szövege és sorrendje betűre változatlan. A 152 KB-os „Telefonos karakterlap” csoport három fájlra bomlott (ugyanazzal a csoportnévvel); a közös segédei (`kq`, `kclick`, `ktest`, `openSheet`…) a `07-telefon-1.js` legfelső szintjére kerültek.
 
 A felhasználó kérése: a kód átnézése refaktorálási lehetőségekért, és terv a találatokból.
 

@@ -5,7 +5,7 @@
 #             .\teszt.ps1 -Online            + az 5e.tools adatok elérhetőségének ellenőrzése (internet kell)
 #             .\teszt.ps1 -Bongeszo          a teszteket látható böngészőben nyitja meg (hibakereséshez)
 #             .\teszt.ps1 -Lefedettseg       a tesztek mellett megméri, a kód mekkora részét futtatják le (riport: %TEMP%\dmscreen-lefedettseg.html)
-# Új teszteket a tests\tests.js fájlba lehet írni.
+# Új teszteket a tests\csoportok\ témánkénti fájljaiba lehet írni (a keret: tests\keret.js).
 # A futtató a Chrome DevTools-protokollján át figyeli, mikor kész az oldal (tests\lefedettseg.cs, Cdp), és rögtön kilép.
 # Minden futás saját portot és Chrome-profilt kap, így két egyidejű futás (két session) nem akad össze.
 # Az utolsó futás eredményét megjegyzi (tests\ujjlenyomat.ps1); ha az teljes és hibátlan volt, a feltoltes.ps1 ugyanarra az állapotra nem futtat újra.

@@ -19,4 +19,4 @@ Frissítés feltöltése: `.\feltoltes.ps1 "Mit változtattunk"` – előtte aut
 - `.\teszt.ps1 -Online`: az 5e.tools adatok elérhetőségét is ellenőrzi.
 - `.\teszt.ps1 -Bongeszo`: látható böngészőben futtatja (hibakereséshez).
 - `.\teszt.ps1 -Lefedettseg`: megméri, hogy a tesztek a kód hány százalékát futtatják le (fájlonként: sorok, kód, függvények); a részletes riport (piros = nem futott le) a `%TEMP%\dmscreen-lefedettseg.html` fájlban.
-- Új teszt: `tests\tests.js`, a megfelelő `describe(...)` blokkba egy `test('név', () => { ... })` sor. A fájl elején leírás van a segédfüggvényekről.
+- Új teszt: a `tests\csoportok\` témánkénti fájljaiban, a megfelelő `describe(...)` blokkba egy `test('név', () => { ... })` sor. A keret és a segédfüggvények leírása: `tests\keret.js`.
