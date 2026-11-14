@@ -1,11 +1,11 @@
 // 5e.tools import (logika, DOM nélkül): a bestiárium letöltése és a szörnyek átalakítása a DM Screen lényformátumára.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('import-5etools', N) és az index.html-ben az import-5etools.js?v=N és a VART_MODULOK.
 'use strict';
-modul('import-5etools', 1);
+modul('import-5etools', 2);
 
 // ---------- 5e.tools ----------
 const FIVE_BASE = 'https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/bestiary/';
-let fiveIndex = null, fiveData = {}, fiveResults = [];
+let fiveIndex = null, fiveData = {};  // a keresés találatai (fiveResults) a felületen: konyvtar-ablak.js
 async function loadFiveIndex() {
   if (!fiveIndex) fiveIndex = await (await fetch(FIVE_BASE + 'index.json')).json();
   return fiveIndex;

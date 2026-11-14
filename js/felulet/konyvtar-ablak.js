@@ -1,9 +1,11 @@
 // Könyvtár ablak (felület): a fülek (könyvtár, 5e.tools, D&D Beyond, tárgyak, JSON, mentett encounterek) és a fájlbetöltés.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('konyvtar-ablak', N) és az index.html-ben a konyvtar-ablak.js?v=N és a VART_MODULOK.
 'use strict';
-modul('konyvtar-ablak', 8);
+modul('konyvtar-ablak', 9);
 
 let libTab = 'lib';
+// a keresések találatai (felületi állapot: a sorok sorszáma a data-five / data-item; az akciok.js innen veszi a kiválasztottat)
+let fiveResults = [], itemResults = [];
 // ---------- könyvtár ----------
 function openLib(tab) { if (tab) libTab = tab; openModal('<div id="libRoot"></div>'); renderLib(); }
 function renderLib() {

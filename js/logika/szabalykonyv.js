@@ -1,7 +1,7 @@
 // Szabálykönyv a játékos appnak (logika, DOM nélkül): az 5e.tools adatainak letöltése, átalakítása (fx hatáslisták), feltöltése, és a tárgykeresés.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('szabalykonyv', N) és az index.html-ben a szabalykonyv.js?v=N és a VART_MODULOK.
 'use strict';
-modul('szabalykonyv', 5);
+modul('szabalykonyv', 6);
 
 // ---------- szabálykönyv a játékos appnak (rules/*) ----------
 // Az 5e.tools-tükörből letölti a PHB / XGE / TCE varázslatait és featjeit, a PHB / DMG / XGE / TCE tárgyait (2024-es könyvek nélkül),
@@ -420,7 +420,6 @@ async function felhoSzabalyok() {
 const rbCounts = c => `${c.spells || 0} varázslat, ${(c.items || 0) + (c.baseItems || 0)} tárgy + ${c.variants || 0} variáns, ${c.feats || 0} feat, ${c.classes || 0} osztály ${c.subclasses || 0} alosztállyal, ${c.races || 0} faj, ${c.backgrounds || 0} háttér`;
 // a felhőben lévő szabálykönyv adatai (Menü → Szabálykönyv); felhő nélkül null
 async function szabalyMeta() { return Tar.kapcsolva() ? Tar.szabalyok.meta() : null; }
-let itemResults = [];
 function addItemTo(pcId, it, qty) {
   const c = S.library.find(x => x.id === pcId); if (!c) return null;
   const ref = Sheet.refOf(it), have = c.inventory.find(i => i.ref === ref || i.name === it.n);

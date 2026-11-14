@@ -73,6 +73,14 @@ describe('Szerződés (szerzodes.js)', () => {
     } finally { if (orig) Object.defineProperty(K, 'localStorage', orig); else delete K.localStorage; K.csakBekeszitettAllit(false); }
     eq([K.csakBekeszitett(), K.localStorage.getItem(K.Szerzodes.HELYI.csakBekeszitett)], [false, null], 'a tároló visszaállt');
   });
+  test('rétegek: a keresések találatai (fiveResults, itemResults) felületi állapot – a felület deklarálja, a logika nem ismeri', async () => {
+    const szoveg = async f => (await (await fetch('../' + f, {cache: 'no-store'})).text()).replace(/\/\/.*$/gm, '');
+    const html = await szoveg('index.html');
+    const logika = [...html.matchAll(/<script src="(js\/logika\/[\w-]+\.js)\?v=\d+"><\/script>/g)].map(m => m[1]);
+    ok(logika.length >= 10, 'megtalálta a logikai fájlokat');
+    for (const f of logika) eq((await szoveg(f)).match(/\b(fiveResults|itemResults)\b/g), null, f + ': keresési találat a logikában');
+    has(await szoveg('js/felulet/konyvtar-ablak.js'), 'let fiveResults = [], itemResults = [];');
+  });
   test('Értesítő: a logika üzenetei eljutnak a felületre (napló, mentésjelző, telefonos lap változása)', () => {
     A(`Ertesito.naplo('üzenet', 'warn')`);
     eq([lastLog(), A('logLines[0].cls')], ['üzenet', 'warn']);
