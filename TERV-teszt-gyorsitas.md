@@ -1,6 +1,15 @@
 # Gyorsabb teszt és ellenőrző – terv
 
-*Készült: 2026-11-14. Állapot: **elfogadva 2026-11-14** (1–4. lépés és az ellenőrző gyorsítása, 6–8.; az 5. csak ha kell). Az 1–4. lépés kész a `teszt-gyorsitas` ágon (lásd „Mi lett belőle”); a 6–8. még nincs.*
+*Készült: 2026-11-14. Állapot: **elfogadva 2026-11-14** (1–4. lépés és az ellenőrző gyorsítása, 6–8.; az 5. csak ha kell). Az 1–4. és a 6–8. lépés kész (lásd „Mi lett belőle”); az 5. nem készült el, csak ha kell.*
+
+## Mi lett belőle (6–8. lépés, 2026-11-14)
+
+- **6. lépés – `ellenorzes.ps1`** (külön szkript, nem teszt: a `git diff`-et nézi, azt a böngészős tesztek nem látják). Csak olvas, pár másodperc. `HIBA` (kilépési kód 1): ékezetes `.ps1` BOM nélkül; a privát jegyzet tiltott szava bármelyik nyilvános fájlban; tesztcsoportfájl, amit a `tests/index.html` nem tölt be. `FIGYELEM`: e-mail-cím a változásban (a tesztek kitalált címei kivételével); kód változott, de a `tests\` alatt semmi; fix `wait(N)` az új tesztsorokban; változott, de nem emelt modul (a `verzio.ps1 -Ellenoriz` kimenete). Kipróbálva szándékos hibákkal (mind a hét pontot elkapta).
+- **Eltérés a tervtől:** a tiltott szavak listája nincs a szkriptben (az nyilvános), hanem a git-ignorált `CLAUDE.local.md` „Tiltott szavak a nyilvános fájlokban:” sorában; ha a fájl vagy a sor hiányzik, a pont kimarad, és a szkript ezt kiírja. Az (e) pont a `tests\` mappát nézi (a `tests.js` azóta csoportfájlokra bomlott). Két pont a terven felül: a fix várakozás és a be nem töltött tesztfájl.
+- **A `feltoltes.ps1` is lefuttatja** (az élő változathoz, `origin/main`-hez képest), és `HIBA`-nál nem tölt fel (akkor sem, ha az előellenőrzés nem tudott lefutni); a `FIGYELEM` csak szól. Téves privátszó-találatnál a `CLAUDE.local.md` listáját kell javítani, a `-TesztNelkul` ezt nem kapcsolja ki.
+- **7. lépés – szűkebb ügynök:** az `ellenorzo.md` a gépi pontokat nem nézi újra (a hívó átadja a szkript kimenetét), a diffből indul, a `CLAUDE.md`-t nem olvassa végig, a `SZERZODES.md`-ből és a `docs/mukodes.md`-ből csak a változott részt.
+- **8. lépés – arányosság:** csak `*.md` változásnál az ügynök nem kell (a szkript utolsó sora megmondja: „Ügynök: KELL / NEM KELL”); több commitból álló lépésnél az ügynök a végén fut egyszer. A szabály a `CLAUDE.md` „Ellenőrzés” pontjában.
+- **Nem mértem:** az ügynök futási idejét előtte és utána (nincs összehasonlítható régi mérés).
 
 ## Mi lett belőle (1–4. lépés, 2026-11-14)
 

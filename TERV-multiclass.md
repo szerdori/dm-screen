@@ -64,7 +64,8 @@
 ## Kockázatok, korlátok
 - **A feltételt a Firestore-szabály nem védi** (a szabály nem tud képességet számolni; most is bármely osztály szintje írható a felépítésbe). Mivel a feltétel csak figyelmeztet, ez nem baj: a DM a jelzésből és az Előzményekből látja.
 - A `levelUp.mc` mező (régi terv: „a DM elengedte a feltételt”) a szerződésben marad, de nem használjuk (mindig `false`).
-- **Későbbre marad** (nem ebben a körben): a ritual casting osztályhoz kötése (ma bármelyik ritual spell rituáléként castolható); a multiclass a kezdő varázsló 1. szintjén (ott egy osztály választható, ahogy a PHB-ben); a homebrew osztály feltétele; a cantrip-sebzés a karakterszintből (csak a spell szövegében).
+- **Nem kell** (a felhasználó döntése, 2026-11-14): a ritual casting osztályhoz kötése (bármelyik ritual spell rituáléként castolható marad).
+- **Későbbre marad** (nem ebben a körben): a multiclass a kezdő varázsló 1. szintjén (ott egy osztály választható, ahogy a PHB-ben); a homebrew osztály feltétele; a cantrip-sebzés a karakterszintből (csak a spell szövegében).
 
 ## Döntések
 A felhasználó döntései (2026-11-11):

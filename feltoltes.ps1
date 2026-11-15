@@ -3,6 +3,7 @@
 # Üzenet nélkül indítva rákérdez.
 # Feltöltés előtt lefuttatja a regressziós teszteket (teszt.ps1); ha valamelyik hibás, nem tölt fel.
 # Ha a teljes teszt pontosan erre az állapotra 24 órán belül már sikeresen lefutott, nem futtatja újra.
+# Feltöltés előtt a gépi előellenőrzés (ellenorzes.ps1) is lefut; ha HIBA-t talál, nem tölt fel.
 # Végszükség esetén:  .\feltoltes.ps1 "Üzenet" -TesztNelkul
 param([string]$Uzenet, [switch]$TesztNelkul)
 
@@ -30,8 +31,14 @@ if (-not $TesztNelkul) {
   Write-Host ''
 }
 
-# figyelmeztetés (nem állítja meg a feltöltést), ha egy közös fájl változott az élő változathoz képest, de a száma nem (verzio.ps1)
-try { & (Join-Path $PSScriptRoot 'verzio.ps1') -Ellenoriz } catch { }
+# gépi előellenőrzés az élő változathoz képest (ellenorzes.ps1; benne a verzio.ps1 -Ellenoriz is): a FIGYELEM csak szól,
+# a HIBA (privát szó a nyilvános fájlban, BOM nélküli ékezetes .ps1, be nem töltött tesztfájl) megállítja a feltöltést
+# ha az előellenőrzés nem tudott lefutni (kivétel vagy 2-es kód), az is megállít: különben a privát szavak ellenőrzése csendben kimaradna
+$elo = -1
+try { & (Join-Path $PSScriptRoot 'ellenorzes.ps1') -Alap origin/main; $elo = $LASTEXITCODE } catch { Write-Host "Az előellenőrzés megszakadt: $_" -ForegroundColor Red }
+if ($elo -eq 1) { Write-Host 'Az előellenőrzés hibát talált (a HIBA sorok fent), ezért NEM töltöttem fel. (Téves privátszó-találatnál a CLAUDE.local.md „Tiltott szavak” sorát kell javítani.)' -ForegroundColor Red; exit 1 }
+if ($elo -ne 0) { Write-Host 'Az előellenőrzés nem futott le rendben, ezért NEM töltöttem fel. Próbáld újra, vagy futtasd külön: .\ellenorzes.ps1' -ForegroundColor Red; exit 1 }
+Write-Host ''
 
 Write-Host 'Ezek a fájlok változtak:' -ForegroundColor Cyan
 & $git status --short
