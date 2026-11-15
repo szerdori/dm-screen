@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 10);
+modul('akciok', 11);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -123,6 +123,31 @@ const AKCIOK = {
   // lényszerkesztő
   newCreature: () => openEditor(blankCreature(), c => { upsertLibrary(c, false); log(`📚 ${esc(c.name)} létrehozva`); }, 'Új lény', {share: true, uj: true}),
   ujJatekosVissza: () => AKCIOK.newCreature(),
+  // véletlen build (TERV-veletlen-build.md): a felhőben lévő szabálykönyvvel (abból számolnak a telefonok is)
+  vbNyit: async () => {
+    const d = readUjJatekos();
+    if (d.owner && !EMAIL_RE.test(d.owner)) { alert('A játékos Google-fiókja nem érvényes e-mail-cím.'); return; }
+    const rb = await felhoSzabalyok();
+    if (!rb?.classes?.length) { alert('A kész buildhez a felhőben lévő szabálykönyv kell: Menü → 📖 Szabálykönyv → Feltöltés.'); return; }
+    openVeletlenBuild(rb, d);
+  },
+  vbGeneral: () => vbGeneralas(),
+  vbVissza: () => {
+    const {lap, be} = readVeletlenBuild();
+    openUjJatekos(lap.name);
+    const fm = $('#njForm'), d = vbAblak.d || {};
+    fm.elements.owner.value = lap.owner; fm.elements.vis.value = lap.vis; fm.elements.target.value = be.szint;
+    if (Array.isArray(d.methods)) for (const k of Object.keys(NC_MODSZER_HU)) fm.elements['m_' + k].checked = d.methods.includes(k);
+    if (d.equip) fm.elements.equip.value = d.equip;
+  },
+  vbLetrehoz: () => {
+    const {lap, be} = readVeletlenBuild(), r = vbAblak.eredmeny;
+    if (!r || JSON.stringify(be) !== vbAblak.be) { alert('A beállítások változtak a generálás óta – nyomd meg a 🎲 Újra gombot.'); return; }
+    if (lap.owner && !EMAIL_RE.test(lap.owner)) { alert('A játékos Google-fiókja nem érvényes e-mail-cím.'); return; }
+    const lib = ujJatekosKesz(lap, r.lap);
+    closeModal(); save(); render(); log(`🎲 ${esc(lib.name)}: kész karakter létrehozva (${esc(Sheet.classLabel(SHEETS[lib.id]))})`);
+    setTimeout(() => openLib('lib'));
+  },
   ujJatekosMent: () => {
     const d = readUjJatekos();
     if (d.owner && !EMAIL_RE.test(d.owner)) { alert('A játékos Google-fiókja nem érvényes e-mail-cím.'); return; }

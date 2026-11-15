@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 15);
+modul('lapszinkron', 16);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -250,6 +250,18 @@ function ujJatekos({name = '', owner = '', vis = 'party', target = 1, methods, e
   const lib = normCreature({id: uid(), kind: 'pc', name: name.trim() || 'Új karakter', owner, share: {vis, hp: 'label', ac: false}, source: 'Karakterlap'});
   S.library.push(lib);
   createSheet(lib.id, Sheet.ncBlank({name: lib.name, owner: lib.owner, target, methods, equip, by, at}));
+  return lib;
+}
+// új játékos kész, generált lappal (véletlen build, TERV-veletlen-build.md): nincs varázsló; a kezdőállapot backupként az Előzményekbe kerül
+function ujJatekosKesz({name = '', owner = '', vis = 'party'} = {}, lap) {
+  const at = new Date().toISOString(), by = authInfo.email || 'DM';
+  const lib = normCreature({id: uid(), kind: 'pc', name: name.trim() || lap.name || 'Új karakter', owner, share: {vis, hp: 'label', ac: false}, source: 'Karakterlap'});
+  S.library.push(lib);
+  createSheet(lib.id, {...lap, name: lib.name, owner: lib.owner || '', newChar: null, levelUp: null, updatedBy: by, updatedAt: at});
+  if (Tar.kapcsolva()) {
+    const L = Sheet.level(SHEETS[lib.id]), h = Sheet.normHist({at, by, reason: 'manual', from: L, to: L, sheet: {...SHEETS[lib.id]}});
+    Tar.lapok.elozmenyIr(lib.id, at.replace(/[:.]/g, '-'), JSON.parse(JSON.stringify(h))).catch(e => Ertesito.naplo(`⚠ ${esc(lib.name)}: a kezdőállapot mentése (backup) nem sikerült (${esc(e.code || e.message)}).`, 'warn'));
+  }
   return lib;
 }
 // ---------- törlés: a játékos a telefonon törli (Sheet.torlesPatch), a lény itt marad; a DM visszahozhatja, vagy a Könyvtárban véglegesen törölheti ----------

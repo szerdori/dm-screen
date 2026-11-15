@@ -707,6 +707,66 @@ describe('Szintlépés-engedély a DM Screenben', () => {
     eq(H.exportLap(s).newChar, null);
     ok(!('newChar' in H.backupPatch(H.norm(s), {sheet: H.norm(s)}, null)), 'a backup nem indítja újra a varázslót');
   });
+  test('véletlen build az Új játékos ablakból: szabálykönyv nélkül szól; előnézet, 🎲 Újra a megadottakkal; kész, motoros lap backuppal; változott beállítás, hibás bemenet, Vissza, Mégse', async () => {
+    const f = makeFakeDb(); A('Tar').kapcsol(f.db);
+    let msg = ''; W.alert = m => msg = m;
+    A('rulebook = null');
+    W.openLib('lib'); click('[data-act="newCreature"]'); setVal($('#edForm').elements.kind, 'pc');
+    click('[data-act="vbNyit"]'); await until(() => msg, 2000, 'szól, hogy nincs szabálykönyv');
+    has(msg, 'szabálykönyv'); ok(!$('#vbForm'), 'szabálykönyv nélkül nem nyílik meg');
+    // az előző teszt Létrehozása után késleltetve nyíló Könyvtár ne zavarjon bele: újra az Új játékos ablak
+    W.openLib('lib'); click('[data-act="newCreature"]'); setVal($('#edForm').elements.kind, 'pc');
+    try {
+      A(`rulebook = ${JSON.stringify({version: 'v', counts: {}, rb: rbMc()})}`);
+      const nj = $('#njForm'); nj.elements.name.value = '<img src=x onerror=alert(1)>'; nj.elements.owner.value = 'Jatekos@X.hu'; nj.elements.target.value = '5';
+      click('[data-act="vbNyit"]'); await until(() => $('#vbForm'), 2000, 'a véletlen build ablaka');
+      const fm = $('#vbForm');
+      eq([fm.elements.name.value, fm.elements.owner.value, fm.elements.szint.value], ['<img src=x onerror=alert(1)>', 'jatekos@x.hu', '5'], 'az Új játékos adatai átjönnek');
+      ok($('[data-act="vbLetrehoz"]').disabled, 'generálás előtt nem hozható létre');
+      setVal(fm.elements.faj, 'Dwarf|PHB');
+      ok([...fm.elements.alfaj.options].some(o => o.value === 'Hill|PHB'), 'a faj alfajai a listában');
+      setVal(fm.elements.osztaly, 'Wizard');
+      ok([...fm.elements.alosztaly.options].some(o => o.value === 'Bladesinging|TCE'), 'az osztály alosztályai a listában');
+      click('[data-act="vbGeneral"]');
+      has($('#vbElonezet').textContent, 'Wizard 5'); has($('#vbElonezet').textContent, 'Dwarf');
+      ok(!$('[data-act="vbLetrehoz"]').disabled, 'generálás után létrehozható');
+      click('[data-act="vbGeneral"]'); has($('#vbElonezet').textContent, 'Wizard 5', '🎲 Újra: a megadott osztály marad');
+      eq($('[data-act="vbGeneral"]').textContent, '🎲 Újra');
+      assertNoXss();
+      // a generáló mező változása után újra kell generálni (a név nem számít)
+      setVal(fm.elements.szint, '6');
+      ok($('[data-act="vbLetrehoz"]').disabled, 'a szint változása után nem hozható létre');
+      click('[data-act="vbGeneral"]'); has($('#vbElonezet').textContent, 'Wizard 6');
+      setVal(fm.elements.name, '<img src=x onerror=alert(1)>', 'input');
+      const n0 = A('S.library').length;
+      click('[data-act="vbLetrehoz"]');
+      eq(A('S.library').length, n0 + 1, 'egy új lény');
+      await until(() => $('#libRows'), 2000, 'utána a Könyvtár nyílik');
+      const c = A('S.library').at(-1), s = A(`SHEETS['${c.id}']`);
+      eq([c.kind, c.name, c.owner, s.owner, s.auto, s.newChar, s.levelUp, W.Sheet.level(s), s.build.levels[0].c, s.build.race],
+        ['pc', '<img src=x onerror=alert(1)>', 'jatekos@x.hu', 'jatekos@x.hu', true, null, null, 6, 'Wizard', 'Dwarf|PHB']);
+      eq(A(`lapAllapot('${c.id}')`), 'motoros', 'kész, motoros lap (nem „készül”)');
+      ok(c.hp.max > 6 && c.hp.max === s.hp.max, 'a könyvtári lény a lapról kapja a HP-t');
+      await A('doSave()');
+      await until(() => f.store['sheets/' + c.id] && Object.keys(f.store).some(k => k.startsWith('sheets/' + c.id + '/')), 2000, 'a lap és a kezdőállapot (backup) a felhőben');
+      W.openLib('lib'); assertNoXss();
+      // hibás bemenet: az előnézet szól, nem hozható létre
+      click('[data-act="newCreature"]'); setVal($('#edForm').elements.kind, 'pc');
+      click('[data-act="vbNyit"]'); await until(() => $('#vbForm'), 2000, 'az ablak (hibás bemenet)');
+      $('#vbForm').elements.szint.value = '4'; setVal($('#vbForm').elements.osztaly, 'Wizard'); setVal($('#vbForm').elements.osztaly2, 'Wizard'); click('[data-act="vbGeneral"]');
+      has($('#vbElonezet').textContent, 'ugyanaz'); ok($('[data-act="vbLetrehoz"]').disabled);
+      // Vissza: az Új játékos űrlap a beírt adatokkal; Mégse: nincs új lény
+      $('#vbForm').elements.owner.value = 'masik@x.hu';
+      click('[data-act="vbVissza"]'); ok($('#njForm'), 'vissza az Új játékos űrlapra'); eq($('#njForm').elements.owner.value, 'masik@x.hu');
+      // a Kész build ablakban nem szereplő beállítások (képesség-módszer, felszerelés) is megmaradnak
+      $('#njForm').elements.m_roll.checked = false; $('#njForm').elements.equip.value = 'gold';
+      click('[data-act="vbNyit"]'); await until(() => $('#vbForm'), 2000, 'az ablak (módszerek)'); click('[data-act="vbVissza"]');
+      eq([$('#njForm').elements.m_roll.checked, $('#njForm').elements.m_array.checked, $('#njForm').elements.equip.value], [false, true, 'gold']);
+      const n1 = A('S.library').length;
+      click('[data-act="vbNyit"]'); await until(() => $('#vbForm'), 2000, 'az ablak (Mégse) ' + msg); click('[data-act="vbGeneral"]'); click('[data-act="edCancel"]');
+      eq(A('S.library').length, n1, 'Mégse után nincs új lény');
+    } finally { A('rulebook = null'); }
+  });
   test('átállítás-jelvény a Könyvtárban és a Csapatnál: nincs lap, kézi, motoros, eltérő szintek', () => {
     A(`S.library.push(normCreature(${JSON.stringify({...pc('Lap nélkül', 5), id: 'nl'})}))`);
     lapos('k1', 'Kézi');

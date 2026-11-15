@@ -1,7 +1,7 @@
 // Lényszerkesztő (felület): a szerkesztő ablak, a megosztási mezők és a portré.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('szerkeszto', N) és az index.html-ben a szerkeszto.js?v=N és a VART_MODULOK.
 'use strict';
-modul('szerkeszto', 5);
+modul('szerkeszto', 6);
 
 // ---------- portré ----------
 function setPortrait(v) {
@@ -45,9 +45,9 @@ function openUjJatekos(nev = '') {
       <label>Kezdőszint<input type="number" name="target" min="1" max="20" value="1"></label>
       <div class="w4"><b>Képesség-módszerek</b><br>${Object.entries(NC_MODSZER_HU).map(([k, l]) => `<label style="display:inline-flex;gap:4px;margin-right:12px"><input type="checkbox" name="m_${k}" checked>${esc(l)}</label>`).join('')}</div>
       <label class="w2">Kezdő felszerelés<select name="equip"><option value="any">a játékos dönti el: csomag vagy arany</option><option value="pack">csak a kezdő csomag (osztály + háttér)</option><option value="gold">csak arany (az osztály kezdőaranyából vásárol)</option></select></label>
-      <p class="hint w4">Üres, szabálymotoros karakterlap jön létre. A gazdája a telefonján egy varázslóval állítja be: faj, osztály, képességek, háttér, választások, varázslatok. Utolsó lépésként a kezdő felszerelést választja (a PHB szerint), vagy arany helyett vásárol. 1. szint fölött utána a szintlépés-varázsló visz tovább a kezdőszintig.</p>
+      <p class="hint w4">Üres, szabálymotoros karakterlap jön létre. A gazdája a telefonján egy varázslóval állítja be: faj, osztály, képességek, háttér, választások, varázslatok. Utolsó lépésként a kezdő felszerelést választja (a PHB szerint), vagy arany helyett vásárol. 1. szint fölött utána a szintlépés-varázsló visz tovább a kezdőszintig. Ha kész karaktert szeretnél (pl. NPC-társnak vagy később csatlakozó játékosnak), a 🎲 Kész build gombbal a program tölti ki.</p>
     </form>
-    <div class="toolbar" style="margin-top:12px"><button class="primary" data-act="ujJatekosMent">Létrehozás</button><button data-act="ujJatekosVissza">Másik típus</button><button data-act="edCancel">Mégse</button></div>`);
+    <div class="toolbar" style="margin-top:12px"><button class="primary" data-act="ujJatekosMent">Létrehozás</button><button data-act="vbNyit" title="A program kitölti: faj, osztály, képességek, választások, varázslatok, felszerelés – amit megadsz, az marad">🎲 Kész build</button><button data-act="ujJatekosVissza">Másik típus</button><button data-act="edCancel">Mégse</button></div>`);
 }
 function readUjJatekos() {
   const fm = $('#njForm'), v = n => fm.elements[n].value;

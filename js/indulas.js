@@ -1,7 +1,7 @@
 // Indulás (az utolsó betöltött fájl): a Firebase-modul kapuja (DMApp), az eseményfigyelők felkapcsolása és az első rajzolás.
 // Csak ez a fájl futtat kódot betöltéskor (a többi csak deklarál; docs/dontesek/0001, 0006). Ha változik: modul('indulas', N) és az index.html-ben az indulas.js?v=N és a VART_MODULOK.
 'use strict';
-modul('indulas', 4);
+modul('indulas', 5);
 
 // a Firebase-modul (index.html alja) hívja, amikor kiderül, be vagy-e lépve
 window.DMApp = {
@@ -42,6 +42,7 @@ function indulas() {
   });
   if (chan) chan.onmessage = e => { if (e.data?.type === 'hello') broadcast(); };
   szerkesztoEsemenyek();
+  veletlenAblakEsemenyek();
   $('#modal').addEventListener('mousedown', e => { if (e.target.id === 'modal') closeModal(); });
   fajlBetoltesEsemenyek();
   akciokEsemenyek();
