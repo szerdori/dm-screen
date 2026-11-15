@@ -362,6 +362,148 @@ describe('Szintlépés: robot (minden osztály 1 → 20)', () => {
     ok(at.always.some(x => x.name === 'Mage Hand'), 'AT: a Mage Hand a szabálykönyvből mindig megvan, a táblázat csak a többi cantripet számolja');
     eq(at.choices.find(x => x.key === 'Rogue:cantrips').n, 2);
   }, {online: true});
+
+  // ---------- véletlen build (TERV-veletlen-build.md, js/logika/veletlen-build.js) ----------
+  // ismételhető véletlen: a tesztben a W.rnd egy magból számol (xorshift), így egy hiba újra előállítható
+  const vbMag = mag => { let x = mag >>> 0 || 1; W.rnd = d => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return 1 + (x % d); }; };
+  const VB_FO = {Artificer: ['int'], Barbarian: ['str'], Bard: ['cha'], Cleric: ['wis'], Druid: ['wis'], Fighter: ['str', 'dex'], Monk: ['dex'], Paladin: ['str'], Ranger: ['dex'],
+    Rogue: ['dex'], Sorcerer: ['cha'], Warlock: ['cha'], Wizard: ['int']};
+  // egy kész build ellenőrzése: hibalista
+  const vbHibak = (r, be, rb) => {
+    const H = W.Sheet, nev = `${be.osztaly || '?'} ${be.szint}`;
+    if (r.hiba) return [`${nev}: ${r.hiba}`];
+    const s = r.lap, c = H.calc(s, rb), h = r.hibak.map(x => `${nev}: ${x}`);
+    if (H.level(s) !== be.szint || s.build.levels.length !== be.szint) h.push(`${nev}: a szint ${H.level(s)} / ${s.build.levels.length}`);
+    if (!be.osztaly2 && new Set(s.build.levels.map(l => l.c)).size !== 1) h.push(`${nev}: magától multiclass lett: ${H.classLabel(s)}`);
+    if (s.newChar || s.levelUp || !s.auto) h.push(`${nev}: nem kész, motoros lap (newChar / levelUp / auto)`);
+    if (s.hp.cur !== s.hp.max || s.hp.max < be.szint) h.push(`${nev}: HP ${s.hp.cur} / ${s.hp.max}`);
+    const m = H.materialize(s, c);
+    if (Object.keys(m).length) h.push(`${nev}: a mentett lap újraszámolva eltér: ${Object.keys(m)}`);
+    const ert = a => c.abilities[a].nat ?? c.abilities[a].v, max = Math.max(...H.ABIL.map(ert)), cls = s.build.levels[0].c;
+    if (VB_FO[cls] && !VB_FO[cls].some(a => ert(a) === max)) h.push(`${nev}: nem a fő képesség a legmagasabb: ${H.ABIL.map(a => a + ' ' + ert(a)).join(', ')}`);
+    if (H.ABIL.some(a => ert(a) > 20)) h.push(`${nev}: 20 fölötti képesség`);
+    // minden választott varázslat a hely érvényes lehetőségei közt van (a lista, a szint és a „már megvan” szerint)
+    for (const x of c.choices.filter(x => H.SPELL_KINDS.includes(x.kind) || x.kind === 'spell')) {
+      const o = H.choiceOptions(x, c, rb, s);
+      for (const v of x.ok) if (!o.opts.some(y => y.v === v && !y.dis)) h.push(`${nev}: érvénytelen varázslat a(z) ${x.key} helyen: ${v}`);
+    }
+    for (const x of c.choices.filter(x => x.kind === 'asi' || x.kind === 'feat')) for (const v of x.ok) {
+      const ref = typeof v === 'string' ? v : v?.feat, f = ref && rb.feats.find(y => y.n + '|' + y.s === ref);
+      if (f && !H.featOk(f, c, rb, s).ok) h.push(`${nev}: nem teljesülő feat-előfeltétel: ${ref}`);
+    }
+    return h;
+  };
+  const rbVb = () => {
+    const rb = rb13();
+    rb.spells.find(x => x.n === 'Fire Bolt').tx = 'You hurl a mote of fire. On a hit, the target takes 1d10 fire damage.';
+    return rb;
+  };
+  test('véletlen build: mind a 13 osztály 1., 5., 11. és 20. szinten – nincs nyitott hely, a fő képesség a legmagasabb, kész, motoros lap, magától nincs multiclass', () => {
+    const rb = rbVb(), hibak = [];
+    rb.classes.forEach((c, i) => [1, 5, 11, 20].forEach(L => { vbMag(i * 31 + L); const be = {szint: L, osztaly: c.n}; hibak.push(...vbHibak(W.veletlenBuild(be, rb), be, rb)); }));
+    eq(hibak, []);
+  });
+  test('véletlen build: a megadott faj, alfaj, osztály, alosztály, háttér és név megmarad; üres név: „Új karakter”', () => {
+    const rb = rbVb(), H = W.Sheet, hat = rb.backgrounds[0];
+    for (let m = 1; m <= 5; m++) {
+      vbMag(m);
+      const r = W.veletlenBuild({szint: 6, nev: ' Tóbiás ', faj: 'dwarf', alfaj: 'Hill', osztaly: 'Fighter', alosztaly: 'Eldritch Knight', hatter: hat.n}, rb);
+      eq(r.hibak, []);
+      eq([r.lap.name, r.lap.build.race, r.lap.build.subrace, r.lap.build.background, r.lap.build.sub.Fighter, H.classLabel(r.lap)],
+        ['Tóbiás', 'Dwarf|PHB', 'Hill|PHB', hat.n + '|' + hat.s, 'Eldritch Knight|PHB', 'Fighter 6 (Eldritch Knight)']);
+      // az EK-nál az INT is előre kerül (harmadik helyre), a varázslatai kitöltve
+      const c = H.calc(r.lap, rb);
+      ok(c.abilities.int.v >= 13, 'EK: INT 13+');
+      ok(c.choices.filter(x => H.SPELL_KINDS.includes(x.kind)).every(x => x.ok.length), 'EK: van cantripje és ismert varázslata (a kis tesztkönyvben nincs elég a teljes kitöltéshez)');
+    }
+    vbMag(9);
+    eq(W.veletlenBuild({szint: 1, osztaly: 'Wizard'}, rb).lap.name, 'Új karakter');
+  });
+  test('véletlen build: ASI a fő képességre 20-ig; sebző cantrip a varázslónak; átlagos HP', () => {
+    const rb = rbVb(), H = W.Sheet;
+    for (let m = 1; m <= 6; m++) {
+      vbMag(m);
+      const egy = W.veletlenBuild({szint: 1, osztaly: 'Wizard'}, rb).lap, int1 = H.calc(egy, rb).abilities.int.v;
+      vbMag(m);
+      const nyolc = W.veletlenBuild({szint: 8, osztaly: 'Wizard'}, rb).lap, c = H.calc(nyolc, rb);
+      eq(c.abilities.int.v, Math.min(20, int1 + 4), 'két ASI (4., 8. szint) az INT-re');
+      ok(c.choices.find(x => x.key === 'Wizard:cantrips').ok.includes('Fire Bolt|PHB'), 'van sebző cantrip (Fire Bolt)');
+      // Wizard: 6 + 7 × 4 (átlag) + 8 × CON-módosító
+      eq(nyolc.hp.max, 6 + 7 * 4 + 8 * Math.floor((c.abilities.con.v - 10) / 2), 'átlagos HP');
+    }
+  });
+  test('véletlen build: multiclass csak megadásra; mindkét fő képesség 13+, a szintek a megadott szerint; rossz bemenetre hibaüzenet', () => {
+    const rb = rbVb(), H = W.Sheet;
+    for (let m = 1; m <= 5; m++) {
+      vbMag(m);
+      const be = {szint: 7, osztaly: 'Wizard', osztaly2: 'Cleric', szint2: 2}, r = W.veletlenBuild(be, rb);
+      eq(vbHibak(r, be, rb), []);
+      eq(H.classLabel(r.lap).replace(/ \([^)]*\)/g, ''), 'Wizard 5 / Cleric 2');
+      const c = H.calc(r.lap, rb);
+      ok(c.abilities.int.v >= 13 && c.abilities.wis.v >= 13, `INT ${c.abilities.int.v}, WIS ${c.abilities.wis.v}`);
+      eq(r.lap.build.levels.map(l => l.c), [...Array(5).fill('Wizard'), 'Cleric', 'Cleric']);
+    }
+    ok(/Nincs ilyen osztály/.test(W.veletlenBuild({szint: 3, osztaly: 'Kalóz'}, rb).hiba));
+    ok(/ugyanaz/.test(W.veletlenBuild({szint: 3, osztaly: 'Wizard', osztaly2: 'wizard', szint2: 1}, rb).hiba));
+    ok(/kevesebb/.test(W.veletlenBuild({szint: 3, osztaly: 'Wizard', osztaly2: 'Cleric', szint2: 3}, rb).hiba));
+    ok(/Nincs ilyen faj/.test(W.veletlenBuild({szint: 3, faj: 'Ork-elf'}, rb).hiba));
+    ok(/alosztály/.test(W.veletlenBuild({szint: 3, osztaly: 'Fighter', alosztaly: 'Nincs ilyen'}, rb).hiba));
+    ok(/szabálykönyv/.test(W.veletlenBuild({szint: 3}, null).hiba));
+    ok(/szintet/.test(W.veletlenBuild({osztaly: 'Wizard'}, rb).hiba), 'a szint kötelező');
+    ok(/szintet/.test(W.veletlenBuild(null, rb).hiba));
+    // csak a második osztály megadva: az első véletlen, de sosem ugyanaz
+    for (let m = 1; m <= 30; m++) { vbMag(m); const r = W.veletlenBuild({szint: 4, osztaly2: 'Wizard', szint2: 1}, rb); ok(!r.hiba && r.lap.build.levels[0].c !== 'Wizard', r.hiba || 'az első osztály is Wizard'); }
+    // csak alosztály: az osztálya; csak alfaj: a faja
+    vbMag(3);
+    const ek = W.veletlenBuild({szint: 3, alosztaly: 'Eldritch Knight', alfaj: 'Hill'}, rb);
+    eq([ek.hiba, ek.lap?.build.sub.Fighter, ek.lap?.build.race, ek.lap?.build.subrace], [undefined, 'Eldritch Knight|PHB', 'Dwarf|PHB', 'Hill|PHB']);
+    ok(/Nincs ilyen alfaj/.test(W.veletlenBuild({szint: 3, alfaj: 'Nincs'}, rb).hiba));
+  });
+  test('véletlen build valódi szabálykönyvvel: minden osztály 1., 4., 9., 14. és 20. szinten, véletlen fajjal és háttérrel – nincs nyitott hely, érvényes featek, invocation és felszerelés', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet, hibak = [];
+    const pancel = {};
+    rb.classes.forEach((c, i) => [1, 4, 9, 14, 20].forEach(L => {
+      vbMag(i * 97 + L * 7);
+      const be = {szint: L, osztaly: c.n}, r = W.veletlenBuild(be, rb);
+      hibak.push(...vbHibak(r, be, rb));
+      if (r.hiba) return;
+      const s = r.lap, cr = H.calc(s, rb);
+      if (!s.inventory.length) hibak.push(`${c.n} ${L}: nincs kezdő felszerelés`);
+      // a választott Invocation pact-előfeltétele teljesül
+      const pakt = cr.choices.filter(x => x.kind === 'opt').flatMap(x => x.ok).map(v => H.refName(v)).filter(n => /^Pact of the /.test(n));
+      for (const v of cr.choices.filter(x => x.kind === 'opt').flatMap(x => x.ok)) {
+        const o = rb.optfeatures.find(y => y.n + '|' + y.s === v);
+        if (o?.pact && !pakt.includes('Pact of the ' + o.pact)) hibak.push(`${c.n} ${L}: ${o.n} Pact of the ${o.pact} nélkül`);
+      }
+      // a cantripes osztálynak van sebző cantripje
+      const cant = cr.choices.filter(x => x.kind === 'cantrips').flatMap(x => x.ok);
+      if (cant.length && !cant.some(v => { const sp = rb.spells.find(y => y.n + '|' + y.s === v); return sp && (sp.atk || /\d+d\d+[^.]{0,60}damage/i.test(sp.tx || '')); })) hibak.push(`${c.n} ${L}: nincs sebző cantrip: ${cant}`);
+      if (c.n === 'Warlock' && !cant.includes('Eldritch Blast|PHB')) hibak.push(`Warlock ${L}: nincs Eldritch Blast`);
+      pancel[c.n] = s.inventory.filter(i => i.equipped && /Armor|Mail|Plate|Leather/.test(i.name)).map(i => i.name);
+    }));
+    eq(hibak, []);
+    // a felszerelés a buildhez illik: STR-es Fighternek nehéz páncél, Wizardnak nincs páncél
+    eq(pancel.Wizard, []);
+    ok(['Chain Mail', 'Leather Armor'].some(n => pancel.Fighter.includes(n)), 'Fighter: páncél a csomagból: ' + pancel.Fighter);
+    // megadott faj és multiclass a valódi szabálykönyvvel
+    vbMag(5);
+    const be = {szint: 9, faj: 'Half-Elf', osztaly: 'Paladin', osztaly2: 'Sorcerer', szint2: 3}, r = W.veletlenBuild(be, rb);
+    eq(vbHibak(r, be, rb), []);
+    eq(r.figy, [], 'a multiclass-feltétel (STR / CHA 13) teljesül');
+  }, {online: true});
+  test('véletlen build valódi szabálykönyvvel: minden alosztály 6. szinten; az alosztály szerinti képesség-sorrend (EK, AT: INT; Bladesinging: DEX)', async () => {
+    const rb = W.__rbOnline || (W.__rbOnline = await ORIG.buildRulebook()), H = W.Sheet, hibak = [];
+    for (const [i, x] of rb.subclasses.entries()) {
+      vbMag(i * 13 + 1);
+      const be = {szint: 6, osztaly: x.cls, alosztaly: x.n}, r = W.veletlenBuild(be, rb);
+      hibak.push(...vbHibak(r, be, rb).map(h => `${x.n}: ${h}`));
+      if (r.lap && r.lap.build.sub[x.cls] !== x.n + '|' + x.s) hibak.push(`${x.n}: az alosztály ${r.lap.build.sub[x.cls]}`);
+      const c = r.lap && H.calc(r.lap, rb), v = a => c.abilities[a].nat ?? c.abilities[a].v;
+      if (c && ['Eldritch Knight', 'Arcane Trickster'].includes(x.short) && v('int') < 13) hibak.push(`${x.n}: INT ${v('int')}`);
+      if (c && x.short === 'Bladesinging' && v('dex') < 14) hibak.push(`${x.n}: DEX ${v('dex')}`);
+    }
+    eq(hibak, []);
+  }, {online: true});
 });
 
 // ======================================================================
