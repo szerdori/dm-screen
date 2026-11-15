@@ -1,8 +1,12 @@
 # Véletlen build magasabb szintű karakterhez – terv
 
-*Készült: 2026-11-15. Állapot: **elfogadva 2026-11-15** (a „Döntések” rész mind a hat javaslatát a felhasználó elfogadta). Az 1. lépés (logika) kész 2026-11-15, nincs commitolva; a 2. (felület) következik.*
+*Készült: 2026-11-15. Állapot: **elfogadva 2026-11-15** (a „Döntések” rész mind a hat javaslatát a felhasználó elfogadta). **Kész és élesben** (mindhárom lépés, 2026-11-15). A felhasználó teendője: nincs.*
 
-## Mi lett belőle (1. lépés, 2026-11-15)
+## Mi lett belőle (2026-11-15)
+
+**2. lépés – felület:** az Új játékos ablakban „🎲 Kész build” gomb → `js/felulet/veletlen-ablak.js` (a mezők, az alfaj / alosztály lista a faj / osztály szerint, előnézet, 🎲 Újra, Létrehozás, Vissza); a létrehozás a `js/logika/lapszinkron.js` `ujJatekosKesz`-ével (kész lap + a kezdőállapot backupként). Eltérések a tervtől: a kapcsoló helyett külön gomb és külön ablak; a felhőben lévő szabálykönyv kell hozzá (mint a Könyvtár 📱 átállításához), nélküle a gomb szól; ha a generáló mezők a generálás óta változtak, a Létrehozás le van tiltva. Teszt: `tests/csoportok/06-dm-lapok.js` („véletlen build az Új játékos ablakból”).
+
+**1. lépés – logika:**
 
 - `js/logika/veletlen-build.js`: `veletlenBuild(be, rb)` → `{lap, figy, hibak}` vagy `{hiba}` (rossz bemenet: ismeretlen osztály / faj / alfaj / alosztály / háttér, ugyanaz a második osztály, rossz második szint, nincs szabálykönyv). A `figy` a nem teljesülő multiclass-feltétel (csak figyelmeztet, mint a szintlépésnél); a `hibak` az, amit nem sikerült kitölteni (a tesztek szerint egyik osztálynál sem marad ilyen).
 - A TCE-kérdésekre mindig „nem” (marad a PHB), hogy ne maradjon nyitott ✋ teendő; a játékos átállíthatja.
