@@ -1,6 +1,6 @@
 # Terv: nagyobb karakterlap a DM Screen oldalpanelén; figyelmeztetés, ha több varázslat van bekészítve / megtanulva, mint amennyi jár
 
-**Állapot: jóváhagyva (2026-11-21), megvalósítás folyamatban.**
+**Állapot: kész (2026-11-21), a `main`-en (feltöltve 2026-11-21): az 1. lépésből a B (kompakt vezérlők) és a D (kisebb dobó és napló), a 2. lépés egészben. Az A (⤢ Nagy lap) és a C (húzható szélesség) a felhasználó döntése szerint most nem. A felhasználó teendője: nincs; élesben kipróbálni.**
 
 A felhasználó kérése (2026-11-21), két pont:
 1. A jobb oldali (beágyazott) karakterlap túl kicsi a hatékony használathoz.
