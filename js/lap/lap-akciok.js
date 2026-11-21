@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-akciok, a karakter.html része): a gombok nyilvántartása (LAP_AKCIOK: data-act → kezelő), módosítás, gépelés, billentyűk
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-akciok', N) és a karakter.html-ben a lap-akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-akciok', 4);
+modul('lap-akciok', 5);
 
 // ---------- nyilvántartás: data-act="nev" → LAP_AKCIOK.nev(el, s, i, act) ----------
 // Új gomb = új bejegyzés (s = a nyitott lap, i = a gomb data-i értéke). A kezelő maga ír és rajzol, ha kell.
@@ -63,6 +63,13 @@ const LAP_AKCIOK = {
   hdToggle() { hdOpen = !hdOpen; render(true); },
   shortRest(el, s) { if (confirm('Short rest: a „short rest” erőforrások és a Pact Magic slotok visszatöltődnek. Mehet?')) patch(H.shortRest(s)); },
   longRest(el, s) { if (confirm('Long rest: teljes HP, minden spell slot és erőforrás visszatöltődik, a Hit Dice fele visszajön, exhaustion −1. Mehet?')) patch(H.longRest(s)); },
+  // az erőforrás saját leírása a felugró ablakból (TERV-fejlesztesek-2026-11-21.md, 8. lépés); csak ha a sor közben nem változott
+  resDescMent(el, s, i) {
+    const v = ($('#resDescIn')?.value || '').trim().slice(0, 1000);
+    $('#infoPop').hidden = true;
+    if (!canEdit(s) || s.resources[i]?.name !== el.dataset.name) return;
+    patch({resources: s.resources.map((r, k) => { if (k !== i) return r; const {desc, ...x} = r; return v ? {...x, desc: v} : x; })});
+  },
   res(el, s, i) { patch({resources: s.resources.map((r, k) => k === i ? {...r, used: pipToggle(r.used, +el.dataset.j)} : r)}); },
   slot(el, s) { const l = +el.dataset.l, used = [...s.spellcasting.used]; used[l] = pipToggle(used[l], +el.dataset.j); patch({spellcasting: {...s.spellcasting, used}}); },
   pact(el, s) { patch({spellcasting: {...s.spellcasting, pact: {...s.spellcasting.pact, used: pipToggle(s.spellcasting.pact.used, +el.dataset.j)}}}); },

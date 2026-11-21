@@ -64,6 +64,7 @@ function condLap(ref) {
 function leirasMutat(el) {
   const f = el.dataset.lr, ref = el.dataset.ref || '', d = el.dataset;
   if (f === 'cond') { condMutat(ref); return; }
+  if (f === 'res') { resMutat(ref); return; }
   if (!Object.hasOwn(LEIRAS_LISTA, f) && f !== 'sk') return;
   const x = f === 'sk' ? skillLap(ref) : H.byRef(RB()?.[LEIRAS_LISTA[f]] || [], ref), cb = d.chk != null ? chDoboz(d.chk, ref) : null;
   const sor = !x ? '' : f === 'sk' ? x.sor : f === 'sp' ? [H.spellLine(x), (x.cl || []).join(', '), x.s].filter(Boolean).join(' · ') : [x.pre ? 'Feltétel: ' + x.pre : '', x.s].filter(Boolean).join(' · ');
@@ -84,6 +85,21 @@ function condMutat(ref) {
   p.innerHTML = `<div class="ibox" role="dialog" aria-modal="true" aria-label="${esc(x.n)}"><h3>${esc(x.n)}</h3>
     <div class="tx">${esc(x.tx)}</div>${x.en ? `<div class="hint" style="margin-top:8px">PHB (angolul):</div><div class="tx">${esc(x.en)}</div>` : ''}
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button data-act="infoClose">Bezár</button></div></div>`;
+  p.hidden = false;
+}
+// erőforrás (data-lr="res", data-ref = index; TERV-fejlesztesek-2026-11-21.md, 8. lépés): a leírás (saját → jellemző → szabálykönyv),
+// szerkeszthető lapon a saját leírás itt írható (a motor által adott erőforrásnál is; az újraszámolás megtartja)
+const RES_FORRAS = {sajat: 'saját leírás', jellemzo: 'a lap jellemzőjéből', szabalykonyv: 'a szabálykönyvből'};
+function resMutat(ref) {
+  const s = cur(), i = /^\d+$/.test(ref) ? +ref : -1, r = s?.resources[i];
+  if (!r) return;
+  const l = H.resLeiras(s, r, RB()), ed = canEdit(s), p = $('#infoPop');
+  leirasCel = null;
+  p.innerHTML = `<div class="ibox" role="dialog" aria-modal="true" aria-label="${esc(r.name)}"><h3>${esc(r.name)}</h3>
+    <div class="hint">${esc(`${r.max - r.used} / ${r.max} · ${RESET_HU[r.reset] || r.reset}`)}${l.src ? ' · ' + esc(RES_FORRAS[l.src]) : ''}</div>
+    ${l.tx ? `<div class="tx">${esc(l.tx)}</div>` : `<p class="hint">Nincs leírás.${ed ? ' Lent adhatsz hozzá.' : ''}</p>`}
+    ${ed ? `<label class="hint" style="display:block;margin-top:8px">Saját leírás (elsőbbséget kap)<textarea id="resDescIn" rows="3" maxlength="1000" style="width:100%;box-sizing:border-box">${esc(r.desc || '')}</textarea></label>` : ''}
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button data-act="infoClose">Bezár</button>${ed ? `<button class="primary" data-act="resDescMent" data-i="${i}" data-name="${esc(r.name)}">Mentés</button>` : ''}</div></div>`;
   p.hidden = false;
 }
 function leirasValaszt(s) {
@@ -151,7 +167,8 @@ function autoForm(s) {
   const atk = d.attacks.map((a, i) => a.auto ? '' : `<div class="rowedit"><input name="at_name_${i}" value="${esc(a.name)}" placeholder="Név"><input name="at_hit_${i}" value="${esc(a.hit)}" placeholder="+5" style="max-width:60px">
       <input name="at_dmg_${i}" value="${esc(a.dmg)}" placeholder="1d8+3 slashing"><input name="at_note_${i}" value="${esc(a.note)}" placeholder="megjegyzés"><button class="small" data-act="rowRm" data-list="attacks" data-i="${i}">✕</button></div>`).join('');
   const res = d.resources.map((r, i) => r.auto ? '' : `<div class="rowedit"><input name="rs_name_${i}" value="${esc(r.name)}" placeholder="Név"><input name="rs_max_${i}" type="number" min="0" max="99" value="${esc(r.max)}" style="max-width:64px" title="Max">
-      <select name="rs_reset_${i}">${H.RESETS.map(k => `<option value="${k}" ${r.reset === k ? 'selected' : ''}>${esc(RESET_HU[k])}</option>`).join('')}</select><button class="small" data-act="rowRm" data-list="resources" data-i="${i}">✕</button></div>`).join('');
+      <select name="rs_reset_${i}">${H.RESETS.map(k => `<option value="${k}" ${r.reset === k ? 'selected' : ''}>${esc(RESET_HU[k])}</option>`).join('')}</select><button class="small" data-act="rowRm" data-list="resources" data-i="${i}">✕</button></div>
+      <label class="w2 hint">Leírás (nem kötelező)<textarea name="rs_desc_${i}" rows="2" maxlength="1000">${esc(r.desc || '')}</textarea></label>`).join('');
   return `<h3>Név és saját tételek</h3>
   <form id="edForm" class="form" data-mode="auto" onsubmit="return false">
     <label class="w2">Név<input name="name" value="${esc(d.name)}"></label><label class="w2">Alignment${alignSelect('name="alignment"', d.alignment)}</label>
@@ -172,7 +189,7 @@ function readForm() {
   if (fm.dataset.mode === 'auto') {
     Object.assign(d, {name: v('name'), alignment: v('alignment')});
     d.attacks = d.attacks.map((a, i) => fm.elements['at_name_' + i] ? {...a, name: v('at_name_' + i), hit: v('at_hit_' + i), dmg: v('at_dmg_' + i), note: v('at_note_' + i)} : a);
-    d.resources = d.resources.map((r, i) => fm.elements['rs_name_' + i] ? {...r, name: v('rs_name_' + i), max: v('rs_max_' + i), reset: v('rs_reset_' + i)} : r);
+    d.resources = d.resources.map((r, i) => fm.elements['rs_name_' + i] ? {...r, name: v('rs_name_' + i), max: v('rs_max_' + i), reset: v('rs_reset_' + i), desc: v('rs_desc_' + i)} : r);
     return d;
   }
   Object.assign(d, {name: v('name'), race: v('race'), background: v('background'), alignment: v('alignment'), ac: v('ac'), acNote: v('acNote'), speed: v('speed'),
@@ -185,6 +202,6 @@ function readForm() {
   d.hp = {...d.hp, max: v('hpMax')};
   d.spellcasting = {...d.spellcasting, ability: v('spAb'), slots: d.spellcasting.slots.map((_, l) => v('slot_' + l)), pact: {...d.spellcasting.pact, max: v('pactMax'), level: v('pactLvl')}};
   d.attacks = d.attacks.map((a, i) => ({name: v('at_name_' + i), hit: v('at_hit_' + i), dmg: v('at_dmg_' + i), note: v('at_note_' + i)}));
-  d.resources = d.resources.map((r, i) => ({...r, name: v('rs_name_' + i), max: v('rs_max_' + i), reset: v('rs_reset_' + i)}));
+  d.resources = d.resources.map((r, i) => ({...r, name: v('rs_name_' + i), max: v('rs_max_' + i), reset: v('rs_reset_' + i), desc: v('rs_desc_' + i)}));
   return d;
 }

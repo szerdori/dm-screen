@@ -223,7 +223,7 @@ window.Sheet = (() => {
         pact: {level: int(pact.level, 0, 0, 5), max: pactMax, used: int(pact.used, 0, 0, pactMax)}
       },
       spells: named(d.spells, 400, x => ({name: str(x.name, 120).trim(), level: int(x.level, 0, 0, 9), prepared: !!x.prepared, always: !!x.always, note: str(x.note, 500), ref: str(x.ref, 200), ...AUTO(x), ...(x.cls && typeof x.cls === 'string' ? {cls: str(x.cls, 60)} : {}), ...(x.book ? {book: true} : {})})),
-      resources: named(d.resources, 50, x => { const m = int(x.max, 1, 0, 99); return {name: str(x.name, 100).trim(), max: m, used: int(x.used, 0, 0, m), reset: RESETS.includes(x.reset) ? x.reset : 'long', ...AUTO(x)}; }),
+      resources: named(d.resources, 50, x => { const m = int(x.max, 1, 0, 99); return {name: str(x.name, 100).trim(), max: m, used: int(x.used, 0, 0, m), reset: RESETS.includes(x.reset) ? x.reset : 'long', ...AUTO(x), ...(str(x.desc, 1000).trim() ? {desc: str(x.desc, 1000).trim()} : {})}; }),
       attacks: named(d.attacks, 50, x => ({name: str(x.name, 100).trim(), hit: str(x.hit, 20), dmg: str(x.dmg, 120), note: str(x.note, 500), ...AUTO(x)})),
       features: named(d.features, 200, x => ({name: str(x.name, 120).trim(), text: str(x.text, 8000), src: str(x.src, 80), ...AUTO(x)})),
       inventory: normInventory(d.inventory),
@@ -984,7 +984,8 @@ window.Sheet = (() => {
       };
       Object.assign(p, {ac: c.ac.v, acNote: c.acNote, speed: c.speed.v, profs: c.profs, senses: c.senses, resist: c.resist,
         features: merge(s.features, c.features),
-        resources: merge(s.resources, c.resources, r => { const o = s.resources.find(x => x.name === r.name); return {...r, used: Math.min(o?.used || 0, r.max)}; }),
+        // a saját leírás (desc) a számolt erőforrásnál is megmarad (TERV-fejlesztesek-2026-11-21.md, 8. lépés)
+        resources: merge(s.resources, c.resources, r => { const o = s.resources.find(x => x.name === r.name), od = o || s.resources.find(x => x.name.toLowerCase() === r.name.toLowerCase()); return {...r, used: Math.min(o?.used || 0, r.max), ...(od?.desc ? {desc: od.desc} : {})}; }),
         attacks: regiSorrend(s.attacks, merge(s.attacks, c.attacks)),
         spells: merge(s.spells, [...c.always.map(x => ({...x, always: true})), ...(c.learned || s.spells.filter(x => x.auto && !x.always))].filter((x, i, l) => l.findIndex(y => y.name.toLowerCase() === x.name.toLowerCase()) === i), x => {
           if (x.always) return {name: x.name, level: x.level, prepared: false, always: true, note: s.spells.find(y => y.name.toLowerCase() === x.name.toLowerCase())?.note || '', ref: x.ref};
@@ -1331,7 +1332,7 @@ window.Sheet = (() => {
     const snap = h.sheet, lv = snap.build?.levels?.length || level(snap);
     const levelUp = cur.levelUp && cur.levelUp.to > lv ? cur.levelUp : h.reason === 'levelup' && h.to > lv ? {to: h.to, by, at, mc: false} : null;
     const p = {auto: snap.auto, build: snap.build, ov: snap.ov, todoDone: snap.todoDone, spells: snap.spells, features: snap.features, levelUp,
-      resources: snap.resources.map(r => ({...r, used: Math.min(cur.resources.find(x => x.name === r.name)?.used || 0, r.max)}))};
+      resources: snap.resources.map(r => { const o = cur.resources.find(x => x.name.toLowerCase() === r.name.toLowerCase()); return {...r, used: Math.min(o?.used || 0, r.max), ...(o?.desc ? {desc: o.desc} : {})}; })};
     const next = norm({...cur, ...p});
     return {...p, ...(next.auto && rb?.classes?.length ? materialize(next, calc(next, rb)) : {})};
   }
@@ -1651,6 +1652,19 @@ window.Sheet = (() => {
     const en = (alap || n) && Array.isArray(rb?.conditions) ? rb.conditions.find(x => String(x?.n || '').toLowerCase() === (alap || n).toLowerCase())?.tx || '' : '';
     return {n, hu: alap ? COND_INFO[alap] : '', szintek, en: String(en), fx: (!exh && effectOf(n)?.text) || ''};
   }
+  // egy erőforrás leírása (TERV-fejlesztesek-2026-11-21.md, 8. lépés), sorrendben: a saját leírás (desc), a lap azonos nevű jellemzője
+  // (vagy amelyiknek a neve „…: Név” – pl. „Channel Divinity: Harness Divine Power”), a szabálykönyv osztály-feature-e; {src: 'sajat' | 'jellemzo' | 'szabalykonyv' | '', tx}
+  function resLeiras(s, r, rb = null) {
+    const n = String(r?.name || '').trim().toLowerCase();
+    if (r?.desc) return {src: 'sajat', tx: String(r.desc)};
+    if (!n) return {src: '', tx: ''};
+    const egyezik = x => { const m = String(x || '').trim().toLowerCase(); return m === n || m.endsWith(': ' + n); };
+    const f = (s?.features || []).filter(x => egyezik(x.name) && String(x.text || '').trim()).sort((a, b) => (a.name.toLowerCase() === n ? 0 : 1) - (b.name.toLowerCase() === n ? 0 : 1))[0];
+    if (f) return {src: 'jellemzo', tx: ddbSablonLap(String(f.text), f.name, s)};
+    const oszt = new Set((s?.classes || []).map(c => findClass(c.name) || c.name)), jelolt = Array.isArray(rb?.features) ? rb.features.filter(x => egyezik(x?.n) && x.tx) : [];
+    const k = jelolt.find(x => oszt.has(x.cls)) || jelolt[0];
+    return k ? {src: 'szabalykonyv', tx: String(k.tx)} : {src: '', tx: ''};
+  }
   // a felszerelt páncél / pajzs: a szabálykönyvből, ennek hiányában név alapján
   function wornArmor(s, rb) {
     const items = rb ? allItems(rb) : [];
@@ -1951,7 +1965,7 @@ window.Sheet = (() => {
 
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, SKILL_INFO, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
-    spellAbility, spellDc, spellAtk, spellCasts, spellSave, spellCastOf, cantripKocka, cantripDarab, spellDmgBonus, spellBonuszok, spellGyogyit, condLeiras, COND_INFO, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
+    spellAbility, spellDc, spellAtk, spellCasts, spellSave, spellCastOf, cantripKocka, cantripDarab, spellDmgBonus, spellBonuszok, spellGyogyit, condLeiras, COND_INFO, resLeiras, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, mcCheck, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seMod, seAr, seBolt, seAranyDob, seKosar, seEredmeny,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,

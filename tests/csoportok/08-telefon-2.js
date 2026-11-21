@@ -753,6 +753,52 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="var"]');
     eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk, r('Teszt Láng').dmg], ['2d10', '6', '2d8']); has(r('Teszt Láng').t, 'DEX 13');
   });
+  ktest('erőforrás leírása (TERV-fejlesztesek-2026-11-21.md, 8. lépés): a névre koppintva saját leírás → jellemző → szabálykönyv → „Nincs leírás”; az ablakban írható; a pötty marad; kézi űrlap', () => {
+    const H = W.Sheet, rb = rbVarazs(); rb.features.push({n: 'Wild Shape', cls: 'Druid', lvl: 2, s: 'PHB', tx: 'Synthetic wild shape text.'});
+    K.KApp.setRulebook({version: 'v', rb});
+    openSheet({resources: [{name: 'Ki', max: 2, used: 0, reset: 'short', desc: 'Saját ki-szöveg ' + XSS}, {name: 'Harness Divine Power', max: 1, used: 0, reset: 'long'},
+      {name: 'Wild Shape', max: 2, used: 0, reset: 'short'}, {name: 'Titok', max: 1, used: 0, reset: 'none'}],
+      features: [{name: 'Channel Divinity: Harness Divine Power', text: 'Jellemző-szöveg HDP.'}]});
+    const pop = () => kq('#infoPop'), nyit = n => kclick(kqa('[data-act="leiras"][data-lr="res"]').find(b => b.textContent === n));
+    const m = klog.length;
+    nyit('Ki'); eq(klog.length, m, 'nem írt'); has(pop().textContent, 'Saját ki-szöveg'); has(pop().textContent, '2 / 2 · short rest'); has(pop().textContent, 'saját leírás');
+    ok(!K.__xss && !kq('#infoPop img'), 'nincs befecskendezés');
+    nyit('Harness Divine Power'); has(pop().textContent, 'Jellemző-szöveg HDP.'); has(pop().textContent, 'a lap jellemzőjéből');
+    nyit('Wild Shape'); has(pop().textContent, 'Synthetic wild shape text.'); has(pop().textContent, 'a szabálykönyvből');
+    nyit('Titok'); has(pop().textContent, 'Nincs leírás. Lent adhatsz hozzá.');
+    // az ablakban írt leírás a lapra kerül; üresre törölve a mező eltűnik
+    kq('#resDescIn').value = 'Új titok-leírás'; kclick(pop().querySelector('[data-act="resDescMent"]'));
+    ok(pop().hidden); eq(lastUpdate().resources[3].desc, 'Új titok-leírás');
+    nyit('Titok'); kq('#resDescIn').value = '  '; kclick(pop().querySelector('[data-act="resDescMent"]')); ok(!('desc' in lastUpdate().resources[3]), 'üres: nincs desc');
+    // a pötty továbbra is elhasznál
+    kclick(kqa('[data-act="res"]').find(b => b.dataset.i === '0')); eq(lastUpdate().resources[0].used, 1);
+    // idegen (csak olvasható) lapon nincs szerkesztő
+    openSheet({resources: [{name: 'Ki', max: 2, used: 0, reset: 'short'}]}, 'mas@x.hu');
+    nyit('Ki'); ok(!kq('#resDescIn') && !kq('[data-act="resDescMent"]'), 'nincs szerkesztés'); has(pop().textContent, 'Nincs leírás.');
+    // kézi lap: Alapadatok űrlap
+    openSheet({resources: [{name: 'Pálca', max: 3, used: 1, reset: 'long'}]});
+    kclick('[data-tab="adat"]'); kset('[name="rs_desc_0"]', 'Pálca töltései', 'input'); kclick('[data-act="edSave"]');
+    eq(lastUpdate().resources[0].desc, 'Pálca töltései');
+    // motoros lap: a saját erőforrás űrlapja (autoForm)
+    openSheet({auto: true, build: {base: {}, levels: lv('Fighter', 1), spells: {}}, classes: [{name: 'Fighter', level: 1}], resources: [{name: 'Pálca', max: 3, used: 1, reset: 'long'}]});
+    kclick('[data-tab="adat"]'); kset('[name="rs_desc_0"]', 'Motoros pálca', 'input'); kclick('[data-act="edSave"]');
+    eq(lastUpdate().resources.find(r => r.name === 'Pálca').desc, 'Motoros pálca');
+    // norm: 1000 karakterre vág, üreset nem tárol; gonosz típus
+    eq(H.norm({resources: [{name: 'A', desc: 'x'.repeat(1500)}]}).resources[0].desc.length, 1000);
+    ok(!('desc' in H.norm({resources: [{name: 'A', desc: ''}, {name: 'B', desc: {a: 1}}]}).resources[1]), 'objektum nem desc');
+    eq(H.resLeiras(H.norm({}), {name: '__proto__'}, rb), {src: '', tx: ''});
+  });
+  test('erőforrás leírása: a motor újraszámolása (materialize) és az előzmény visszaállítása megtartja a számolt erőforrás saját leírását', () => {
+    const H = W.Sheet, rb = rbArany();
+    const s = H.norm({auto: true, build: {base: {str: 16}, levels: lv('Barbarian', 2), spells: {}}, classes: [{name: 'Barbarian', level: 2}]});
+    const s1 = H.norm({...s, ...H.materialize(s, H.calc(s, rb))});
+    const i = s1.resources.findIndex(r => r.name === 'Rage'); ok(i >= 0 && s1.resources[i].auto, 'a Rage számolt');
+    const s2 = H.norm({...s1, resources: s1.resources.map((r, k) => k === i ? {...r, desc: 'Dühroham, saját szöveg'} : r)});
+    const s3 = H.norm({...s2, ...H.materialize(s2, H.calc(s2, rb))});
+    eq(s3.resources.find(r => r.name === 'Rage').desc, 'Dühroham, saját szöveg');
+    const vissza = H.restorePatch(s2, {sheet: s1, reason: 'manual'}, rb);
+    eq(vissza.resources.find(r => r.name === 'Rage').desc, 'Dühroham, saját szöveg');
+  });
   ktest('állapot leírása (TERV-fejlesztesek-2026-11-21.md, 1. lépés): mind a 14 állapotnak és az Exhaustion 1–6. szintjének van szövege; a felső sáv címkéje a felugró ablakot nyitja (magyar + PHB); saját állapot', () => {
     const H = W.Sheet;
     for (const c of H.CONDITIONS) ok(H.condLeiras(c).hu.length > 20, c);

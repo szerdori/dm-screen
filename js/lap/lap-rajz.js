@@ -76,7 +76,8 @@ function tabHarc(s, ed) {
   // varázslás osztályonként (multiclass: mindegyik a saját képességével), és a támadások száma akciónként (Extra Attack)
   const casts = H.spellCasts(s), apa = H.attacksPerAction(s);
   const varazs = casts.map(c => `<div class="li"><span class="nm"><b>Varázslat${c.cls && casts.length > 1 ? ` (${esc(c.cls)})` : ''}</b><small>spell save DC ${esc(c.dc)}${varMod(s, c.ab) ? ` · ${esc(c.ab.toUpperCase())} ${esc(varMod(s, c.ab))}` : ''}</small></span>${rollBtn(c.atk, 'Spell attack' + (c.cls && casts.length > 1 ? ` (${c.cls})` : ''), undefined, 'atk')}</div>`).join('');
-  const res = s.resources.map((r, i) => `<div class="li"><span class="nm"><b>${esc(r.name)}</b><small>${esc(r.max - r.used)} / ${esc(r.max)} · ${esc(RESET_HU[r.reset])}</small></span>
+  // a név a leírást nyitja (TERV-fejlesztesek-2026-11-21.md, 8. lépés: data-lr="res", data-ref = az erőforrás indexe)
+  const res = s.resources.map((r, i) => `<div class="li"><span class="nm"><b>${nevGomb('res', String(i), r.name)}</b><small>${esc(r.max - r.used)} / ${esc(r.max)} · ${esc(RESET_HU[r.reset])}</small></span>
     <span class="pips">${pipRow(r.max, r.used, `data-act="res" data-i="${i}"`, dis, r.name)}</span></div>`).join('');
   // állapot / aktív hatás: a gépi hatás leírása; a DM kikapcsolhatja (⚙), ilyenkor csak emlékeztető
   const offBtn = key => isDM ? `<button class="small" data-act="effToggle" data-key="${esc(key)}" title="Automatikus hatás be / ki (DM)">⚙ ${s.effOff.includes(key) ? 'ki' : 'be'}</button>` : '';
@@ -356,7 +357,8 @@ function tabAdat(s, ed) {
     <div class="w2"><button class="small" data-act="rowAdd" data-list="attacks">＋ Támadás</button></div>
     <h3>Erőforrások (pl. Bardic Inspiration, Ki, Rage) ${iGomb(H.MEZO_INFO.resource)}</h3>
     ${d.resources.map((r, i) => `<div class="rowedit"><input name="rs_name_${i}" value="${esc(r.name)}" placeholder="Név"><input name="rs_max_${i}" type="number" min="0" max="99" value="${esc(r.max)}" style="max-width:64px" title="Max">
-      <select name="rs_reset_${i}">${H.RESETS.map(k => opt(k, RESET_HU[k], r.reset)).join('')}</select><button class="small" data-act="rowRm" data-list="resources" data-i="${i}">✕</button></div>`).join('')}
+      <select name="rs_reset_${i}">${H.RESETS.map(k => opt(k, RESET_HU[k], r.reset)).join('')}</select><button class="small" data-act="rowRm" data-list="resources" data-i="${i}">✕</button></div>
+      <label class="w2 hint">Leírás (nem kötelező)<textarea name="rs_desc_${i}" rows="2" maxlength="1000">${esc(r.desc || '')}</textarea></label>`).join('')}
     <div class="w2"><button class="small" data-act="rowAdd" data-list="resources">＋ Erőforrás</button></div>
     <h3>Jártasságok és egyebek ${iGomb(H.MEZO_INFO.jartassag)}</h3>
     ${f('pf_armor', 'Páncél', d.profs.armor, 'w2')}${f('pf_weapons', 'Fegyver', d.profs.weapons, 'w2')}${f('pf_tools', 'Eszköz, hangszer', d.profs.tools, 'w2')}${f('pf_languages', 'Nyelvek', d.profs.languages, 'w2')}
