@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-rajz, a karakter.html része): a szabálykönyv segédei és a lap rajzolása (fülek)
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-rajz', N) és a karakter.html-ben a lap-rajz.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-rajz', 7);
+modul('lap-rajz', 8);
 
 // ---------- szabálykönyv ----------
 const RB = () => rbInfo?.rb || null;
@@ -179,9 +179,11 @@ function varFej(s, casts) {
 }
 // a varázslatok listája: szintenként; multiclassnál előbb osztályonként (TERV-multiclass.md: mindegyik a saját DC-jével), a nem besorolt varázslatok az „Egyéb” alatt
 // csak: „csak a bekészítettek” – a cantripek mindig látszanak (nem kell bekészíteni őket)
+// a szinten belül ábécérendben (TERV-fejlesztesek-2026-11-21.md, 5. lépés); a tárolt sorrend nem változik, a gombok az eredeti indexet kapják
 function varLista(s, ed, casts, csak) {
   const latszik = sp => !csak || !sp.level || sp.prepared || sp.always;
-  const szintek = idx => { const by = {}; idx.forEach(i => { const sp = s.spells[i]; if (latszik(sp)) (by[sp.level] = by[sp.level] || []).push(spellRow(sp, i, ed, s)); });
+  const abc = idx => [...idx].sort((a, b) => s.spells[a].name.localeCompare(s.spells[b].name, 'en', {sensitivity: 'base'}) || a - b);
+  const szintek = idx => { const by = {}; abc(idx).forEach(i => { const sp = s.spells[i]; if (latszik(sp)) (by[sp.level] = by[sp.level] || []).push(spellRow(sp, i, ed, s)); });
     return Object.keys(by).sort((a, b) => a - b).map(l => `<h3 class="sub2">${l == 0 ? 'Cantripek' : H.ORD[l] + ' level'}</h3><div class="list">${by[l].join('')}</div>`).join(''); };
   const minden = s.spells.map((_, i) => i);
   return casts.length > 1 ? [...casts.map(c => [c.cls, minden.filter(i => s.spells[i].cls === c.cls)]), ['Egyéb', minden.filter(i => !casts.some(c => c.cls === s.spells[i].cls))]]

@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 16);
+modul('lapszinkron', 17);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -39,8 +39,9 @@ function sheetToCreature(s, base) {
   if (H.attacksPerAction(s) > 1) traits.unshift({name: 'Támadás akciónként', text: `${H.attacksPerAction(s)} (Extra Attack, az Attack action része)`});
   if (s.spells.length) {
     // multiclassnál osztályonként (TERV-multiclass.md): „Wizard: spell save DC 14, +6 to hit; Cleric: …”
+    // a szinten belül ábécérendben (TERV-fejlesztesek-2026-11-21.md, 5. lépés)
     const casts = H.spellCasts(s), by = {};
-    s.spells.forEach(sp => (by[sp.level] = by[sp.level] || []).push(sp.name + (sp.level && !sp.prepared && !sp.always ? ' (nincs bekészítve)' : '')));
+    [...s.spells].sort((a, b) => a.name.localeCompare(b.name, 'en', {sensitivity: 'base'})).forEach(sp => (by[sp.level] = by[sp.level] || []).push(sp.name + (sp.level && !sp.prepared && !sp.always ? ' (nincs bekészítve)' : '')));
     traits.unshift({name: 'Varázslatok', text: [casts.map(c => `${casts.length > 1 ? c.cls + ': ' : ''}spell save DC ${c.dc}, ${sgn(c.atk)} to hit`).join('; '),
       ...Object.keys(by).sort((a, b) => a - b).map(l => `${l == 0 ? 'Cantrips' : ordinal(+l) + ' level'}: ${by[l].join(', ')}`)].filter(Boolean).join('\n')});
   }

@@ -276,7 +276,8 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="adat"]');
     ok(kq('.chips') && kq('#edForm'), 'AC-sor és űrlap az Alapadatokon');
     eq(kqa('.chips .chip small').map(x => x.textContent), ['AC', 'Initiative', 'Speed', 'Prof. bónusz', 'Passzív Perc.']);
-    eq(K.getComputedStyle(kq('.chips button.chip')).justifyContent, 'flex-start', 'az Initiative is felülre igazítva');
+    // (a Chrome 158 a flex-startot „flow-start”-ként adja vissza, 2026-11-21)
+    ok(['flex-start', 'flow-start'].includes(K.getComputedStyle(kq('.chips button.chip')).justifyContent), 'az Initiative is felülre igazítva');
     kclick('[data-tab="kep"]');
     has(ktext(), 'Jellemzők'); has(ktext(), 'Sneak Attack'); ok(kq('#featNew'), 'jellemző felvétele is itt');
     // a jártasságok a Képességek fülön, a passzív értékek alatt (a jellemzők előtt)
@@ -751,6 +752,26 @@ describe('Telefonos karakterlap (karakter.html)', () => {
       spells: [{name: 'Teszt Tűz', level: 0, cls: 'Wizard'}, {name: 'Teszt Láng', level: 0, cls: 'Cleric'}]});
     kclick('[data-tab="var"]');
     eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk, r('Teszt Láng').dmg], ['2d10', '6', '2d8']); has(r('Teszt Láng').t, 'DEX 13');
+  });
+  ktest('ábécérend (TERV-fejlesztesek-2026-11-21.md, 5. lépés): a Varázslat fülön szintenként (multiclassnál osztályonként) név szerint; a gombok a jó varázslatra hatnak; a DM statblokkjában is', () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    const sp = (name, level, cls = '', prepared = false) => ({name, level, cls, prepared});
+    openSheet({spells: [sp('Sleep', 1), sp('light', 0), sp('Bless', 1), sp('Mage Hand', 0), sp('Fire Bolt', 0), sp('Charm Person', 1, '', true)]});
+    kclick('[data-tab="var"]');
+    const nevek = () => kqa('details[data-key^="sp:"]').map(d => d.dataset.key.slice(3));
+    eq(nevek(), ['Fire Bolt', 'light', 'Mage Hand', 'Bless', 'Charm Person', 'Sleep']);
+    // a tárolt sorrend nem változik; a bekészítés pipája az eredeti indexre hat
+    kset('details[data-key="sp:Bless"] [data-act="prep"]', true);
+    eq(lastUpdate().spells.map(x => [x.name, !!x.prepared]),
+      [['Sleep', false], ['light', false], ['Bless', true], ['Mage Hand', false], ['Fire Bolt', false], ['Charm Person', true]]);
+    // multiclass: osztályonként külön rendezve
+    openSheet({auto: true, build: {base: {wis: 14, int: 16}, levels: [...lv('Cleric', 3), ...lv('Wizard', 2)], spells: {}}, classes: [{name: 'Cleric', level: 3}, {name: 'Wizard', level: 2}],
+      spells: [sp('Shield', 1, 'Wizard'), sp('Bless', 1, 'Cleric'), sp('Alarm', 1, 'Wizard'), sp('Aid', 2, 'Cleric'), sp('Bane', 1, 'Cleric')]});
+    kclick('[data-tab="var"]');
+    eq(nevek(), ['Bane', 'Bless', 'Aid', 'Alarm', 'Shield']);
+    // DM statblokk
+    const t = W.sheetToCreature(W.Sheet.norm({...sheetDoc(), spells: [sp('Sleep', 1), sp('light', 0), sp('Bless', 1), sp('Fire Bolt', 0)]}), {kind: 'pc'}).traits.find(x => x.name === 'Varázslatok').text;
+    has(t, 'Cantrips: Fire Bolt, light'); has(t, '1st level: Bless (nincs bekészítve), Sleep (nincs bekészítve)');
   });
   ktest('skill leírása (TERV-fejlesztesek-2026-11.md, 2. lépés): a Képességek fülön és a skill-választóban a névre koppintva; a választóban onnan is választható; a dobógomb marad', () => {
     const pop = () => kq('#infoPop');
