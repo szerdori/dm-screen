@@ -1,6 +1,6 @@
 # Terv: állapot- és erőforrás-leírás, varázslatbónuszok, Harness Divine Power, Inspiration, telefonos nézet a DM Screen oldalpanelén
 
-**Állapot: jóváhagyva (2026-11-21), megvalósítás folyamatban.**
+**Állapot: kész (2026-11-21), mind a 8 lépés a `main`-en (feltöltve 2026-11-21). A felhasználó teendője: nincs (szabály- és szabálykönyv-változás nincs); a DM gépén élesben kipróbálni az oldalpanelt.**
 
 A felhasználó kérése (2026-11-21), nyolc pont. Egymástól nagyrészt független lépések; mindegyik után `.\teszt.ps1` (fejlesztés közben szűrve, a lépés végén teljesen), új teszt a `tests\csoportok\` megfelelő fájljába, `ellenorzes.ps1`, `ellenorzo` ügynök, és külön jóváhagyás a feltöltésre. A nyitott kérdések a végén, mindegyiknél a javasolt válasz elöl.
 
@@ -78,7 +78,7 @@ Az oldalpanel (`#side` → `#detail`, 440 px széles, `renderDetail`, `js/felule
 - Új kapcsoló a `karakter.html`-ben: `?beagyazva=1` – elrejti a ‹ Vissza gombot, a Fiók sort és a lap-listát; minden más ugyanaz.
 - A felső harci vezérlők maradnak (Init, oldal, nyilvános név, harci jegyzet); a HP és az állapot a lapon is állítható, a kettő a meglévő szinkronnal (`lapszinkron.js`) egyezik.
 - A beágyazott lapon dobott dobás a lap `rolls` mezőjén át ugyanúgy a DM naplójába kerül, mint a telefonról.
-- A panel tetején egy kapcsoló: **📱 Lap / 📜 Statblokk** (eszközönként megjegyezve, `Bongeszotar`), hogy a régi nézet is elérhető maradjon. Szörnynél és lap nélküli NPC-nél mindig a statblokk.
+- A harci vezérlők alján egy kapcsoló: **📱 Lap / 📜 Statblokk** (eszközönként megjegyezve, `Bongeszotar`), hogy a régi nézet is elérhető maradjon. Szörnynél és lap nélküli NPC-nél mindig a statblokk.
 - Teszt módban (`?test=1`) a beágyazott lap is teszt módban töltődik.
 
 **B) a statblokk átrajzolása telefonos stílusra** a DM appon belül (saját fülek, a `SHEETS`-ből olvasva). Előnye: nincs második oldal és második Firebase-kapcsolat. Hátránya: a telefonos lap rajzolóit (`js/lap/lap-rajz.js`) újra kellene írni a DM rétegeibe, és utána minden telefonos változást két helyen kellene követni. Sokkal nagyobb munka, és tartósan duplikált kód.
@@ -201,7 +201,7 @@ A Harc fül erőforrás-sora: név, „1 / 2 · short rest”, pöttyök (`tabHa
    1. az erőforrás saját leírása (új `desc` mező, lásd lent);
    2. a lap azonos nevű jellemzője (pl. „Channel Divinity”, „Bardic Inspiration”, „Rage”, „Ki”; a „Channel Divinity: Harness Divine Power” jellemző a „Harness Divine Power” erőforráshoz – név-részlet szerint);
    3. a szabálykönyv feature-szövege (`RB().features`), ha van;
-   4. ha semmi: „Nincs leírás.” (szerkeszthető lapon: „Az Alapadatokon adhatsz hozzá.”).
+   4. ha semmi: „Nincs leírás.” (szerkeszthető lapon: „Lent adhatsz hozzá.” – az ablakban írható).
 3. **Saját (homebrew) erőforrás leírása:** az Alapadatok erőforrás-sorában új mező „Leírás” (többsoros), mentéskor a `desc`-be. Motoros lapon is a saját erőforrásokhoz; a motor által adott erőforrásokhoz is írható (11. nyitott kérdés: javaslat igen, és a motor újraszámolása megtartja).
 
 ### Szerződés (contract-first)
@@ -259,3 +259,13 @@ A felhasználó mind a 11 kérdésre a javasolt választ fogadta el („mehet a 
 9. Inspiration: minden motoros lapon magától.
 10. Inspiration max 1, a DM átírhatja; a DM Screenen „＋ Inspiration” gomb.
 11. A motor által adott erőforráshoz is írható leírás, és az újraszámolás megtartja.
+
+## Mi lett belőle (2026-11-21)
+Mind a 8 lépés kész, lépésenként külön commit (5 → 6 → 2 → 1 → 8 → 7 → 4 → 3). Eltérések a tervtől:
+- 2. lépés: a régi `Sheet.spellDmgBonus` megmaradt (a régi tesztek miatt), a lap az új `Sheet.spellBonuszok`-ot használja; a forrás szövege „WIS-módosító: +4”.
+- 1. lépés: a DM Screen a PHB angol szövegét csak akkor mutatja, ha a szabálykönyv abban a munkamenetben már betöltődött (`betoltottSzabalykonyv`). A választó leírása az opció súgójában (title) van, nem külön sorban.
+- 8. lépés: a saját leírás a felugró ablakban is írható (minden szerkeszthető lapon), nem csak az Alapadatokon.
+- 7. lépés: az Inspiration-t a `materialize` teszi a lapra, nem a `calc` (így a `Sheet.calc` aranymintái nem változtak); a DM felülírása `ov['res:Inspiration']`, a sora csak a DM-nek látszik. A D&D Beyond import nem kapott Inspiration-t (a DDB-import lényt ad, nem erőforrást). A ＋ Inspiration a Csapat nézet karakterkártyáján van (a csempén nincs).
+- 4. lépés: a slot-visszaadás csak a sima slotokra (a Pact slotra nem).
+- 3. lépés: a kapcsoló a harci vezérlők alján van; ha a beágyazott lap magától másik lapra lép, a választás visszaviszi.
+- Mellékesen: a Chrome 158 a `justify-content: flex-start`-ot „flow-start”-ként adja vissza, egy régi teszt ehhez igazítva.
