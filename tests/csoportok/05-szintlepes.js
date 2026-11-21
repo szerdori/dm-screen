@@ -593,7 +593,7 @@ describe('Multiclass: szabálymotor (TERV-multiclass.md, 1. lépés)', () => {
   test('a lap cache-e osztályonként (spells) és a támadás akciónként (atk); tisztítás (normCache); a DM Screen statblokkja osztályonként', () => {
     const rb = rbMc(), s = mc({str: 13, con: 12, int: 16, wis: 14}, [...lv('Fighter', 5), ...lv('Wizard', 1), ...lv('Cleric', 1)]);
     const n = H().norm({...s, ...H().materialize(s, H().calc(s, rb))});
-    eq([n.cache.spells, n.cache.atk], [[{cls: 'Wizard', ab: 'int', dc: 14, atk: 6, prep: 4}, {cls: 'Cleric', ab: 'wis', dc: 13, atk: 5, prep: 3}], 2]);
+    eq([n.cache.spells, n.cache.atk], [[{cls: 'Wizard', ab: 'int', dc: 14, atk: 6, prep: 4, cantrips: 3}, {cls: 'Cleric', ab: 'wis', dc: 13, atk: 5, prep: 3, cantrips: 3}], 2]);
     eq([H().spellCasts(n).length, H().attacksPerAction(n), H().attacksPerAction(H().norm({cache: {atk: 3}}))], [2, 2, 1], 'kézi lapon 1');
     eq(H().spellCasts(H().norm({classes: [{name: 'Bard', level: 2}], abilities: {cha: 16}})), [{cls: '', ab: 'cha', dc: 13, atk: 5}], 'kézi lap: egy sor');
     const c = H().norm({auto: true, build: {}, cache: {spells: [{cls: XSS, ab: 'x', dc: '14', atk: 6, prep: 99, extra: 1}, {cls: '', dc: 1, atk: 1}, {cls: 'Bard', dc: 12}, 'x'], atk: 9}}).cache;
@@ -602,7 +602,7 @@ describe('Multiclass: szabálymotor (TERV-multiclass.md, 1. lépés)', () => {
     const t = W.sheetToCreature(n, {kind: 'pc'}).traits;
     eq(t.find(x => x.name === 'Támadás akciónként')?.text, '2 (Extra Attack, az Attack action része)');
     const spl = W.sheetToCreature(H().norm({...n, spells: [{name: 'Shield', level: 1, cls: 'Wizard'}]}), {kind: 'pc'}).traits.find(x => x.name === 'Varázslatok').text;
-    has(spl, 'Wizard: spell save DC 14, +6 to hit, INT +3; Cleric: spell save DC 13, +5 to hit, WIS +2');
+    has(spl, 'Wizard: spell save DC 14, +6 to hit, INT +3, bekészítve 0/4, cantrip 0/3; Cleric: spell save DC 13, +5 to hit, WIS +2, bekészítve 0/3, cantrip 0/3');
   });
   test('szintlépés új osztályba: a terv az új osztály 1. szintjének választásait kéri, HP az új osztály kockájával', () => {
     const rb = rbMc(), s = mc({str: 13, dex: 14, con: 14, cha: 13}, lv('Fighter', 3));

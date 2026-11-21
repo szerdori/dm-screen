@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-akciok, a karakter.html része): a gombok nyilvántartása (LAP_AKCIOK: data-act → kezelő), módosítás, gépelés, billentyűk
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-akciok', N) és a karakter.html-ben a lap-akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-akciok', 6);
+modul('lap-akciok', 7);
 
 // ---------- nyilvántartás: data-act="nev" → LAP_AKCIOK.nev(el, s, i, act) ----------
 // Új gomb = új bejegyzés (s = a nyitott lap, i = a gomb data-i értéke). A kezelő maga ír és rajzol, ha kell.
@@ -9,6 +9,13 @@ modul('lap-akciok', 6);
 const LAP_NELKUL = new Set(['signIn', 'signOut', 'reload', 'infoClose', 'fiok', 'megj', 'keresDob', 'keresElvet']);
 // a visszakapható spell slot választója a Harc fülön (Harness Divine Power után): {id: lap, i: erőforrás, max: legmagasabb slotszint} | null
 let slotValaszt = null;
+// a varázslatok kerete (TERV-oldalpanel-bekeszites.md, 2. lépés): ha a változás után több lenne bekészítve / ismert / cantrip, mint amennyi jár, rákérdez (nem tilt)
+const KERET_HU = {prep: 'bekészítve', known: 'ismert varázslat', cantrip: 'cantrip'};
+function keretRendben(s, ujSpells, mit) {
+  const elotte = H.varazslatKeret(s), utana = H.varazslatKeret({...s, spells: ujSpells});
+  const tul = utana.find((k, j) => k[mit] && k[mit].n > k[mit].max && k[mit].n > (elotte[j]?.[mit]?.n ?? 0));
+  return !tul || confirm(`Már ${tul[mit].n - 1} ${KERET_HU[mit]} van, ${tul[mit].max} jár${utana.length > 1 ? ' (' + tul.cls + ')' : ''}. Mégis ${mit === 'prep' ? 'bekészíted' : 'hozzáadod'}?`);
+}
 // több gomb közös kezelője (a gomb neve dönt)
 const ncGomb = (el, s, i, act) => { if (s.newChar && canEdit(s)) ncAct(act, el, s); };
 const luGomb = (el, s, i, act) => { if (lu) luAct(act, el, s); };
@@ -98,9 +105,15 @@ const LAP_AKCIOK = {
   spellRm(el, s, i) { if (confirm(`Eltávolítod: ${s.spells[i].name}?`)) patch({spells: s.spells.filter((_, k) => k !== i)}); },
   spellAdd(el, s) {
     const sp = H.byRef(RB().spells, el.dataset.ref); if (!sp) return;
-    patch({spells: [...s.spells, {name: sp.n, level: sp.l || 0, prepared: !sp.l, ref: H.refOf(sp)}]});
+    const uj = [...s.spells, {name: sp.n, level: sp.l || 0, prepared: !sp.l, ref: H.refOf(sp)}];
+    if (!keretRendben(s, uj, sp.l ? 'known' : 'cantrip')) return;
+    patch({spells: uj});
   },
-  spellCustom(el, s) { const n = $('#spellNew').value.trim(); if (n) patch({spells: [...s.spells, {name: n, level: +$('#spellNewL').value, prepared: true}]}); },
+  spellCustom(el, s) {
+    const n = $('#spellNew').value.trim(), l = +$('#spellNewL').value; if (!n) return;
+    const uj = [...s.spells, {name: n, level: l, prepared: true}];
+    if (keretRendben(s, uj, l ? 'prep' : 'cantrip') && keretRendben(s, uj, 'known')) patch({spells: uj});
+  },
   qty(el, s, i) { patch({inventory: s.inventory.map((it, k) => k === i ? {...it, qty: Math.max(0, it.qty + +el.dataset.d)} : it)}); },
   itemRm(el, s, i) { if (confirm(`Eltávolítod: ${s.inventory[i].name}?`)) patch(invPatch(s, s.inventory.filter((_, k) => k !== i), s.inventory[i])); },
   castOpen(el, s, i) { castOpen = castOpen === i ? null : i; render(true); },
@@ -243,7 +256,7 @@ function akciokEsemenyek() {
     }
     else if (t.id === 'exh') patch({exhaustion: +t.value});
     else if (t.id === 'spellMine') { searchQ.all = !t.checked; spellResults(s); }
-    else if (act === 'prep') patch({spells: s.spells.map((sp, k) => k === i ? {...sp, prepared: t.checked} : sp)});
+    else if (act === 'prep') { const uj = s.spells.map((sp, k) => k === i ? {...sp, prepared: t.checked} : sp); if (t.checked && !keretRendben(s, uj, 'prep')) { t.checked = false; return; } patch({spells: uj}); }
     else if (act === 'equip') setItem({equipped: t.checked});
     else if (act === 'attune') {
       if (t.checked && H.attuned(s) >= 3 && !confirm('Már 3 tárgyra vagy hangolva (ez a maximum). Mégis bejelölöd?')) { t.checked = false; return; }

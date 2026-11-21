@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-rajz, a karakter.html része): a szabálykönyv segédei és a lap rajzolása (fülek)
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-rajz', N) és a karakter.html-ben a lap-rajz.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-rajz', 8);
+modul('lap-rajz', 9);
 
 // ---------- szabálykönyv ----------
 const RB = () => rbInfo?.rb || null;
@@ -180,10 +180,17 @@ function varSlotok(s, dis) {
 // a varázsképesség módosítója („+4”; TERV-fejlesztesek-2026-11-21.md, 6. lépés); ismeretlen képességnél ''
 const varMod = (s, ab) => H.ABIL.includes(ab) ? sgn(mod(s.abilities[ab])) : '';
 // a fejléc: varázsképesség (a módosítóval), spell save DC, spell attack (multiclassnál osztályonként, a bekészítettek számával)
+// a keret kiírása (pl. „ · bekészítve 5 / 7 · ismert 6 / 6”; TERV-oldalpanel-bekeszites.md, 2. lépés), a túllépés ⚠-tel; '' = nincs mit kiírni
+const KERET_ROVID = {prep: 'bekészítve', known: 'ismert', cantrip: 'cantrip'};
+const keretSor = k => k ? ['prep', 'known', 'cantrip'].filter(m => k[m]).map(m => ` · <span class="${k[m].n > k[m].max ? 'warn' : ''}">${k[m].n > k[m].max ? '⚠ ' : ''}${KERET_ROVID[m]} ${esc(k[m].n)} / ${esc(k[m].max)}</span>`).join('') : '';
+// a túllépések figyelmeztetése a Varázslat fül tetején
+const KERET_TUL = {prep: ['Több varázslat van bekészítve', 'vegyél le a bekészítésből'], known: ['Több ismert varázslat van a lapon', 'a Felépítésben cserélhetsz, vagy a varázslat sorában 🗑-tel veheted le'],
+  cantrip: ['Több cantrip van a lapon', 'a Felépítésben cserélhetsz, vagy a sorában 🗑-tel veheted le']};
+const keretFigyelmeztetes = (keret, tobb) => keret.flatMap(k => k.tul.map(x => `<p class="warn keretwarn">⚠ ${KERET_TUL[x.mit][0]}, mint amennyi jár${tobb ? ' (' + esc(k.cls) + ')' : ''}: ${esc(x.n)} / ${esc(x.max)} – ${KERET_TUL[x.mit][1]}.</p>`)).join('');
 function varFej(s, casts) {
-  const ab = H.spellAbility(s);
+  const ab = H.spellAbility(s), keret = H.varazslatKeret(s);
   const bek = cls => s.spells.filter(sp => sp.level && sp.prepared && !sp.always && sp.cls === cls).length;
-  return casts.length > 1 ? casts.map(c => `<p class="mcfej"><b>${esc(c.cls)}</b>${c.ab ? ` (${esc(H.ABIL_FULL[c.ab] || c.ab)}${varMod(s, c.ab) ? ' ' + esc(varMod(s, c.ab)) : ''})` : ''}: spell save DC <b>${esc(c.dc)}</b> · spell attack ${rollBtn(c.atk, `Spell attack (${c.cls})`, undefined, 'atk')}${c.prep ? ` · bekészítve ${esc(bek(c.cls))} / ${esc(c.prep)}` : ''}</p>`).join('')
+  return casts.length > 1 ? casts.map(c => `<p class="mcfej"><b>${esc(c.cls)}</b>${c.ab ? ` (${esc(H.ABIL_FULL[c.ab] || c.ab)}${varMod(s, c.ab) ? ' ' + esc(varMod(s, c.ab)) : ''})` : ''}: spell save DC <b>${esc(c.dc)}</b> · spell attack ${rollBtn(c.atk, `Spell attack (${c.cls})`, undefined, 'atk')}${keretSor(keret.find(k => k.cls === c.cls)) || (c.prep ? ` · bekészítve ${esc(bek(c.cls))} / ${esc(c.prep)}` : '')}</p>`).join('')
     : ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}${varMod(s, ab) ? ` (${esc(varMod(s, ab))})` : ''}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>';
 }
 // a varázslatok listája: szintenként; multiclassnál előbb osztályonként (TERV-multiclass.md: mindegyik a saját DC-jével), a nem besorolt varázslatok az „Egyéb” alatt
@@ -207,9 +214,11 @@ function varFelvetel() {
 function tabVar(s, ed) {
   const casts = H.spellCasts(s), csak = csakBekeszitett(), slotok = varSlotok(s, ed ? '' : 'disabled'), lista = varLista(s, ed, casts, csak);
   const prepared = s.spells.filter(sp => sp.level && (sp.prepared || sp.always)).length, rejtett = s.spells.filter(sp => sp.level && !sp.prepared && !sp.always).length;
-  return `${varFej(s, casts)}
+  // egy varázsló osztálynál a keret a címsorban (multiclassnál az osztályfejlécekben); kézi lapon a régi „N bekészítve”
+  const keret = H.varazslatKeret(s), egy = casts.length <= 1 && keret.length === 1 ? keretSor(keret[0]).replace(/^ · /, '') : '';
+  return `${varFej(s, casts)}${keretFigyelmeztetes(keret, keret.length > 1)}
     ${slotok ? `<h3>Spell slotok</h3><div class="list">${slotok}</div>` : ''}
-    <h3>Varázslatok <span class="hint">(${prepared} bekészítve)</span></h3>
+    <h3>Varázslatok <span class="hint">(${egy || prepared + ' bekészítve'})</span></h3>
     ${s.spells.some(sp => sp.level) ? `<label class="hint"><input type="checkbox" data-act="csakBek" ${csak ? 'checked' : ''}> csak a bekészítettek${csak && rejtett ? ` (${rejtett} elrejtve)` : ''}</label>` : ''}
     ${lista || `<p class="hint">${s.spells.length ? 'Nincs bekészített varázslat.' : 'Még nincs varázslat a lapon.'}</p>`}
     ${ed ? varFelvetel() : ''}`;

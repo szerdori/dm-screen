@@ -753,6 +753,64 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="var"]');
     eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk, r('Teszt Láng').dmg], ['2d10', '6', '2d8']); has(r('Teszt Láng').t, 'DEX 13');
   });
+  test('varázslatok kerete (TERV-oldalpanel-bekeszites.md, 2. lépés): Sheet.varazslatKeret – bekészítve, ismert, cantrip; a mindig bekészített és a Mystic Arcanum nem számít; kézi lapon nincs', () => {
+    const H = W.Sheet, sp = (name, level, x = {}) => ({name, level, prepared: true, ...x});
+    const lap = (spells, cache) => H.norm({auto: true, build: {levels: [], spells: {}}, cache: {spells: cache, atk: 1}, spells});
+    const k = lap([sp('A', 1), sp('B', 1), sp('C', 2, {prepared: false}), sp('Dom', 1, {always: true}), sp('X', 0), sp('Y', 0)], [{cls: 'Cleric', ab: 'wis', dc: 13, atk: 5, prep: 2, cantrips: 3}]);
+    eq(H.varazslatKeret(k), [{cls: 'Cleric', prep: {n: 2, max: 2}, known: null, cantrip: {n: 2, max: 3}, tul: []}]);
+    const t = H.varazslatKeret(lap([sp('A', 1), sp('B', 1), sp('C', 1)], [{cls: 'Cleric', ab: 'wis', dc: 13, atk: 5, prep: 2}]))[0].tul;
+    eq(t, [{mit: 'prep', n: 3, max: 2}]);
+    // Warlock: a Mystic Arcanum (6+) nem ismert varázslat; multiclassnál a varázslat osztálya dönt
+    const w = lap([sp('H', 1, {cls: 'Warlock'}), sp('M', 6, {cls: 'Warlock'}), sp('S', 1, {cls: 'Wizard'}), sp('N', 1)], [{cls: 'Warlock', ab: 'cha', dc: 13, atk: 5, prep: 0, known: 1}, {cls: 'Wizard', ab: 'int', dc: 13, atk: 5, prep: 1}]);
+    eq(H.varazslatKeret(w).map(x => [x.cls, x.known, x.prep, x.tul.length]), [['Warlock', {n: 1, max: 1}, null, 0], ['Wizard', null, {n: 1, max: 1}, 0]]);
+    eq(H.varazslatKeret(H.norm({spells: [sp('A', 1)]})), [], 'kézi lapon nincs');
+    // gonosz osztálynév a cache-ben, túllépéssel: a Varázslat fül, a multiclass-fejléc, a DM jelvénye és statblokkja sem futtatja
+    const gonosz = '<img src=x onerror=window.__x8=1>';
+    const g = lap([sp('A', 1, {cls: gonosz}), sp('B', 1, {cls: gonosz}), sp('C', 1, {cls: 'Cleric'})], [{cls: gonosz, ab: 'int', dc: 13, atk: 5, prep: 1}, {cls: 'Cleric', ab: 'wis', dc: 13, atk: 5, prep: 1}]);
+    K.eval(`{ const s = H.norm(${JSON.stringify(g)}); $('#main').innerHTML = tabVar(s, true); }`);
+    ok(K.document.querySelector('#main .keretwarn'), 'van ⚠'); ok(!K.__x8 && !K.document.querySelector('#main img'), 'nincs befecskendezés a lapon');
+    W.eval(`SHEETS.__x = Sheet.norm(${JSON.stringify(g)})`);
+    const box = W.document.createElement('div'); box.innerHTML = W.lapJelveny('__x') + W.eval('esc')(W.sheetToCreature(W.eval('SHEETS.__x'), {kind: 'pc'}).traits.find(x => x.name === 'Varázslatok').text);
+    ok(!W.__x8 && !box.querySelector('img'), 'nincs befecskendezés a DM-nél'); W.eval('delete SHEETS.__x');
+    eq(H.norm({auto: true, build: {}, cache: {spells: [{cls: 'Bard', dc: 12, atk: 4, known: 'x', cantrips: 200}]}}).cache.spells[0], {cls: 'Bard', ab: '', dc: 12, atk: 4, cantrips: 99});
+  });
+  ktest('varázslatok kerete a lapon: kiírás egy osztálynál, ⚠ túllépéskor, rákérdezés a pipánál és a ＋-nál; a DM statblokkja és jelvénye', () => {
+    const rb = rbVarazs(); K.KApp.setRulebook({version: 'v', rb});
+    const sp = (name, level, prepared = true) => ({name, level, prepared});
+    const lap = spells => { K.eval('calcSig.clear()'); openSheet({auto: true, build: {base: {wis: 16}, levels: lv('Cleric', 1), spells: {}}, classes: [{name: 'Cleric', level: 1}], spells}); };
+    lap([sp('Bless', 1), sp('Bane', 1, false)]);  // Cleric 1, WIS +3: 4 bekészíthető
+    kclick('[data-tab="var"]');
+    const max = K.eval('sheets.get("p1")').cache.spells[0].prep;
+    has(ktext(), `bekészítve 1 / ${max}`); ok(!kq('.keretwarn'), 'nincs ⚠');
+    // túllépés: ⚠ sor, és a pipa rákérdez (Mégse = marad)
+    const sok = Array.from({length: max}, (_, i) => sp('Teszt ' + i, 1));
+    lap([...sok, sp('Bane', 1, false)]); kclick('[data-tab="var"]');
+    has(ktext(), `bekészítve ${max} / ${max}`);
+    let kerdes = ''; K.confirm = m => { kerdes = m; return false; };
+    const m = klog.length; kset('details[data-key="sp:Bane"] [data-act="prep"]', true);
+    has(kerdes, `Már ${max} bekészítve van, ${max} jár. Mégis bekészíted?`); eq(klog.length, m, 'Mégse: nem írt'); ok(!kq('details[data-key="sp:Bane"] [data-act="prep"]').checked);
+    K.confirm = () => true; kset('details[data-key="sp:Bane"] [data-act="prep"]', true);
+    eq(lastUpdate().spells.find(x => x.name === 'Bane').prepared, true);
+    lap([...sok, sp('Bane', 1)]); kclick('[data-tab="var"]');
+    has(kq('.keretwarn').textContent, `Több varázslat van bekészítve, mint amennyi jár: ${max + 1} / ${max}`);
+    // DM statblokk
+    const t = W.sheetToCreature(K.eval('sheets.get("p1")'), {kind: 'pc'}).traits.find(x => x.name === 'Varázslatok').text;
+    has(t, `bekészítve ${max + 1}/${max} ⚠`);
+    // levétel kérdés nélkül
+    kerdes = ''; K.confirm = m => { kerdes = m; return true; }; kset('details[data-key="sp:Bane"] [data-act="prep"]', false); eq(kerdes, '');
+    // a keresőből (＋) a cantrip a kereten felül: rákérdez
+    kclick('[data-tab="var"]'); kerdes = ''; K.confirm = m => { kerdes = m; return false; };
+    const c0 = rb.spells.find(x => !x.l && (x.cl || []).includes('Cleric'));
+    ok(c0, 'van Cleric cantrip a mintában');
+    {
+      const cmax = K.eval('sheets.get("p1")').cache.spells[0].cantrips || 0;
+      K.eval(`sheets.get("p1").spells.push(...Array.from({length: ${cmax}}, (_, i) => ({name: 'C' + i, level: 0, prepared: true})))`);
+      const m2 = klog.length; K.eval('LAP_AKCIOK.spellAdd')({dataset: {ref: K.eval('H.refOf')(c0)}}, K.eval('sheets.get("p1")'));
+      has(kerdes, 'cantrip van'); has(kerdes, 'hozzáadod'); eq(klog.length, m2, 'Mégse: nem vette fel');
+    }
+    // kézi lapon a régi felirat
+    openSheet({spells: [sp('Bless', 1)]}); kclick('[data-tab="var"]'); has(ktext(), '(1 bekészítve)'); ok(!kq('.keretwarn'));
+  });
   ktest('beágyazva (?beagyazva=1, TERV-fejlesztesek-2026-11-21.md, 3. lépés): nincs fejléc és ‹ Vissza, lap nélkül nincs lap-lista; a lap ugyanaz', async () => {
     try {
       K.eval('beagyazva = true; document.documentElement.dataset.beagyazva = "1"');

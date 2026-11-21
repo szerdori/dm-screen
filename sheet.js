@@ -8,7 +8,7 @@ window.Sheet = (() => {
   const ADAT = window.SheetAdat || {};
   const FORMAT = 'dmscreen-karakter';
   // a sheet.js változata: az oldalak ezzel ellenőrzik, hogy nem a böngésző régi, gyorsítótárazott példányát kapták (kozos.js: modul, elteroModulok)
-  const VERSION = 29;
+  const VERSION = 30;
   const ABIL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   const ABIL_FULL = {str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma'};
   const SKILLS = {acrobatics: 'dex', 'animal-handling': 'wis', arcana: 'int', athletics: 'str', deception: 'cha', history: 'int', insight: 'wis', intimidation: 'cha', investigation: 'int', medicine: 'wis', nature: 'int', perception: 'wis', performance: 'cha', persuasion: 'cha', religion: 'int', 'sleight-of-hand': 'dex', stealth: 'dex', survival: 'wis'};
@@ -145,7 +145,7 @@ window.Sheet = (() => {
     const nums = (o, keys) => Object.fromEntries(keys.filter(k => isObj(o) && o[k] != null && o[k] !== '').map(k => [k, int(o[k], 0, -50, 99)]));
     const sp = isObj(c.spell) ? nums(c.spell, ['dc', 'atk']) : null;
     // spells: varázslás osztályonként (multiclass: DC, attack, bekészíthető szám); atk: támadás akciónként (Extra Attack) – TERV-multiclass.md
-    const spells = arr(c.spells, 13).filter(isObj).map(x => ({cls: str(x.cls, 60).trim(), ab: ABIL.includes(x.ab) ? x.ab : '', ...nums(x, ['dc', 'atk', 'prep'])})).filter(x => x.cls && 'dc' in x && 'atk' in x);
+    const spells = arr(c.spells, 13).filter(isObj).map(x => ({cls: str(x.cls, 60).trim(), ab: ABIL.includes(x.ab) ? x.ab : '', ...nums(x, ['dc', 'atk', 'prep']), ...Object.fromEntries(['known', 'cantrips'].filter(k => int(x[k], 0, 0, 99) > 0).map(k => [k, int(x[k], 0, 0, 99)]))})).filter(x => x.cls && 'dc' in x && 'atk' in x);
     return {saves: nums(c.saves, ABIL), skills: nums(c.skills, Object.keys(SKILLS)), passive: nums(c.passive, ['perception', 'investigation', 'insight']),
       spell: sp && 'dc' in sp && 'atk' in sp ? sp : null, spells, atk: int(c.atk, 1, 1, 4)};
   }
@@ -289,6 +289,20 @@ window.Sheet = (() => {
   const spellAtk = s => { if (s.auto && s.cache?.spell) return s.cache.spell.atk; const a = spellAbility(s); return a ? pb(s) + mod(s.abilities[a]) : null; };
   // varázslás osztályonként: motoros lapon a cache-ből (multiclassnál több sor), különben egy sor a lap varázsképességével (cls: '')
   const spellCasts = s => s.auto && s.cache?.spells?.length ? s.cache.spells : spellAbility(s) ? [{cls: '', ab: spellAbility(s), dc: spellDc(s), atk: spellAtk(s)}] : [];
+  // a varázslatok kerete osztályonként (TERV-oldalpanel-bekeszites.md, 2. lépés), csak motoros lapon (a cache-ből; kézi lapon []):
+  // {cls, prep, known, cantrip: {n, max} | null, tul: [{mit: 'prep' | 'known' | 'cantrip', n, max}]}. A mindig bekészített (domain, oath, faji, feat) nem számít bele;
+  // egy varázsló osztálynál az osztály nélküli varázslat is az övé, multiclassnál a varázslat osztálya (cls) dönt.
+  function varazslatKeret(s) {
+    const casts = s.auto && s.cache?.spells?.length ? s.cache.spells : [];
+    return casts.map(c => {
+      const sajat = s.spells.filter(sp => !sp.always && (sp.cls ? sp.cls === c.cls : casts.length === 1));
+      const db = (n, max) => max ? {n, max} : null;
+      const k = {cls: c.cls, prep: db(sajat.filter(sp => sp.level && sp.prepared).length, c.prep), known: db(sajat.filter(sp => sp.level && !sp.book && !(c.cls === 'Warlock' && sp.level > 5)).length, c.known),  // a Mystic Arcanum (6–9.) nem ismert varázslat
+        cantrip: db(sajat.filter(sp => !sp.level).length, c.cantrips)};
+      k.tul = ['prep', 'known', 'cantrip'].filter(m => k[m] && k[m].n > k[m].max).map(m => ({mit: m, ...k[m]}));
+      return k;
+    });
+  }
   // ---------- a varázslat sora a telefonos lapon (TERV-fejlesztesek-2026-11.md, 1. lépés): mentő, cantrip-kocka, darabszám, sebzésbónusz ----------
   // a leírás szövegéből (a szabálykönyv újratöltése nélkül); ami nem olvasható ki, az üres – akkor a régi működés marad
   // csak a célpont mentője: egyes szám (a „… saving throws” előny vagy jártasság), és nem fix DC („DC 15 Intelligence saving throw”: a varázsló saját mentője)
@@ -967,6 +981,8 @@ window.Sheet = (() => {
   // szintlépéskor töltődik vissza; a calc nem tudja (az aranyminták nem változnak), a lapra írás teszi hozzá
   const INSPIRATION = 'Inspiration';
   const inspiration = (s, list) => { const max = s.ov?.['res:' + INSPIRATION] ?? 1; return max > 0 && !list.some(r => r.name.toLowerCase() === INSPIRATION.toLowerCase()) ? [{name: INSPIRATION, max, reset: 'level'}] : []; };
+  // az ismert varázslatok és a cantripek száma osztályonként (a választási helyekből; TERV-oldalpanel-bekeszites.md, 2. lépés) – csak a nem 0 kerül a cache-be
+  const helyKeret = (c, cls) => { const n = k => (c.choices || []).find(x => x.key === cls + ':' + k)?.n || 0; return {...(n('known') ? {known: n('known')} : {}), ...(n('cantrips') ? {cantrips: n('cantrips')} : {})}; };
   function materialize(s, c) {
     const skillProf = Object.fromEntries(Object.entries(c.skills).filter(([, x]) => x.prof >= 1).map(([k, x]) => [k, x.prof]));
     const abilities = Object.fromEntries(ABIL.map(a => [a, c.abilities[a].v]));
@@ -980,7 +996,7 @@ window.Sheet = (() => {
         pact: {level: c.pact.level, max: c.pact.max, used: Math.min(sc.pact.used, c.pact.max)}},
       cache: {saves: Object.fromEntries(ABIL.map(a => [a, c.saves[a].v])), skills: Object.fromEntries(Object.keys(SKILLS).map(k => [k, c.skills[k].v])),
         passive: c.passive, spell: cast ? {dc: cast.dc, atk: cast.atk} : null,
-        spells: c.casting.map(x => ({cls: x.cls, ab: x.ab, dc: x.dc, atk: x.atk, prep: x.prepared})), atk: c.attacksPerAction}
+        spells: c.casting.map(x => ({cls: x.cls, ab: x.ab, dc: x.dc, atk: x.atk, prep: x.prepared, ...helyKeret(c, x.cls)})), atk: c.attacksPerAction}
     };
     if (c.full) {
       // a számolt tételek (auto) cserélődnek, a saját tételek maradnak; az azonos nevű saját tétel kiesik (átállításkor ne legyen kétszer)
@@ -1988,7 +2004,7 @@ window.Sheet = (() => {
 
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, SKILL_INFO, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
-    spellAbility, spellDc, spellAtk, spellCasts, spellSave, spellCastOf, cantripKocka, cantripDarab, spellDmgBonus, spellBonuszok, spellGyogyit, condLeiras, COND_INFO, resLeiras, resKapcsolt, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
+    spellAbility, spellDc, spellAtk, spellCasts, varazslatKeret, spellSave, spellCastOf, cantripKocka, cantripDarab, spellDmgBonus, spellBonuszok, spellGyogyit, condLeiras, COND_INFO, resLeiras, resKapcsolt, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, mcCheck, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seMod, seAr, seBolt, seAranyDob, seKosar, seEredmeny,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,

@@ -193,6 +193,15 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     ok(!f.log.some(l => /sheets\//.test(l)), 'nem írt a lapokra: ' + f.log);
     W.eval('selected = null'); W.render();
   });
+  test('⚠ varázslatok jelvény (TERV-oldalpanel-bekeszites.md, 2. lépés): ha több varázslat van bekészítve, mint amennyi jár, a Könyvtár / Csapat jelvénye mellett', async () => {
+    const cache = {spells: [{cls: 'Cleric', ab: 'wis', dc: 13, atk: 5, prep: 1}], atk: 1};
+    await loadWith({'sheets/p1': sheetDoc({auto: true, build: {levels: [], spells: {}}, cache, spells: [{name: 'Bless', level: 1, prepared: true}, {name: 'Bane', level: 1, prepared: true}]})});
+    W.eval(`SHEETS.p1 = Sheet.norm({...SHEETS.p1, auto: true, cache: ${JSON.stringify(cache)}})`);
+    const j = W.lapJelveny('p1');
+    has(j, '⚠ varázslatok'); has(j, 'Cleric: bekészítve 2 / 1');
+    W.eval(`SHEETS.p1 = Sheet.norm({...SHEETS.p1, spells: [{name: 'Bless', level: 1, prepared: true}]})`);
+    ok(!W.lapJelveny('p1').includes('⚠ varázslatok'), 'kereten belül nincs');
+  });
   test('＋ Inspiration a Csapat nézetben (TERV-fejlesztesek-2026-11-21.md, 7. lépés): elhasználtat visszaad, hiányzót felvesz, megvan: csak jelzi; a lapra ír', async () => {
     const f = await loadWith({'sheets/p1': sheetDoc({resources: [{name: 'Inspiration', max: 1, used: 1, reset: 'level'}, {name: 'Ki', max: 2, used: 1, reset: 'short'}]})});
     W.setPartyMember('p1', true); W.openParty();

@@ -1,7 +1,7 @@
 // Zsákmány és Csapat nézet ablaka (felület): rajzolás, rendezés, keresés, csapatdobás.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('ablakok', N) és az index.html-ben az ablakok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('ablakok', 6);
+modul('ablakok', 7);
 
 // ---------- zsákmány (megjelenítés) ----------
 function openLoot() {
@@ -78,8 +78,11 @@ const LAP_JELVENY = {
 };
 function lapJelveny(id) {
   const k = lapAllapot(id), [cim, tip] = LAP_JELVENY[k], gazda = SHEETS[id]?.deleted?.owner;
-  return `<span class="lapjel" data-lapjel="${k}" title="${esc(tip)}">${esc(cim)}${gazda ? ` (${esc(gazda)})` : ''}</span>`;
+  // ⚠ ha több varázslat van bekészítve / ismert / cantrip, mint amennyi jár (TERV-oldalpanel-bekeszites.md, 2. lépés)
+  const s = SHEETS[id], tul = s && !s.deleted ? Sheet.varazslatKeret(s).flatMap(x => x.tul.map(t => `${x.cls}: ${VARAZS_TUL_HU[t.mit]} ${t.n} / ${t.max}`)) : [];
+  return `<span class="lapjel" data-lapjel="${k}" title="${esc(tip)}">${esc(cim)}${gazda ? ` (${esc(gazda)})` : ''}</span>${tul.length ? ` <span class="lapjel" data-varazstul="1" title="${esc('Több varázslat, mint amennyi jár – ' + tul.join('; '))}">⚠ varázslatok</span>` : ''}`;
 }
+const VARAZS_TUL_HU = {prep: 'bekészítve', known: 'ismert', cantrip: 'cantrip'};
 // szintlépés-engedély egy lappal rendelkező játékosnak: ⬆ = +1 szint, ✕ = visszavonás; a felirat mutatja, hányadik szintre vár
 function szintlepesGomb(id, hol) {
   const a = szintlepesAllas(id);

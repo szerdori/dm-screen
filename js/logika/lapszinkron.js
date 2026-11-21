@@ -1,7 +1,7 @@
 // Telefonos karakterlapok szinkronja (logika, DOM nélkül): lap ↔ könyvtári lény és harcbeli példány, shadow-összevetéssel (SZERZODES.md).
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('lapszinkron', N) és az index.html-ben a lapszinkron.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lapszinkron', 17);
+modul('lapszinkron', 18);
 
 // ---------- telefonos karakterlapok (sheets/{könyvtár-id}, formátum: sheet.js) ----------
 // A lap a játékosé: a telefonján írja, a DM Screen élőben figyeli, és a könyvtári lényt + a harcban lévő példányát frissíti belőle.
@@ -42,7 +42,10 @@ function sheetToCreature(s, base) {
     // a szinten belül ábécérendben (TERV-fejlesztesek-2026-11-21.md, 5. lépés)
     const casts = H.spellCasts(s), by = {};
     [...s.spells].sort((a, b) => a.name.localeCompare(b.name, 'en', {sensitivity: 'base'})).forEach(sp => (by[sp.level] = by[sp.level] || []).push(sp.name + (sp.level && !sp.prepared && !sp.always ? ' (nincs bekészítve)' : '')));
-    traits.unshift({name: 'Varázslatok', text: [casts.map(c => `${casts.length > 1 ? c.cls + ': ' : ''}spell save DC ${c.dc}, ${sgn(c.atk)} to hit${ABIL.includes(c.ab) ? `, ${c.ab.toUpperCase()} ${sgn(mod(s.abilities[c.ab]))}` : ''}`).join('; '),
+    // a keret (bekészítve / ismert / cantrip, ⚠ ha több; TERV-oldalpanel-bekeszites.md, 2. lépés)
+    const keret = H.varazslatKeret(s), KH = {prep: 'bekészítve', known: 'ismert', cantrip: 'cantrip'};
+    const keretSz = cls => { const k = keret.find(x => x.cls === cls); return k ? ['prep', 'known', 'cantrip'].filter(m => k[m]).map(m => `, ${KH[m]} ${k[m].n}/${k[m].max}${k[m].n > k[m].max ? ' ⚠' : ''}`).join('') : ''; };
+    traits.unshift({name: 'Varázslatok', text: [casts.map(c => `${casts.length > 1 ? c.cls + ': ' : ''}spell save DC ${c.dc}, ${sgn(c.atk)} to hit${ABIL.includes(c.ab) ? `, ${c.ab.toUpperCase()} ${sgn(mod(s.abilities[c.ab]))}` : ''}${keretSz(c.cls)}`).join('; '),
       ...Object.keys(by).sort((a, b) => a - b).map(l => `${l == 0 ? 'Cantrips' : ordinal(+l) + ' level'}: ${by[l].join(', ')}`)].filter(Boolean).join('\n')});
   }
   // az AC és a speed az aktív hatásokkal (Mage Armor, Haste, Grappled…) együtt; a hatások a lap állapotai között vannak

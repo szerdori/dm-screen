@@ -150,7 +150,7 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 .form .w2{grid-column:span 2} .form .w4{grid-column:1/-1} .form [hidden]{display:none}
 .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .hint{font-size:12px;color:var(--muted)}
-.lapjel{white-space:nowrap} .lapjel[data-lapjel=kezi],.lapjel[data-lapjel=elter]{color:var(--orange)} .lapjel[data-lapjel=torolt]{color:var(--red)}
+.lapjel{white-space:nowrap} .lapjel[data-lapjel=kezi],.lapjel[data-lapjel=elter]{color:var(--orange)} .lapjel[data-lapjel=torolt]{color:var(--red)} .lapjel[data-varazstul]{color:var(--orange)}
 @media (max-width:1200px){#side{width:340px;min-width:300px}}
 .kbd{border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:11px}
 .av{width:30px;height:30px;border-radius:50%;object-fit:cover;flex:none;border:1px solid var(--line);background:var(--panel2)}
@@ -207,11 +207,11 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 // a közös fájlok várt változata (= a lenti <script src> ?v= száma); a verzióőr (regiFajl) ezzel veti össze a betöltött fájlokat:
 // régi, gyorsítótárazott példánynál a lapokra nem írunk (syncSheets). A fájlok előtt áll, hogy induláskor már meglegyen.
 // Új fájl vagy verzióemelés: a fájlban modul('név', N), itt és a <script src>-ben ugyanaz az N (teszt nézi).
-const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 10, tar: 5, alap: 2, leiras: 2, harc: 5, nehezseg: 2, loot: 1, csapat: 2, 'import-5etools': 2, 'import-ddb': 2, 'import-json': 2, szabalykonyv: 7, lapszinkron: 17, dobaskeres: 1, mentes: 4, konyvtar: 1, felszereles: 2, 'veletlen-build': 1, harcter: 5, 'jatekos-kepernyo': 2, modal: 2, 'konyvtar-ablak': 9, 'felszereles-ablak': 2, 'veletlen-ablak': 1, szerkeszto: 6, ablakok: 6, akciok: 13, indulas: 5};
+const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 30, szerzodes: 10, tar: 5, alap: 2, leiras: 2, harc: 5, nehezseg: 2, loot: 1, csapat: 2, 'import-5etools': 2, 'import-ddb': 2, 'import-json': 2, szabalykonyv: 7, lapszinkron: 18, dobaskeres: 1, mentes: 4, konyvtar: 1, felszereles: 2, 'veletlen-build': 1, harcter: 5, 'jatekos-kepernyo': 2, modal: 2, 'konyvtar-ablak': 9, 'felszereles-ablak': 2, 'veletlen-ablak': 1, szerkeszto: 6, ablakok: 7, akciok: 13, indulas: 5};
 </script>
 <script src="kozos.js?v=4"></script>
 <script src="sheet-adat.js?v=2"></script>
-<script src="sheet.js?v=29"></script>
+<script src="sheet.js?v=30"></script>
 <script src="szerzodes.js?v=10"></script>
 <script src="js/adat/tar.js?v=5"></script>
 <script src="js/logika/alap.js?v=2"></script>
@@ -224,7 +224,7 @@ const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 10, tar: 
 <script src="js/logika/import-ddb.js?v=2"></script>
 <script src="js/logika/import-json.js?v=2"></script>
 <script src="js/logika/szabalykonyv.js?v=7"></script>
-<script src="js/logika/lapszinkron.js?v=17"></script>
+<script src="js/logika/lapszinkron.js?v=18"></script>
 <script src="js/logika/dobaskeres.js?v=1"></script>
 <script src="js/logika/mentes.js?v=4"></script>
 <script src="js/logika/konyvtar.js?v=1"></script>
@@ -237,7 +237,7 @@ const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 10, tar: 
 <script src="js/felulet/felszereles-ablak.js?v=2"></script>
 <script src="js/felulet/veletlen-ablak.js?v=1"></script>
 <script src="js/felulet/szerkeszto.js?v=6"></script>
-<script src="js/felulet/ablakok.js?v=6"></script>
+<script src="js/felulet/ablakok.js?v=7"></script>
 <script src="js/felulet/akciok.js?v=13"></script>
 <script src="js/indulas.js?v=5"></script>
 
