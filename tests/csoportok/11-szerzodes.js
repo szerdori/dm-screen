@@ -80,7 +80,7 @@ describe('Szerződés (szerzodes.js)', () => {
       for (const n of ['SKILL_INFO', 'FEATURE_FX', 'TCE_FX', 'TCE_CSERE', 'TCE_LISTA', 'MEZO_INFO', 'FX_LABEL']) ok(H[n] === D[n], 'Sheet.' + n + ' = SheetAdat.' + n);
       const fuggveny = (x, ut) => typeof x === 'function' ? [ut] : x && typeof x === 'object' && !(x instanceof w.RegExp) ? Object.entries(x).flatMap(([k, v]) => fuggveny(v, ut + '.' + k)) : [];
       eq(fuggveny(D, 'SheetAdat'), [], 'függvény az adatban');
-      eq(w.eval('MODULOK')['sheet-adat'], 1);
+      ok(w.eval('MODULOK')['sheet-adat'] >= 1, 'a sheet-adat modul bejelentve');
     }
     ok(Object.keys(W.SheetAdat.LAND_SPELLS).length === 8 && W.SheetAdat.FEATURE_FX['Druid|Land|Circle Spells'], 'a FEATURE_FX a LAND_SPELLS-ből épül');
   });

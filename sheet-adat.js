@@ -209,6 +209,15 @@ window.SheetAdat = (() => {
     feat: mezo('Saját jellemző', 'Ami nincs a szabálykönyvben: homebrew jellemző, vagy egy választásod. A program nem számol belőle, csak kiírja.', 'Név és leírás bármilyen szöveg, de a név ne egyezzen egy számolt jellemző nevével, mert akkor az újraszámoláskor eltűnik. Honnan: a forrás rövid neve.', 'Név: Kedvelt ellenfél · Leírás: undead · Honnan: Ranger 1')
   };
 
-  return {SKILL_INFO, FX_LABEL, LAND_SPELLS, FEATURE_FX, RB_FX_OFF, TCE_LISTA, TCE_CSERE, TCE_KOVET, TCE_FX, BUILD_HELY, SAJAT_JARTASSAG, SAJAT_JELLEMZO, KEZI_INFO, MEZO_INFO};
+  // a varázslat sebzéséhez járó állandó bónusz feature-ből (TERV-fejlesztesek-2026-11-21.md, 2. lépés; PHB 2014), a lap jellemzőinek neve szerint:
+  // spell: csak ez a varázslat; cantrip: csak cantrip; osztaly: csak ennek az osztálynak a varázslata; iskola: csak ilyen iskolájú; ab: a hozzáadott módosító
+  // (az Elemental Affinity a felhasználó döntése szerint kimarad: a lap nem tudja a sárkány sebzéstípusát)
+  const VARAZS_BONUSZ = [
+    {nev: 'Agonizing Blast', spell: 'eldritch blast', ab: 'cha'},          // PHB 110. o.
+    {nev: 'Potent Spellcasting', cantrip: true, osztaly: 'Cleric', ab: 'wis'},  // PHB 59–63. o. (Knowledge, Light, Trickery Domain 8.)
+    {nev: 'Empowered Evocation', iskola: 'evocation', osztaly: 'Wizard', ab: 'int'}  // PHB 117. o.
+  ];
+
+  return {VARAZS_BONUSZ, SKILL_INFO, FX_LABEL, LAND_SPELLS, FEATURE_FX, RB_FX_OFF, TCE_LISTA, TCE_CSERE, TCE_KOVET, TCE_FX, BUILD_HELY, SAJAT_JARTASSAG, SAJAT_JELLEMZO, KEZI_INFO, MEZO_INFO};
 })();
-if (typeof modul === 'function') modul('sheet-adat', 1);
+if (typeof modul === 'function') modul('sheet-adat', 2);

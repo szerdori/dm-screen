@@ -135,17 +135,18 @@ function spellDobasok(sp, r, s) {
   let kocka = diceOf(tx);
   const szintes = kocka && !sp.level ? H.cantripKocka(tx, lvl) : '';
   if (szintes) kocka = kocka.replace(/^\d*d\d+/i, szintes);
-  const bon = kocka ? H.spellDmgBonus(s, sp.name) : null;
-  if (bon?.v) kocka += H.sgn(bon.v);
-  return {kocka, bon, darab: sp.level ? 1 : H.cantripDarab(tx, lvl), cast,
+  // a kocka állandó bónuszai (TERV-fejlesztesek-2026-11-21.md, 2. lépés): a leírás „+ your spellcasting ability modifier”-e és a feature-ök; a 0 nem látszik
+  const bon = kocka ? H.spellBonuszok(s, sp, r).filter(b => b.v) : [], ossz = bon.reduce((t, b) => t + b.v, 0);
+  if (ossz) kocka += H.sgn(ossz);
+  return {kocka, bon, gyogy: !!kocka && H.spellGyogyit(tx), darab: sp.level ? 1 : H.cantripDarab(tx, lvl), cast,
     atk: !!cast && (!!r?.atk || /\bspell attack\b/i.test(tx)), mento: cast ? H.spellSave(tx) : ''};
 }
 function spellRow(sp, i, ed, s) {
   const r = rbSpell(sp), d = spellDobasok(sp, r, s);
-  const info = [r ? H.spellLine(r) : '', d.mento ? `${d.mento.toUpperCase()} ${d.cast.dc}` : '', d.bon?.v ? `${d.bon.src}: ${H.sgn(d.bon.v)}` : '', sp.always ? 'mindig bekészítve' : '', sp.note];
+  const info = [r ? H.spellLine(r) : '', d.mento ? `${d.mento.toUpperCase()} ${d.cast.dc}` : '', d.gyogy ? 'gyógyítás' : '', ...d.bon.map(b => `${b.src}: ${H.sgn(b.v)}`), sp.always ? 'mindig bekészítve' : '', sp.note];
   const sum = `${sp.level ? `<input type="checkbox" data-act="prep" data-i="${i}" ${sp.prepared || sp.always ? 'checked' : ''} ${sp.always || !ed ? 'disabled' : ''} title="Bekészítve">` : ''}
     <span class="nm"><b>${esc(sp.name)}${d.darab > 1 ? ` <span class="hint">(×${d.darab})</span>` : ''}</b><small>${esc(info.filter(Boolean).join(' · '))}</small></span>
-    ${d.atk ? rollBtn(d.cast.atk, sp.name + ' – spell attack', undefined, 'atk') : ''}${d.kocka ? dmgBtn(d.kocka, sp.name, '', H.dmgType(r.tx) ? {dt: H.dmgType(r.tx), dk: varazsFajta(r.tx)} : {}) : ''}${ed && sp.level ? `<button class="small cast ${castOpen === i ? 'on' : ''}" data-act="castOpen" data-i="${i}">✨ Cast</button>`
+    ${d.atk ? rollBtn(d.cast.atk, sp.name + ' – spell attack', undefined, 'atk') : ''}${d.kocka ? dmgBtn(d.kocka, sp.name + (d.gyogy ? ' – gyógyítás' : ''), '', !d.gyogy && H.dmgType(r.tx) ? {dt: H.dmgType(r.tx), dk: varazsFajta(r.tx)} : {}) : ''}${ed && sp.level ? `<button class="small cast ${castOpen === i ? 'on' : ''}" data-act="castOpen" data-i="${i}">✨ Cast</button>`
       : ed && (r?.k || H.effectOf(sp.name)) ? `<button class="small cast" data-act="cast" data-i="${i}" data-how="0">✨ Cast</button>` : ''}${r?.k ? '<span class="hint" title="koncentráció">🌀</span>' : ''}`;
   const ch = ed && sp.level && castOpen === i ? castChoices(s, sp, r) : null;
   const pick = ch ? `<div class="row castpick">${ch.map(c => `<button class="small" data-act="cast" data-i="${i}" data-how="${esc(c.how)}">${esc(c.text)}</button>`).join('')

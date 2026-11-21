@@ -48,7 +48,7 @@ A varázslat sorának sebzésgombja (`spellDobasok` → `dmgBtn`, `js/lap/lap-ra
    - **Szövegből:** ha a kocka után „+ your spellcasting ability modifier” áll, a varázslat osztályának módosítója (`spellCastOf(s, sp).ab`; multiclassnál a varázslat osztályáé). Forrás: „WIS-módosító”.
    - **Feature-ből** (név szerint a lap jellemzői között, mint az Agonizing Blastnál, így motoros, kézi és D&D Beyond-os lapon is): Agonizing Blast (marad), Potent Spellcasting (csak Cleric cantrip), Empowered Evocation (csak evocation iskolájú varázslat; a szabálykönyvben van iskola), Elemental Affinity (csak ha a sebzéstípus egyezik – a típust a lap nem tárolja, lásd 3. nyitott kérdés).
    - A szabályok egy kis táblában a `sheet-adat.js`-ben (`VARAZS_BONUSZ`), hogy később bővíthető legyen.
-2. **Megjelenítés:** a gomb felirata a teljes kifejezés (pl. `1d4+4`), a kis szövegben a forrás: „+4 WIS (Healing Word)”, „Potent Spellcasting: +4”. A napló sora is a teljes kifejezést mutatja („Healing Word: 1d4+4 = 7”).
+2. **Megjelenítés:** a gomb felirata a teljes kifejezés (pl. `1d4+4`), a kis szövegben a forrás: „WIS-módosító: +4”, „Potent Spellcasting: +4”. A napló sora is a teljes kifejezést mutatja („Healing Word: 1d4+4 = 7”).
 3. **Gyógyító varázslat** (Healing Word, Cure Wounds): a gomb ne kapjon sebzéstípust és flavour textet (most a `H.dmgType(r.tx)` üres, így nem kap – teszttel rögzíteni). Javaslat: a gyógyításnál a gomb címkéje „gyógyítás” (4. nyitott kérdés).
 4. A DM Screen statblokkjában nincs varázslat-sebzés, ott nincs teendő (a 3. lépés után a telefonos nézet ezt is mutatja).
 

@@ -753,6 +753,52 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="var"]');
     eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk, r('Teszt Láng').dmg], ['2d10', '6', '2d8']); has(r('Teszt Láng').t, 'DEX 13');
   });
+  ktest('varázsképesség-módosító a sebzésben (TERV-fejlesztesek-2026-11-21.md, 2. lépés): a leírás „+ your spellcasting ability modifier”-e, Potent Spellcasting, Empowered Evocation; gyógyítás flavour nélkül', () => {
+    const rb = rbVarazs(), sp = (n, l, sc, cl, tx) => ({n, s: 'PHB', l, sc, cl, tx});
+    // szintetikus szövegek (nem a PHB-é), csak a felismert minták
+    rb.spells.push(sp('Teszt Gyógyszó', 1, 'evocation', ['Cleric', 'Bard'], 'A creature of your choice regains hit points equal to 1d4 + your spellcasting ability modifier.'),
+      sp('Teszt Seb', 1, 'evocation', ['Cleric'], 'A creature you touch regains a number of hit points equal to 1d8 + your spellcasting ability modifier.'),
+      sp('Teszt Fegyver', 2, 'evocation', ['Cleric'], 'Make a melee spell attack. On a hit, the target takes force damage equal to 1d8 + your spellcasting ability modifier.'),
+      sp('Teszt Szent Láng', 0, 'evocation', ['Cleric'], 'The target must succeed on a Dexterity saving throw or take 1d8 radiant damage. Grows when you reach 5th level (2d8), 11th level (3d8), and 17th level (4d8).'),
+      sp('Teszt Tűzgolyó', 3, 'evocation', ['Wizard', 'Sorcerer'], 'Each creature must make a Dexterity saving throw. A target takes 8d6 fire damage on a failed save.'),
+      sp('Teszt Bűbáj', 1, 'enchantment', ['Wizard'], 'The target takes 3d6 psychic damage.'),
+      sp('Teszt Ismeretlen', 1, 'evocation', ['Cleric'], 'The target regains hit points equal to 1d6 + your favourite number.'));
+    K.KApp.setRulebook({version: 'v', rb});
+    const ab = (wis, int = 10) => ({str: 10, dex: 10, con: 10, int, wis, cha: 10});
+    const lap = (extra) => { openSheet({spellcasting: {ability: '', slots: [4, 3, 3], used: [], pact: {level: 0, max: 0, used: 0}}, ...extra}); kclick('[data-tab="var"]'); };
+    const sor = n => kqa('details').find(d => d.dataset.key === 'sp:' + n).querySelector('summary');
+    const r = n => { const e = sor(n), b = e.querySelector('[data-act="dmg"]'); return {t: e.querySelector('.nm').textContent, dmg: b?.dataset.expr, label: b?.dataset.label, dt: b?.dataset.dt}; };
+    const spells = ns => ns.map(([name, level, cls]) => ({name, level, cls: cls || '', prepared: true}));
+    // Cleric 8 (WIS 18, +4), Potent Spellcasting
+    lap({classes: [{name: 'Cleric', level: 8}], abilities: ab(18), features: [{name: 'Potent Spellcasting', text: ''}],
+      spells: spells([['Teszt Gyógyszó', 1], ['Teszt Seb', 1], ['Teszt Fegyver', 2], ['Teszt Szent Láng', 0], ['Teszt Ismeretlen', 1]])});
+    eq([r('Teszt Gyógyszó').dmg, r('Teszt Seb').dmg, r('Teszt Fegyver').dmg, r('Teszt Szent Láng').dmg], ['1d4+4', '1d8+4', '1d8+4', '2d8+4']);
+    has(r('Teszt Gyógyszó').t, 'WIS-módosító: +4'); has(r('Teszt Gyógyszó').t, 'gyógyítás'); has(r('Teszt Szent Láng').t, 'Potent Spellcasting: +4');
+    eq([r('Teszt Gyógyszó').label, r('Teszt Gyógyszó').dt], ['Teszt Gyógyszó – gyógyítás', '']);
+    eq([r('Teszt Fegyver').label, r('Teszt Fegyver').dt], ['Teszt Fegyver', 'force']);
+    ok(!r('Teszt Fegyver').t.includes('gyógyítás') && !r('Teszt Fegyver').t.includes('Potent'), 'a sebző 2. szintű nem gyógyítás, a Potent csak cantrip');
+    eq(r('Teszt Ismeretlen').dmg, '1d6'); ok(!r('Teszt Ismeretlen').t.includes('undefined'), 'ismeretlen szöveg: nincs bónusz');
+    // a gyógyítás dobása flavour nélkül, a teljes kifejezéssel kerül a lapra
+    K.rnd = () => 3; kclick(sor('Teszt Gyógyszó').querySelector('[data-act="dmg"]'));
+    const d = lastUpdate().rolls[0]; eq([d.label, d.total, 'dt' in d], ['Teszt Gyógyszó – gyógyítás', '7', false]); has(d.detail, '1d4+4');
+    // negatív módosító
+    lap({classes: [{name: 'Cleric', level: 1}], abilities: ab(8), spells: spells([['Teszt Gyógyszó', 1]])});
+    eq(r('Teszt Gyógyszó').dmg, '1d4-1');
+    // multiclass (Cleric 8 / Wizard 10, a varázslat osztályának módosítója): Potent csak a Cleric cantripen, Empowered Evocation csak Wizard evocationön
+    lap({classes: [{name: 'Cleric', level: 8}, {name: 'Wizard', level: 10}], abilities: ab(14, 18), spellcasting: {ability: 'wis', slots: [4, 3, 3], used: [], pact: {level: 0, max: 0, used: 0}},
+      features: [{name: 'Potent Spellcasting', text: ''}, {name: 'Empowered Evocation', text: ''}],
+      spells: spells([['Teszt Szent Láng', 0, 'Cleric'], ['Fire Bolt', 0, 'Wizard'], ['Teszt Tűzgolyó', 3, 'Wizard'], ['Teszt Bűbáj', 1, 'Wizard'], ['Teszt Gyógyszó', 1, 'Cleric']])});
+    has(r('Teszt Szent Láng').t, 'Potent Spellcasting: +2'); ok(!r('Fire Bolt').t.includes('Potent'), 'Wizard-cantrip nem kap Potentet');
+    has(r('Teszt Tűzgolyó').t, 'Empowered Evocation: +4'); eq(r('Teszt Tűzgolyó').dmg, '8d6+4');
+    ok(!r('Teszt Bűbáj').t.includes('Empowered'), 'nem evocation: nincs');
+    // a kézi lap varázsképessége (WIS) helyett multiclassnál is a lap egy sora, kézi lapon az osztály nélküli varázslat: a lap varázsképessége
+    has(r('Teszt Gyógyszó').t, 'WIS-módosító: +2');
+    // a függvény maga: osztály nélküli varázslatnál a szabálykönyv osztálylistája dönt
+    const H = W.Sheet, s = H.norm({...sheetDoc(), classes: [{name: 'Cleric', level: 8}], abilities: ab(18), features: [{name: 'Potent Spellcasting'}]});
+    eq(H.spellBonuszok(s, {name: 'X', level: 0}, {tx: '1d8 radiant damage', cl: ['Wizard']}), []);
+    eq(H.spellBonuszok(s, {name: 'X', level: 0}, {tx: '1d8 radiant damage', cl: ['Cleric']}), [{v: 4, src: 'Potent Spellcasting'}]);
+    eq(H.spellBonuszok(s, {name: 'X', level: 0}, null), []);
+  });
   ktest('ábécérend (TERV-fejlesztesek-2026-11-21.md, 5. lépés): a Varázslat fülön szintenként (multiclassnál osztályonként) név szerint; a gombok a jó varázslatra hatnak; a DM statblokkjában is', () => {
     K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
     const sp = (name, level, cls = '', prepared = false) => ({name, level, cls, prepared});
