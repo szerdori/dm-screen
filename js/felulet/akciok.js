@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 11);
+modul('akciok', 12);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -52,7 +52,15 @@ const AKCIOK = {
       save(); render();
     }
   },
-  rmCond: el => harcMod(el, x => { x.cond.splice(+el.dataset.i, 1); }),
+  // állapot: a címke a leírást nyitja (TERV-fejlesztesek-2026-11-21.md, 1. lépés), az eltávolítás az ablak gombjával
+  condInfo: el => { const x = harcos(el), h = x && condAblak(x, +el.dataset.i); if (h) openModal(h); },
+  condClose: () => closeModal(),
+  condRmAblak: el => {
+    const x = harcos(el), i = +el.dataset.i;
+    closeModal();
+    // közben (pl. a lap szinkronja miatt) változhatott a lista: csak az azonos nevűt veszi le
+    if (x && x.cond[i]?.name === el.dataset.name) { x.cond.splice(i, 1); save(); render(); }
+  },
   leg: el => { const i = +el.dataset.i; harcMod(el, x => { x.leg = x.leg === i + 1 ? i : i + 1; }); },
   addCond: el => {
     const name = $('#condSel').value || $('#condCustom').value.trim();

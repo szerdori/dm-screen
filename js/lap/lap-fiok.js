@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-fiok, a karakter.html része): felugró leírás, Fiók menü, teendők, Felépítés fül, Alapadatok űrlap
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-fiok', N) és a karakter.html-ben a lap-fiok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-fiok', 5);
+modul('lap-fiok', 6);
 
 // ---------- felugró leírás (i gomb): a teendők és a szabad szöveges mezők magyarázata; a szövegek: Sheet.todoInfo, freeInfo (sheet.js), Sheet.MEZO_INFO (a szövege a sheet-adat.js-ben) ----------
 const infoReg = new Map();
@@ -54,8 +54,16 @@ function skillLap(k) {
   const s = cur(), p = s ? H.skillProfOf(s, k) : 0, ab = H.SKILLS[k];
   return {n: H.skillLabel(k), tx: H.SKILL_INFO[k] || '', sor: [`${H.ABIL_FULL[ab]} (${ab.toUpperCase()})`, s ? `bónusz ${sgn(H.skillBonus(s, k))}${p === 2 ? ' · expertise' : p === 1 ? ' · jártas' : p ? ' · Jack of All Trades' : ''}` : ''].filter(Boolean).join(' · ')};
 }
+// állapot / aktív hatás (data-lr="cond", data-ref = a neve, pl. „Poisoned”, „Bless”, „Exhaustion 2”; TERV-fejlesztesek-2026-11-21.md, 1. lépés):
+// a saját magyar összefoglaló, az Exhaustion szintjei, a gépi hatás, alatta a PHB angol szövege – a lap felső sávjából és a Harc fülről
+function condLap(ref) {
+  const c = H.condLeiras(ref, RB());
+  const tx = [c.hu, ...c.szintek.map(x => `${x.l}. szint: ${x.t}`), c.fx ? '✨ Hatás: ' + c.fx : ''].filter(Boolean).join('\n') || 'Saját állapot, nincs leírás.';
+  return {n: c.n, tx, en: c.en};
+}
 function leirasMutat(el) {
   const f = el.dataset.lr, ref = el.dataset.ref || '', d = el.dataset;
+  if (f === 'cond') { condMutat(ref); return; }
   if (!Object.hasOwn(LEIRAS_LISTA, f) && f !== 'sk') return;
   const x = f === 'sk' ? skillLap(ref) : H.byRef(RB()?.[LEIRAS_LISTA[f]] || [], ref), cb = d.chk != null ? chDoboz(d.chk, ref) : null;
   const sor = !x ? '' : f === 'sk' ? x.sor : f === 'sp' ? [H.spellLine(x), (x.cl || []).join(', '), x.s].filter(Boolean).join(' · ') : [x.pre ? 'Feltétel: ' + x.pre : '', x.s].filter(Boolean).join(' · ');
@@ -68,6 +76,14 @@ function leirasMutat(el) {
     ${x?.tx ? `<div class="tx">${esc(x.tx)}</div>` : `<p class="hint">Nincs leírás${f === 'sk' ? '' : ' a szabálykönyvben'}.</p>`}
     ${cb?.disabled ? `<p class="hint">Most nem választható${cb.checked ? ' (korábbi választás, nem cserélhető)' : ''}.</p>` : ''}
     <div class="row" style="justify-content:flex-end;margin-top:10px"><button data-act="infoClose">Bezár</button>${gomb}</div></div>`;
+  p.hidden = false;
+}
+function condMutat(ref) {
+  const x = condLap(ref), p = $('#infoPop');
+  leirasCel = null;
+  p.innerHTML = `<div class="ibox" role="dialog" aria-modal="true" aria-label="${esc(x.n)}"><h3>${esc(x.n)}</h3>
+    <div class="tx">${esc(x.tx)}</div>${x.en ? `<div class="hint" style="margin-top:8px">PHB (angolul):</div><div class="tx">${esc(x.en)}</div>` : ''}
+    <div class="row" style="justify-content:flex-end;margin-top:10px"><button data-act="infoClose">Bezár</button></div></div>`;
   p.hidden = false;
 }
 function leirasValaszt(s) {

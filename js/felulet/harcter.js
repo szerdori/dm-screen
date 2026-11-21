@@ -1,7 +1,7 @@
 // Harctér (felület): a fő képernyő rajzolása – csempék, részletes adatlap, napló és dobáslinkek, nehézség, mentésjelző, belépő-ablak.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('harcter', N) és az index.html-ben a harcter.js?v=N és a VART_MODULOK.
 'use strict';
-modul('harcter', 3);
+modul('harcter', 4);
 
 // ---------- fejléc: mentésjelző, emlékeztető a fájlba mentésre, belépő-ablak ----------
 const setSaveState = t => $('#saveState').textContent = t;
@@ -113,7 +113,7 @@ function tileHtml(x) {
   const hpCls = pct <= 25 ? 'low' : pct <= 50 ? 'mid' : '';
   const tmpPct = x.temp ? Math.min(100, x.temp / max * 100) : 0;
   const chips = (x.conc ? `<span class="chip conc" data-act="toggleConc" title="Koncentráció – kattints a megszüntetéshez">Koncentráció</span>` : '') +
-    x.cond.map((k, i) => `<span class="chip" data-act="rmCond" data-i="${i}" title="Kattints az eltávolításhoz">${esc(k.name)}${k.rounds != null ? ' (' + k.rounds + ')' : ''}</span>`).join('');
+    x.cond.map((k, i) => `<span class="chip" data-act="condInfo" data-i="${i}" title="Kattints a leírásért (onnan veheted le)">${esc(k.name)}${k.rounds != null ? ' (' + k.rounds + ')' : ''}</span>`).join('');
   const atkRows = [], others = [];
   [...c.actions.map(a => [a, '']), ...c.bonusActions.map(a => [a, 'B'])].forEach(([a0, t]) => {
     const a = {...a0, text: lenySablon(c, a0)}, inf = atkInfo(a.name + ' ' + a.text);
@@ -154,6 +154,19 @@ function tileHtml(x) {
     </div>
   </div>`;
 }
+// állapot leírása a csempéről és az oldalpanelről (TERV-fejlesztesek-2026-11-21.md, 1. lépés): név, hátralévő körök, saját magyar összefoglaló,
+// a gépi hatás, a PHB angol szövege (ha a szabálykönyv be van töltve); az eltávolítás innen, az Eltávolítás gombbal
+function condAblak(x, i) {
+  const k = x.cond[i];
+  if (!k) return '';
+  const l = Sheet.condLeiras(k.name, betoltottSzabalykonyv());
+  const tx = [l.hu, ...l.szintek.map(y => `${y.l}. szint: ${y.t}`), l.fx ? '✨ Hatás (a telefonos lapon): ' + l.fx : ''].filter(Boolean).join('\n');
+  return `<div data-cid="${esc(x.cid)}"><h2>${esc(k.name)}</h2>
+    <p class="muted">${esc(nameOf(x))}${k.rounds != null ? ` · még ${esc(k.rounds)} kör` : ''}</p>
+    <p class="condtx">${esc(tx || 'Saját állapot, nincs leírás.')}</p>
+    ${l.en ? `<p class="muted">PHB (angolul):</p><p class="condtx">${esc(l.en)}</p>` : ''}
+    <div class="row" style="justify-content:flex-end;gap:8px"><button data-act="condClose">Bezár</button><button data-act="condRmAblak" data-i="${esc(i)}" data-name="${esc(k.name)}">Eltávolítás</button></div></div>`;
+}
 function statblock(c) {
   const line = (k, v) => v ? `<p class="line"><b>${k}</b> ${linkify(v)}</p>` : '';
   const saves = ABIL.filter(a => c.saves[a] != null).map(a => `${cap(a)} ${sgn(+c.saves[a])}`).join(', ');
@@ -192,13 +205,13 @@ function renderDetail() {
         <label>AC</label><input type="number" data-f="ac" value="${esc(c.ac)}" style="width:52px">
       </div>
       <div class="row">
-        <select id="condSel">${CONDITIONS.map(k => `<option>${k}</option>`).join('')}<option value="">egyéni…</option></select>
+        <select id="condSel">${CONDITIONS.map(k => `<option title="${esc(Sheet.condLeiras(k).hu)}">${k}</option>`).join('')}<option value="">egyéni…</option></select>
         <input id="condCustom" placeholder="egyéni" style="width:90px">
         <input id="condRounds" type="number" min="1" placeholder="kör" title="Hány körig tart (üres = amíg le nem veszed)" style="width:52px">
         <button class="small" data-act="addCond">Állapot +</button>
         <label><input type="checkbox" data-f="conc" ${x.conc ? 'checked' : ''}> Koncentráció</label>
       </div>
-      ${x.cond.length || x.conc ? `<div class="conds">${x.conc ? '<span class="chip conc" data-act="toggleConc">Koncentráció</span>' : ''}${x.cond.map((k, i) => `<span class="chip" data-act="rmCond" data-i="${i}">${esc(k.name)}${k.rounds != null ? ' (' + k.rounds + ')' : ''}</span>`).join('')}</div>` : ''}
+      ${x.cond.length || x.conc ? `<div class="conds">${x.conc ? '<span class="chip conc" data-act="toggleConc">Koncentráció</span>' : ''}${x.cond.map((k, i) => `<span class="chip" data-act="condInfo" data-i="${i}" title="Kattints a leírásért (onnan veheted le)">${esc(k.name)}${k.rounds != null ? ' (' + k.rounds + ')' : ''}</span>`).join('')}</div>` : ''}
       <div class="row">
         <label>Játékosok ezt látják:</label><input data-f="pubName" value="${esc(x.publicName || '')}" placeholder="${esc(nameOf(x))}" title="Ha üres, a valódi nevét látják. Pl. „Csuklyás alak” egy még ismeretlen NPC-nél" style="flex:1">
         <label><input type="checkbox" data-f="hiddenP" ${x.hiddenP ? 'checked' : ''}> rejtett</label>

@@ -38,7 +38,7 @@ function renderSheet(s) {
 // az aktív hatások és állapotok egy sorban a lap tetején (a káros pirossal; a DM által kikapcsolt áthúzva)
 function fxBar(s) {
   const list = [...s.conditions.map(c => ({c, neg: !!H.effectOf(c)?.neg, off: s.effOff.includes(c)})), ...(s.exhaustion ? [{c: 'Exhaustion ' + s.exhaustion, neg: true, off: s.effOff.includes('Exhaustion')}] : [])];
-  return list.length ? `<div class="fxbar">${list.map(x => `<span class="fxchip ${x.neg ? 'neg' : ''} ${x.off ? 'off' : ''}" title="${esc(H.effectOf(x.c)?.text || '')}">${esc(x.c)}</span>`).join('')}</div>` : '';
+  return list.length ? `<div class="fxbar">${list.map(x => `<button type="button" class="fxchip ${x.neg ? 'neg' : ''} ${x.off ? 'off' : ''}" data-act="leiras" data-lr="cond" data-ref="${esc(x.c)}" title="${esc(H.effectOf(x.c)?.text || '')}">${esc(x.c)}</button>`).join('')}</div>` : '';
 }
 // AC az aktív hatásokkal (Mage Armor, Shield…): a fejlécben a név mellett (minden fülön) és az Alapadatok sorában
 function acChip(s) {
@@ -81,9 +81,9 @@ function tabHarc(s, ed) {
   // állapot / aktív hatás: a gépi hatás leírása; a DM kikapcsolhatja (⚙), ilyenkor csak emlékeztető
   const offBtn = key => isDM ? `<button class="small" data-act="effToggle" data-key="${esc(key)}" title="Automatikus hatás be / ki (DM)">⚙ ${s.effOff.includes(key) ? 'ki' : 'be'}</button>` : '';
   const conds = s.conditions.map((c, i) => {
-    const t = RB()?.conditions.find(x => x.n.toLowerCase() === c.toLowerCase()), fx = H.effectOf(c);
+    const t = RB()?.conditions.find(x => x.n.toLowerCase() === c.toLowerCase()), fx = H.effectOf(c), hu = H.condLeiras(c).hu;
     return det('cond:' + c, `<span class="nm"><b>${esc(c)}</b>${fx ? `<small>${s.effOff.includes(c) ? 'automatikus hatás kikapcsolva (DM)' : '✨ ' + esc(fx.text)}</small>` : ''}</span>${fx ? offBtn(c) : ''}${ed ? `<button class="small" data-act="condRm" data-i="${i}">✕</button>` : ''}`,
-      t ? `<div class="tx">${esc(t.tx)}</div>` : '');
+      (hu ? `<div class="tx">${esc(hu)}</div>` : '') + (t ? `<div class="tx">${esc(t.tx)}</div>` : ''));
   }).join('');
   const effNames = Object.keys(H.EFFECTS).filter(n => !H.CONDITIONS.includes(n) && !s.conditions.includes(n));
   return `

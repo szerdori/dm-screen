@@ -176,11 +176,23 @@ describe('Felület', () => {
     stubRnd(10); click('#detail [data-check="str"]'); has(lastLog(), 'Strength próba'); has(lastLog(), '<b>9</b>');
     stubRnd(10); click('#detail [data-save="con"]'); has(lastLog(), 'Constitution mentő'); has(lastLog(), '<b>15</b>');
   });
-  test('adatlap: állapot hozzáadása körszámmal, eltávolítás chip kattintással', () => {
+  test('adatlap: állapot hozzáadása körszámmal; a címke a leírást nyitja (nem töröl), az eltávolítás az ablak gombjával (TERV-fejlesztesek-2026-11-21.md, 1. lépés)', () => {
     const [g] = add(mk()); click('.tile .t-name');
     $('#condSel').value = 'Prone'; $('#condRounds').value = '2'; click('[data-act="addCond"]');
     eq(g.cond, [{name: 'Prone', rounds: 2}]);
-    click('.tile .chip[data-act="rmCond"]'); eq(g.cond, []);
+    ok($('#condSel option[title]').title.length > 10, 'a választóban a leírás a title-ben');
+    click('.tile .chip[data-act="condInfo"]');
+    eq(g.cond, [{name: 'Prone', rounds: 2}], 'a kattintás nem törölt');
+    ok(!$('#modal').hidden); has($('#modalBox').textContent, 'Prone'); has($('#modalBox').textContent, 'még 2 kör'); has($('#modalBox').textContent, 'A földön fekszel');
+    click('#modalBox [data-act="condClose"]'); ok($('#modal').hidden); eq(g.cond.length, 1);
+    // az oldalpanelről is; az Eltávolítás töröl
+    click('#detail .chip[data-act="condInfo"]'); click('#modalBox [data-act="condRmAblak"]');
+    eq(g.cond, []); ok($('#modal').hidden);
+    // egyéni (gonosz) név: nincs befecskendezés, „nincs leírás”; közben megváltozott lista: nem a rossz állapotot törli
+    g.cond.push({name: XSS, rounds: null}, {name: 'Poisoned', rounds: null}); W.render();
+    click('.tile .chip[data-act="condInfo"][data-i="0"]');
+    has($('#modalBox').textContent, 'Saját állapot, nincs leírás'); ok(!W.__xss && !$('#modalBox img'), 'nincs befecskendezés');
+    g.cond.shift(); click('#modalBox [data-act="condRmAblak"]'); eq(g.cond.map(k => k.name), ['Poisoned'], 'a Poisoned megmaradt');
   });
   test('adatlap mezők: initiative, HP, max HP, AC, oldal, álnév, rejtett', () => {
     const [g] = add(mk()); click('.tile .t-name');

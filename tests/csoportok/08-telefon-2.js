@@ -753,6 +753,33 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="var"]');
     eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk, r('Teszt Láng').dmg], ['2d10', '6', '2d8']); has(r('Teszt Láng').t, 'DEX 13');
   });
+  ktest('állapot leírása (TERV-fejlesztesek-2026-11-21.md, 1. lépés): mind a 14 állapotnak és az Exhaustion 1–6. szintjének van szövege; a felső sáv címkéje a felugró ablakot nyitja (magyar + PHB); saját állapot', () => {
+    const H = W.Sheet;
+    for (const c of H.CONDITIONS) ok(H.condLeiras(c).hu.length > 20, c);
+    eq(H.condLeiras('Exhaustion 3').szintek.map(x => x.l), [1, 2, 3]); eq(H.condLeiras('Exhaustion').szintek.length, 6);
+    ok(H.condLeiras('Exhaustion 6').szintek.every(x => x.t), 'egyik szint sem üres');
+    eq([H.condLeiras('poisoned').hu === H.condLeiras('Poisoned').hu, H.condLeiras('__proto__').hu, H.condLeiras('Saját').hu, H.condLeiras(null).n], [true, '', '', '']);
+    eq(H.condLeiras('Bless').fx, '+1d4 a támadásra és a mentőre');
+    const rb = rbVarazs(); rb.conditions = [{n: 'Poisoned', s: 'PHB', tx: 'Synthetic english text.'}];
+    eq(H.condLeiras('Poisoned', rb).en, 'Synthetic english text.');
+    K.KApp.setRulebook({version: 'v', rb});
+    openSheet({conditions: ['Poisoned', 'Bless', XSS], exhaustion: 2});
+    const pop = () => kq('#infoPop'), chip = t => kqa('.fxbar .fxchip').find(b => b.textContent === t);
+    eq(kqa('.fxbar .fxchip').map(b => [b.tagName, b.dataset.act, b.dataset.lr]).slice(0, 1), [['BUTTON', 'leiras', 'cond']]);
+    const m = klog.length;
+    kclick(chip('Poisoned'));
+    eq(klog.length, m, 'nem írt');
+    ok(!pop().hidden); has(pop().textContent, 'Hátrányos a támadásod'); has(pop().textContent, 'PHB (angolul)'); has(pop().textContent, 'Synthetic english text.');
+    ok(!pop().textContent.includes('undefined'), 'nincs undefined');
+    kclick(pop().querySelector('[data-act="infoClose"]')); ok(pop().hidden);
+    kclick(chip('Bless')); has(pop().textContent, '✨ Hatás: +1d4'); ok(!pop().textContent.includes('PHB'), 'a Blessnek nincs PHB-állapotszövege');
+    kclick(chip('Exhaustion 2')); has(pop().textContent, '2. szint: A speeded a felére'); ok(!pop().textContent.includes('3. szint'), 'csak a 2. szintig');
+    kclick(chip(XSS)); has(pop().textContent, 'Saját állapot, nincs leírás.'); ok(!K.__xss && !kq('#infoPop img') && !kq('main img'), 'nincs befecskendezés');
+    // a Harc fül lenyitható sorában is a magyar összefoglaló
+    kclick('[data-tab="harc"]'); has(kq('details[data-key="cond:Poisoned"]').textContent, 'Hátrányos a támadásod');
+    // 320 px-en a sáv nem lóg ki
+    K.frameElement.width = 320; ok(kq('.fxbar').scrollWidth <= kq('.fxbar').clientWidth + 1, 'nem lóg ki');
+  });
   ktest('varázsképesség-módosító a sebzésben (TERV-fejlesztesek-2026-11-21.md, 2. lépés): a leírás „+ your spellcasting ability modifier”-e, Potent Spellcasting, Empowered Evocation; gyógyítás flavour nélkül', () => {
     const rb = rbVarazs(), sp = (n, l, sc, cl, tx) => ({n, s: 'PHB', l, sc, cl, tx});
     // szintetikus szövegek (nem a PHB-é), csak a felismert minták

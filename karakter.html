@@ -91,7 +91,7 @@ h3.sub2{color:var(--muted);font-weight:600}
 .hdbox .row+.row{margin-top:6px}
 .concbar{display:flex;align-items:center;gap:8px;margin:6px 0;padding:6px 10px;border:2px solid var(--blue);border-radius:10px;background:var(--conc-bg);font-size:14px}
 .fxbar{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px}
-.fxchip{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--green);color:var(--green)}
+.fxchip{font-size:12px;font-family:inherit;padding:2px 8px;border-radius:999px;border:1px solid var(--green);color:var(--green);background:none;cursor:pointer}
 .fxchip.neg{border-color:var(--red);color:var(--red)} .fxchip.off{opacity:.5;text-decoration:line-through}
 .chip.fx{border-color:var(--green)}
 button.cast.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
@@ -270,7 +270,7 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on,button[data-act^="ncEq"
 :root[data-meret] button{min-height:44px}
 :root[data-meret] button.small{padding:6px 10px}
 :root[data-meret] .ibtn{width:calc(26px * var(--meret));height:calc(26px * var(--meret));min-width:calc(26px * var(--meret));min-height:0}
-:root[data-meret] .lnk{min-height:0;padding:6px 0}
+:root[data-meret] .lnk{min-height:0;padding:6px 0} :root[data-meret] .fxchip{min-height:0}
 :root[data-meret] .pip{width:calc(24px * var(--meret));height:calc(24px * var(--meret));min-height:0}
 :root[data-meret] input[type=checkbox]{width:28px;height:28px}
 :root[data-meret] .bar,:root[data-meret] .bar.slim{height:auto;min-height:calc(22px * var(--meret))}
@@ -343,7 +343,7 @@ button[data-act^="lu"].on,button[data-act="ncMethod"].on,button[data-act^="ncEq"
 // A lapot a gazdája (és a DM) írja; minden változás mezőnként megy a felhőbe, a DM Screen élőben látja.
 // Minden bejövő adat a Sheet.norm-on megy át, és escape-elve íródik ki: a lapot a játékos írja, és a DM is megnyitja.
 // a közös fájlok várt változata (= a <script src> ?v= száma); eltérésnél (a böngésző régi, gyorsítótárazott példánya) a lap nem írható
-const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 9, 'lap-alap': 1, 'lap-dobas': 1, 'lap-rajz': 8, 'lap-felepites': 3, 'lap-szintlepes': 3, 'lap-ujkarakter': 3, 'lap-elozmenyek': 2, 'lap-fiok': 5, 'lap-iras': 2, 'lap-utvonal': 1, 'lap-gesztus': 1, 'lap-akciok': 4, 'lap-indulas': 1};
+const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 9, 'lap-alap': 1, 'lap-dobas': 1, 'lap-rajz': 8, 'lap-felepites': 3, 'lap-szintlepes': 3, 'lap-ujkarakter': 3, 'lap-elozmenyek': 2, 'lap-fiok': 6, 'lap-iras': 2, 'lap-utvonal': 1, 'lap-gesztus': 1, 'lap-akciok': 4, 'lap-indulas': 1};
 </script>
 <script src="js/lap/lap-alap.js?v=1"></script>
 <script src="js/lap/lap-dobas.js?v=1"></script>
@@ -352,7 +352,7 @@ const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 9, 'lap-a
 <script src="js/lap/lap-szintlepes.js?v=3"></script>
 <script src="js/lap/lap-ujkarakter.js?v=3"></script>
 <script src="js/lap/lap-elozmenyek.js?v=2"></script>
-<script src="js/lap/lap-fiok.js?v=5"></script>
+<script src="js/lap/lap-fiok.js?v=6"></script>
 <script src="js/lap/lap-iras.js?v=2"></script>
 <script src="js/lap/lap-utvonal.js?v=1"></script>
 <script src="js/lap/lap-gesztus.js?v=1"></script>

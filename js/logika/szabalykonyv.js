@@ -1,7 +1,7 @@
 // Szabálykönyv a játékos appnak (logika, DOM nélkül): az 5e.tools adatainak letöltése, átalakítása (fx hatáslisták), feltöltése, és a tárgykeresés.
 // Rétegek: docs/dontesek/0006. Ha változik, amire más fájl támaszkodik: modul('szabalykonyv', N) és az index.html-ben a szabalykonyv.js?v=N és a VART_MODULOK.
 'use strict';
-modul('szabalykonyv', 6);
+modul('szabalykonyv', 7);
 
 // ---------- szabálykönyv a játékos appnak (rules/*) ----------
 // Az 5e.tools-tükörből letölti a PHB / XGE / TCE varázslatait és featjeit, a PHB / DMG / XGE / TCE tárgyait (2024-es könyvek nélkül),
@@ -9,6 +9,8 @@ modul('szabalykonyv', 6);
 const RB_URL = 'https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/';
 const RB_SPELL = ['PHB', 'XGE', 'TCE'], RB_ITEM = ['PHB', 'DMG', 'XGE', 'TCE'], RB_FEAT = ['PHB', 'XGE', 'TCE'];
 let rulebook = null;  // {version, counts, rb}
+// a már betöltött szabálykönyv (a felületnek, pl. az állapot PHB-szövegéhez); nem tölt be, null = még nincs
+const betoltottSzabalykonyv = () => rulebook?.rb || null;
 const rbFetch = async p => { const r = await fetch(RB_URL + p); if (!r.ok) throw new Error(p + ': HTTP ' + r.status); return r.json(); };
 const rbText = e => { try { return entriesToText(e).replace(/\n{3,}/g, '\n\n').trim(); } catch { return ''; } };
 const compact = o => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== '' && v !== 0 && v !== false && v != null && !(Array.isArray(v) && !v.length)));

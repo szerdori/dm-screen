@@ -218,6 +218,27 @@ window.SheetAdat = (() => {
     {nev: 'Empowered Evocation', iskola: 'evocation', osztaly: 'Wizard', ab: 'int'}  // PHB 117. o.
   ];
 
-  return {VARAZS_BONUSZ, SKILL_INFO, FX_LABEL, LAND_SPELLS, FEATURE_FX, RB_FX_OFF, TCE_LISTA, TCE_CSERE, TCE_KOVET, TCE_FX, BUILD_HELY, SAJAT_JARTASSAG, SAJAT_JELLEMZO, KEZI_INFO, MEZO_INFO};
+  // az állapotok rövid magyar összefoglalója (TERV-fejlesztesek-2026-11-21.md, 1. lépés): saját megfogalmazás a PHB 2014 / SRD 5.1 (CC-BY 4.0) Conditions függeléke alapján
+  const COND_INFO = {
+    Blinded: 'Nem látsz: a látást igénylő próbád automatikusan sikertelen. A támadásod hátrányos, a rád irányuló támadás előnyös.',
+    Charmed: 'Nem támadhatod a bűvölődet, és ártó képességgel vagy varázslattal sem célozhatod meg. A bűvölő előnnyel dob a veled szembeni társas próbákra.',
+    Deafened: 'Nem hallasz: a hallást igénylő próbád automatikusan sikertelen.',
+    Frightened: 'Amíg látod a félelmed forrását, hátrányos a próbád és a támadásod, és önszántadból nem mehetsz közelebb hozzá.',
+    Grappled: 'A speeded 0, és semmi sem növeli. Véget ér, ha a megragadó cselekvésképtelen lesz, vagy valami elválaszt tőle (pl. ellökés).',
+    Incapacitated: 'Nem használhatsz akciót és reakciót.',
+    Invisible: 'Varázslat vagy különleges érzék nélkül nem látnak (elrejtőzésnél erősen takartnak számítasz), de a zajod és a nyomaid elárulhatnak. A támadásod előnyös, a rád irányuló hátrányos.',
+    Paralyzed: 'Cselekvésképtelen vagy (Incapacitated), nem mozogsz és nem beszélsz. A STR és DEX mentőd automatikusan sikertelen, a rád irányuló támadás előnyös, és 5 lábon belülről minden találat kritikus.',
+    Petrified: 'Kővé (élettelen anyaggá) változtál: cselekvésképtelen vagy, nem mozogsz, nem beszélsz, nem érzékelsz, és nem öregszel. A rád irányuló támadás előnyös, a STR és DEX mentőd sikertelen, minden sebzésnek ellenállsz, a méreg és a betegség nem hat rád (a már meglévő szünetel).',
+    Poisoned: 'Hátrányos a támadásod és a képességpróbád.',
+    Prone: 'A földön fekszel: felállásig csak kúszni tudsz (felállás: a speeded fele). A támadásod hátrányos; a rád irányuló támadás 5 lábon belülről előnyös, messzebbről hátrányos.',
+    Restrained: 'A speeded 0. A támadásod és a DEX mentőd hátrányos, a rád irányuló támadás előnyös.',
+    Stunned: 'Cselekvésképtelen vagy, nem mozogsz, csak akadozva beszélsz. A STR és DEX mentőd automatikusan sikertelen, a rád irányuló támadás előnyös.',
+    Unconscious: 'Eszméletlen vagy: cselekvésképtelen, nem mozogsz, nem beszélsz, nem érzékelsz; elejted, ami a kezedben van, és elesel (Prone). A STR és DEX mentőd sikertelen, a rád irányuló támadás előnyös, és 5 lábon belülről minden találat kritikus.',
+    Exhaustion: 'A kimerültségnek hat szintje van, a hatásuk összeadódik (a magasabb szint az alacsonyabbakét is hozza). Egy long rest (étellel, itallal) egy szinttel csökkenti.'
+  };
+  // az Exhaustion szintjei (1–6; a 0. üres)
+  const EXH_INFO = ['', 'Hátrányos a képességpróbád.', 'A speeded a felére csökken.', 'Hátrányos a támadásod és a mentőd.', 'A max HP-d a felére csökken.', 'A speeded 0.', 'Meghalsz.'];
+
+  return {COND_INFO, EXH_INFO, VARAZS_BONUSZ, SKILL_INFO, FX_LABEL, LAND_SPELLS, FEATURE_FX, RB_FX_OFF, TCE_LISTA, TCE_CSERE, TCE_KOVET, TCE_FX, BUILD_HELY, SAJAT_JARTASSAG, SAJAT_JELLEMZO, KEZI_INFO, MEZO_INFO};
 })();
 if (typeof modul === 'function') modul('sheet-adat', 2);

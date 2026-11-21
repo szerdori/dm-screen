@@ -1640,6 +1640,17 @@ window.Sheet = (() => {
   };
   const INCAP = ['Incapacitated', 'Paralyzed', 'Petrified', 'Stunned', 'Unconscious'];
   const effectOf = name => EFFECTS[Object.keys(EFFECTS).find(k => k.toLowerCase() === String(name).trim().toLowerCase())] || null;
+  // egy állapot / hatás leírása a felugró ablakhoz (TERV-fejlesztesek-2026-11-21.md, 1. lépés), a DM Screen és a telefonos lap is ezt használja:
+  // n: a név, hu: saját magyar összefoglaló (SheetAdat.COND_INFO), szintek: az Exhaustion szintjei ({l, t}; „Exhaustion 3” → az 1–3., szint nélkül mind),
+  // en: a PHB angol szövege a szabálykönyvből (ha be van töltve), fx: az aktív hatás gépi leírása (EFFECTS). Ismeretlen (saját) állapotnál minden üres.
+  const COND_INFO = ADAT.COND_INFO || {}, EXH_INFO = ADAT.EXH_INFO || [];
+  function condLeiras(name, rb = null) {
+    const n = String(name ?? '').trim(), exh = n.match(/^exhaustion(?:\s+([1-6]))?$/i);
+    const alap = exh ? 'Exhaustion' : Object.keys(COND_INFO).find(k => k.toLowerCase() === n.toLowerCase()) || '';
+    const szintek = exh ? EXH_INFO.map((t, l) => ({l, t})).filter(x => x.l && x.t && x.l <= (+exh[1] || 6)) : [];
+    const en = (alap || n) && Array.isArray(rb?.conditions) ? rb.conditions.find(x => String(x?.n || '').toLowerCase() === (alap || n).toLowerCase())?.tx || '' : '';
+    return {n, hu: alap ? COND_INFO[alap] : '', szintek, en: String(en), fx: (!exh && effectOf(n)?.text) || ''};
+  }
   // a felszerelt páncél / pajzs: a szabálykönyvből, ennek hiányában név alapján
   function wornArmor(s, rb) {
     const items = rb ? allItems(rb) : [];
@@ -1940,7 +1951,7 @@ window.Sheet = (() => {
 
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, SKILL_INFO, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
-    spellAbility, spellDc, spellAtk, spellCasts, spellSave, spellCastOf, cantripKocka, cantripDarab, spellDmgBonus, spellBonuszok, spellGyogyit, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
+    spellAbility, spellDc, spellAtk, spellCasts, spellSave, spellCastOf, cantripKocka, cantripDarab, spellDmgBonus, spellBonuszok, spellGyogyit, condLeiras, COND_INFO, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, mcCheck, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seMod, seAr, seBolt, seAranyDob, seKosar, seEredmeny,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,
