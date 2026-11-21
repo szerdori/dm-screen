@@ -1,7 +1,7 @@
 // Zsákmány és Csapat nézet ablaka (felület): rajzolás, rendezés, keresés, csapatdobás.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('ablakok', N) és az index.html-ben az ablakok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('ablakok', 5);
+modul('ablakok', 6);
 
 // ---------- zsákmány (megjelenítés) ----------
 function openLoot() {
@@ -96,6 +96,14 @@ function partyMembersBar(pcs) {
     ${cand.length ? `<select id="partyAddSel"><option value="">＋ Hozzáadás a könyvtárból…</option>${cand.map(c => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(KIND_HU[c.kind])})</option>`).join('')}</select>` : ''}
     ${pcs.some(c => szintlepesAllas(c.id)) ? '<button class="small" data-act="partySzintMind" title="Minden lappal rendelkező játékos +1 szintet léphet">⬆ Mindenki</button>' : ''}</div>`;
 }
+// ＋ Inspiration a karakterkártyán (TERV-fejlesztesek-2026-11-21.md, 7. lépés): csak telefonos lappal; ha már megvan, csak jelzi
+function inspirationGomb(id) {
+  const s = SHEETS[id];
+  if (!s || s.deleted) return '';
+  const r = inspirationOf(s);
+  return r && !r.used ? '<span class="muted" title="Az Inspiration már megvan">✨ van Inspiration</span>'
+    : `<button class="small" data-act="partyInspiration" data-pc="${esc(id)}" title="Inspiration adása a játékosnak (a telefonos lapján megjelenik)">＋ Inspiration</button>`;
+}
 function partyHtml() {
   const pcs = partyMembers();
   if (!pcs.length) return `<h2>👥 Csapat</h2>${partyMembersBar(pcs)}<p class="muted">${S.library.length
@@ -139,7 +147,7 @@ function partyHtml() {
       <h4>Eszközök, hangszerek</h4><div>${esc(c.tools || '–')}</div>
       ${c.notes ? `<h4>Jegyzet</h4><div style="white-space:pre-wrap">${esc(c.notes)}</div>` : ''}
       <div class="hint" style="margin-top:6px">${c.importedAt ? `D&D Beyond import: ${esc(c.importedAt)} – frissítéshez importáld újra a könyvjelzővel.` : ''}
-        <button class="small" data-act="partyEdit" data-pc="${esc(c.id)}">✎ Szerkesztés</button> ${szintlepesGomb(c.id, 'party')}</div>
+        <button class="small" data-act="partyEdit" data-pc="${esc(c.id)}">✎ Szerkesztés</button> ${szintlepesGomb(c.id, 'party')} ${inspirationGomb(c.id)}</div>
     </div>`;
   };
   const total = {}; pcs.forEach(c => COINS.forEach(k => total[k] = (total[k] || 0) + (c.currency[k] || 0)));

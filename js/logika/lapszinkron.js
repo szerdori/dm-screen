@@ -58,6 +58,21 @@ function sheetToCreature(s, base) {
     traits, actions, bonusActions: [], reactions: [], inventory: s.inventory, currency: s.currency,
     passiveBonus: {perception: 0, investigation: 0, insight: 0}, source: 'Karakterlap'});
 }
+// Inspiration a DM-től (TERV-fejlesztesek-2026-11-21.md, 7. lépés, a Csapat nézet ＋ Inspiration gombja): a lap Inspiration erőforrásán egy visszajön;
+// ha a lapon nincs (kézi lap), felkerül (max 1, szintlépéskor). Visszatér: 'ad' | 'teli' (már megvan) | '' (nincs lap, régi fájl)
+const inspirationOf = s => s?.resources.find(r => r.name.toLowerCase() === 'inspiration') || null;
+function inspirationAd(id) {
+  const s = SHEETS[id];
+  if (!s || s.deleted || regiFajl()) return '';
+  const r = inspirationOf(s);
+  if (r && !r.used) return 'teli';
+  const resources = r ? s.resources.map(x => x === r ? {...x, used: x.used - 1} : x) : [...s.resources, {name: 'Inspiration', max: 1, used: 0, reset: 'level'}];
+  const at = new Date().toISOString(), by = authInfo.email || 'DM';
+  SHEETS[id] = Sheet.norm({...s, resources});
+  if (Tar.kapcsolva()) Tar.lapok.mezok(id, {resources: SHEETS[id].resources, updatedAt: at, updatedBy: by}).catch(e => Ertesito.naplo(`⚠ ${esc(s.name)}: az Inspiration nem ment el (${esc(e.code || e.message)}).`, 'warn'));
+  Ertesito.naplo(`✨ ${esc(s.name)}: Inspiration a DM-től`);
+  return 'ad';
+}
 // a lapról a könyvtárba és a harcban lévő példány(ok)ba; a gazdát mindig a DM állítja, az nem jön a lapról
 function applySheet(id) {
   const s = SHEETS[id], i = S.library.findIndex(c => c.id === id);

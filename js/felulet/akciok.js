@@ -109,6 +109,10 @@ const AKCIOK = {
   partySzintMind: () => { partyMembers().forEach(c => szintlepesAd(c.id)); rerenderParty(); },
   partyRemove: el => { setPartyMember(el.dataset.pc, false); rerenderParty(); },
   partySortReset: () => { partySort.s = {col: null, dir: 1}; rerenderParty(); },
+  partyInspiration: el => {
+    if (inspirationAd(el.dataset.pc) === '' && regiFajl()) alert('Az oldal egy része régi változatból töltődött be, ezért nem írtam a lapra.\nFrissítsd az oldalt (Ctrl + F5).');
+    rerenderParty();
+  },
   partySkillInfo: el => { partySkillLeiras = partySkillLeiras === el.dataset.sk ? null : el.dataset.sk; rerenderParty(); },
   libParty: el => { const lib = konyvtari(el); setPartyMember(lib.id, !partyMembers().some(c => c.id === lib.id)); filterLib(); },
   // dobáskérés mindenkitől (skill, próba, mentő); akinek nincs telefonos lapja, annak itt dobunk

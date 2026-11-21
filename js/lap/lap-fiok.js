@@ -89,7 +89,7 @@ function condMutat(ref) {
 }
 // erőforrás (data-lr="res", data-ref = index; TERV-fejlesztesek-2026-11-21.md, 8. lépés): a leírás (saját → jellemző → szabálykönyv),
 // szerkeszthető lapon a saját leírás itt írható (a motor által adott erőforrásnál is; az újraszámolás megtartja)
-const RES_FORRAS = {sajat: 'saját leírás', jellemzo: 'a lap jellemzőjéből', szabalykonyv: 'a szabálykönyvből'};
+const RES_FORRAS = {sajat: 'saját leírás', jellemzo: 'a lap jellemzőjéből', szabalykonyv: 'a szabálykönyvből', program: 'a program leírása'};
 function resMutat(ref) {
   const s = cur(), i = /^\d+$/.test(ref) ? +ref : -1, r = s?.resources[i];
   if (!r) return;
@@ -152,7 +152,7 @@ function tabBuild(s) {
     <h3>Választások</h3>${chs || '<p class="hint">Nincs választási hely.</p>'}
     <h3>Számolt értékek</h3>
     <p class="hint">Koppints egy sorra: ℹ miből jön, ✎ kézi felülírás. A ✎ jel mutatja, hol tér el a lap a számolttól.</p>
-    <div class="list">${ovRow(s, 'ac', 'AC', cr.ac)}${ovRow(s, 'hpMax', 'Max HP', cr.hpMax)}${ovRow(s, 'speed', 'Speed', cr.speed, 'text')}${ovRow(s, 'init', 'Initiative', cr.init)}</div>
+    <div class="list">${ovRow(s, 'ac', 'AC', cr.ac)}${ovRow(s, 'hpMax', 'Max HP', cr.hpMax)}${ovRow(s, 'speed', 'Speed', cr.speed, 'text')}${ovRow(s, 'init', 'Initiative', cr.init)}${isDM ? ovRow(s, 'res:Inspiration', 'Inspiration (max, DM)', {v: s.ov['res:Inspiration'] ?? 1, calc: 1}) : ''}</div>
     <h3 class="sub2">Képességértékek</h3><div class="list">${ab}</div>
     <h3 class="sub2">Mentők</h3><div class="list">${sv}</div>
     <h3 class="sub2">Skillek</h3><div class="list">${sk}</div>

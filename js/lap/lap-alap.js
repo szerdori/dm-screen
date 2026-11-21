@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-alap, a karakter.html része): alapok, állapot, a karakterek listája
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-alap', N) és a karakter.html-ben a lap-alap.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-alap', 1);
+modul('lap-alap', 2);
 
 const H = window.Sheet;
 // igaz, ha valamelyik közös fájl régi; a nagyon régi kozos.js-ben az elteroModulok még nincs meg – az is régi
@@ -9,7 +9,7 @@ function regiFajl() { return typeof elteroModulok !== 'function' || elteroModulo
 let sheetStale = true;  // a lap-indulas.js állítja be, amikor már minden fájl bejelentkezett (modul)
 const {isObj, num, str, mod, sgn, safeUrl} = H;
 const ST = {healthy: 'Sértetlen', hurt: 'Sérült', bloodied: 'Súlyosan sérült', down: 'Eszméletlen'};
-const RESET_HU = {short: 'short rest', long: 'long rest', none: 'nem töltődik'};
+const RESET_HU = {short: 'short rest', long: 'long rest', none: 'nem töltődik', level: 'szintlépéskor'};
 const PROF_MARK = {2: '◆', 1: '●', 0.5: '½', 0: '○'};
 const TABS = [['harc', '⚔ Harc'], ['kep', '🎲 Képességek'], ['var', '✨ Varázslat'], ['fel', '🎒 Felszerelés'], ['adat', '✎ Alapadatok'], ['jegyz', '📝 Jegyzet']];
 

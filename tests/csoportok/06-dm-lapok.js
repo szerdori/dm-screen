@@ -162,6 +162,21 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     ok(!f.log.some(l => /sheets\//.test(l)), 'betöltéskor nem írhat a lapra: ' + f.log);
     eq(f.store['characters/p1'].name, 'Minta Tolvaj', 'a csapat a lap szerinti nevet látja');
   });
+  test('＋ Inspiration a Csapat nézetben (TERV-fejlesztesek-2026-11-21.md, 7. lépés): elhasználtat visszaad, hiányzót felvesz, megvan: csak jelzi; a lapra ír', async () => {
+    const f = await loadWith({'sheets/p1': sheetDoc({resources: [{name: 'Inspiration', max: 1, used: 1, reset: 'level'}, {name: 'Ki', max: 2, used: 1, reset: 'short'}]})});
+    W.setPartyMember('p1', true); W.openParty();
+    f.log.splice(0);
+    click('#modalBox [data-act="partyInspiration"]'); await until(() => f.log.some(l => /update sheets\/p1/.test(l)));
+    eq(f.store['sheets/p1'].resources.map(r => [r.name, r.used]), [['Inspiration', 0], ['Ki', 1]]);
+    has($('#modalBox').textContent, 'van Inspiration'); ok(!$('#modalBox [data-act="partyInspiration"]'), 'megvan: nincs gomb');
+    eq(W.inspirationAd('p1'), 'teli');
+    // a lapon nincs (kézi lap): felkerül
+    f.store['sheets/p1'].resources = []; f.emit('sheets'); await mentve();
+    eq(W.inspirationAd('p1'), 'ad'); await until(() => f.store['sheets/p1'].resources.length === 1);
+    eq(f.store['sheets/p1'].resources, [{name: 'Inspiration', max: 1, used: 0, reset: 'level'}]);
+    eq(W.inspirationAd('nincs-ilyen'), '');
+    W.closeModal();
+  });
   test('harc: a DM sebzése mezőnként visszaíródik; a telefonos változás átjön, és nem ír vissza', async () => {
     const f = await loadWith();
     f.log.splice(0);

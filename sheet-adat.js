@@ -239,6 +239,8 @@ window.SheetAdat = (() => {
   // az Exhaustion szintjei (1–6; a 0. üres)
   const EXH_INFO = ['', 'Hátrányos a képességpróbád.', 'A speeded a felére csökken.', 'Hátrányos a támadásod és a mentőd.', 'A max HP-d a felére csökken.', 'A speeded 0.', 'Meghalsz.'];
 
-  return {COND_INFO, EXH_INFO, VARAZS_BONUSZ, SKILL_INFO, FX_LABEL, LAND_SPELLS, FEATURE_FX, RB_FX_OFF, TCE_LISTA, TCE_CSERE, TCE_KOVET, TCE_FX, BUILD_HELY, SAJAT_JARTASSAG, SAJAT_JELLEMZO, KEZI_INFO, MEZO_INFO};
+  // a program által adott, jellemző nélküli erőforrások leírása (TERV-fejlesztesek-2026-11-21.md, 7–8. lépés; saját megfogalmazás, PHB 2014 125. o.)
+  const RES_INFO = {Inspiration: 'A DM adja jó játékért, a karakter jellemének megfelelő döntésért. Elhasználva előnnyel dobsz egy támadásra, mentőre vagy képességpróbára (a dobás előtt döntesz). Egyszerre csak egy lehet nálad; odaadhatod egy társadnak is. Itt szintlépéskor töltődik vissza, a DM menet közben is adhat.'};
+  return {RES_INFO, COND_INFO, EXH_INFO, VARAZS_BONUSZ, SKILL_INFO, FX_LABEL, LAND_SPELLS, FEATURE_FX, RB_FX_OFF, TCE_LISTA, TCE_CSERE, TCE_KOVET, TCE_FX, BUILD_HELY, SAJAT_JARTASSAG, SAJAT_JELLEMZO, KEZI_INFO, MEZO_INFO};
 })();
 if (typeof modul === 'function') modul('sheet-adat', 2);

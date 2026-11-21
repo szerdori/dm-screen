@@ -753,6 +753,41 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="var"]');
     eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk, r('Teszt Láng').dmg], ['2d10', '6', '2d8']); has(r('Teszt Láng').t, 'DEX 13');
   });
+  test('Inspiration (TERV-fejlesztesek-2026-11-21.md, 7. lépés): „level” visszatöltés (norm, pihenők, szintlépés); minden motoros lapon max 1, a DM felülírhatja', () => {
+    const H = W.Sheet, rb = rbVarazs();
+    eq(H.norm({resources: [{name: 'A', reset: 'level'}, {name: 'B', reset: 'rossz'}]}).resources.map(r => r.reset), ['level', 'long']);
+    const s = H.norm({resources: [{name: 'Inspiration', max: 1, used: 1, reset: 'level'}, {name: 'Ki', max: 2, used: 2, reset: 'short'}, {name: 'Pálca', max: 1, used: 1, reset: 'long'}]});
+    eq(H.shortRest(s).resources.map(r => r.used), [1, 0, 1]);
+    eq(H.longRest(s).resources.map(r => r.used), [1, 0, 0]);
+    // motoros lap: megjelenik (max 1, szintlépéskor), a felülírás 2 / 0
+    const m = extra => { const a = H.norm({auto: true, build: {base: {}, levels: lv('Fighter', 2), spells: {}}, classes: [{name: 'Fighter', level: 2}], ...extra}); return H.norm({...a, ...H.materialize(a, H.calc(a, rb))}); };
+    const a = m();
+    eq(a.resources.find(r => r.name === 'Inspiration'), {name: 'Inspiration', max: 1, used: 0, reset: 'level', auto: true});
+    eq(m({ov: {'res:Inspiration': 2}}).resources.find(r => r.name === 'Inspiration').max, 2);
+    ok(!m({ov: {'res:Inspiration': 0}}).resources.some(r => r.name === 'Inspiration'), '0 = nincs');
+    eq(H.norm({ov: {'res:Inspiration': 'x', 'res:Más': 3}}).ov, {'res:Inspiration': 1});
+    // az újraszámolás megtartja az elhasználtat; a szintlépés visszatölti, a többi erőforrás elhasználtsága marad
+    const used = H.norm({...a, resources: a.resources.map(r => ({...r, used: r.max}))});
+    eq(H.norm({...used, ...H.materialize(used, H.calc(used, rb))}).resources.find(r => r.name === 'Inspiration').used, 1);
+    const lu = H.levelUpApply(used, rb, {...used.build, levels: lv('Fighter', 3)}), n = H.norm({...used, ...lu});
+    eq(n.resources.find(r => r.name === 'Inspiration').used, 0);
+    ok(n.resources.filter(r => r.name !== 'Inspiration').every(r => r.used === Math.min(r.max, used.resources.find(x => x.name === r.name)?.used ?? 0)), 'a többi marad');
+    // multiclass-szintlépésnél is
+    const mc = H.levelUpApply(used, rb, {...used.build, levels: [...lv('Fighter', 2), ...lv('Wizard', 1)]});
+    eq(H.norm({...used, ...mc}).resources.find(r => r.name === 'Inspiration').used, 0);
+    eq(H.resLeiras(a, a.resources.find(r => r.name === 'Inspiration'), rb).src, 'program');
+  });
+  ktest('Inspiration a telefonos lapon: a kézi űrlap legördülőjében „szintlépéskor”; a DM felülírási sora; a Harc fülön a pötty', () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    openSheet({resources: [{name: 'Inspiration', max: 1, used: 0, reset: 'level'}]});
+    has(ktext(), '1 / 1 · szintlépéskor');
+    kclick('[data-tab="adat"]');
+    ok([...kq('[name="rs_reset_0"]').options].some(o => o.value === 'level' && o.selected && o.textContent === 'szintlépéskor'), 'a legördülőben');
+    // motoros lap: a felülírás sora csak a DM-nek
+    const auto = {auto: true, build: {base: {}, levels: lv('Fighter', 2), spells: {}}, classes: [{name: 'Fighter', level: 2}]};
+    openSheet(auto); kclick('[data-tab="adat"]'); ok(!kq('[data-ov="res:Inspiration"]'), 'a játékosnak nincs');
+    openSheet(auto, 'dm@x.hu', true); kclick('[data-tab="adat"]'); ok(kq('[data-ov="res:Inspiration"]'), 'a DM-nek van');
+  });
   ktest('erőforrás leírása (TERV-fejlesztesek-2026-11-21.md, 8. lépés): a névre koppintva saját leírás → jellemző → szabálykönyv → „Nincs leírás”; az ablakban írható; a pötty marad; kézi űrlap', () => {
     const H = W.Sheet, rb = rbVarazs(); rb.features.push({n: 'Wild Shape', cls: 'Druid', lvl: 2, s: 'PHB', tx: 'Synthetic wild shape text.'});
     K.KApp.setRulebook({version: 'v', rb});

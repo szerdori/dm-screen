@@ -16,7 +16,8 @@ window.Sheet = (() => {
   const {SKILL_INFO = {}} = ADAT;  // a skillek rövid magyar leírása (sheet-adat.js)
   const CONDITIONS = ['Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible', 'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious'];
   const COINS = ['pp', 'gp', 'ep', 'sp', 'cp'];
-  const RESETS = ['short', 'long', 'none'];
+  // level: szintlépéskor töltődik vissza (Inspiration; TERV-fejlesztesek-2026-11-21.md, 7. lépés) – a short és a long rest nem tölti
+  const RESETS = ['short', 'long', 'none', 'level'];
   const DICE = [6, 8, 10, 12];
   // PHB 2014 osztályok (+ TCE Artificer): hit die, varázsló-típus, varázsképesség, mentő-jártasság, alosztály szintje, extra ASI-szintek
   // (a szabálymotor tartaléka, ha a szabálykönyvben még nincs osztályadat)
@@ -133,6 +134,7 @@ window.Sheet = (() => {
       else if (k === 'ac') out[k] = int(v, 10, 0, 50);
       else if (k === 'speed') { const s = str(v, 100).trim(); if (s) out[k] = s; }
       else if (t === 'plus' && OV_PLUS.includes(x)) { const s = str(v, 500).trim(); if (s) out[k] = s; }
+      else if (k === 'res:Inspiration') out[k] = int(v, 1, 0, 9);  // az Inspiration max felülírása (a DM döntése; alap 1)
     }
     return out;
   }
@@ -961,6 +963,10 @@ window.Sheet = (() => {
   };
   // a számolt értékek kiírása a lap mezőibe (gyorsítótár: a DM Screen, a harc és a régi kód ezeket olvassa); csak a változott mezők.
   // Szabálykönyv nélkül (c.full = false) csak a szabálykönyvtől független mezők íródnak, hogy a meglévő jellemzők ne vesszenek el.
+  // Inspiration (PHB 2014: van vagy nincs; TERV-fejlesztesek-2026-11-21.md, 7. lépés): minden motoros lapon, max 1 (a DM felülírhatja: ov['res:Inspiration'], 0 = nincs),
+  // szintlépéskor töltődik vissza; a calc nem tudja (az aranyminták nem változnak), a lapra írás teszi hozzá
+  const INSPIRATION = 'Inspiration';
+  const inspiration = (s, list) => { const max = s.ov?.['res:' + INSPIRATION] ?? 1; return max > 0 && !list.some(r => r.name.toLowerCase() === INSPIRATION.toLowerCase()) ? [{name: INSPIRATION, max, reset: 'level'}] : []; };
   function materialize(s, c) {
     const skillProf = Object.fromEntries(Object.entries(c.skills).filter(([, x]) => x.prof >= 1).map(([k, x]) => [k, x.prof]));
     const abilities = Object.fromEntries(ABIL.map(a => [a, c.abilities[a].v]));
@@ -985,7 +991,7 @@ window.Sheet = (() => {
       Object.assign(p, {ac: c.ac.v, acNote: c.acNote, speed: c.speed.v, profs: c.profs, senses: c.senses, resist: c.resist,
         features: merge(s.features, c.features),
         // a saját leírás (desc) a számolt erőforrásnál is megmarad (TERV-fejlesztesek-2026-11-21.md, 8. lépés)
-        resources: merge(s.resources, c.resources, r => { const o = s.resources.find(x => x.name === r.name), od = o || s.resources.find(x => x.name.toLowerCase() === r.name.toLowerCase()); return {...r, used: Math.min(o?.used || 0, r.max), ...(od?.desc ? {desc: od.desc} : {})}; }),
+        resources: merge(s.resources, [...c.resources, ...inspiration(s, c.resources)], r => { const o = s.resources.find(x => x.name === r.name), od = o || s.resources.find(x => x.name.toLowerCase() === r.name.toLowerCase()); return {...r, used: Math.min(o?.used || 0, r.max), ...(od?.desc ? {desc: od.desc} : {})}; }),
         attacks: regiSorrend(s.attacks, merge(s.attacks, c.attacks)),
         spells: merge(s.spells, [...c.always.map(x => ({...x, always: true})), ...(c.learned || s.spells.filter(x => x.auto && !x.always))].filter((x, i, l) => l.findIndex(y => y.name.toLowerCase() === x.name.toLowerCase()) === i), x => {
           if (x.always) return {name: x.name, level: x.level, prepared: false, always: true, note: s.spells.find(y => y.name.toLowerCase() === x.name.toLowerCase())?.note || '', ref: x.ref};
@@ -1324,7 +1330,9 @@ window.Sheet = (() => {
     const to = build.levels.length, levelUp = s.levelUp && s.levelUp.to > to ? s.levelUp : null;
     const next = norm({...s, build, ov: levelUpOv(s, rb, build), levelUp}), m = materialize(next, calc(next, rb)), n = norm({...next, ...m});
     const gain = Math.max(0, n.hp.max - s.hp.max);
-    return {...m, build: n.build, ov: n.ov, levelUp, hp: {...n.hp, cur: Math.min(n.hp.max, s.hp.cur + gain)}};
+    // a „szintlépéskor” visszatöltődő erőforrások (Inspiration) újra teljesek
+    const res = n.resources.some(r => r.reset === 'level' && r.used) ? {resources: n.resources.map(r => r.reset === 'level' ? {...r, used: 0} : r)} : {};
+    return {...m, ...res, build: n.build, ov: n.ov, levelUp, hp: {...n.hp, cur: Math.min(n.hp.max, s.hp.cur + gain)}};
   }
   // visszaállítás egy előzményből: a felépítés és a számolt mezők jönnek vissza; a felszerelés, a pénz, a jegyzet, az állapotok és a jelenlegi HP (a maximumra vágva) marad.
   // Az engedély: a mostani marad, ha még érvényes; szintlépés visszavonásakor visszajön (így újra lehet lépni)
@@ -1644,7 +1652,7 @@ window.Sheet = (() => {
   // egy állapot / hatás leírása a felugró ablakhoz (TERV-fejlesztesek-2026-11-21.md, 1. lépés), a DM Screen és a telefonos lap is ezt használja:
   // n: a név, hu: saját magyar összefoglaló (SheetAdat.COND_INFO), szintek: az Exhaustion szintjei ({l, t}; „Exhaustion 3” → az 1–3., szint nélkül mind),
   // en: a PHB angol szövege a szabálykönyvből (ha be van töltve), fx: az aktív hatás gépi leírása (EFFECTS). Ismeretlen (saját) állapotnál minden üres.
-  const COND_INFO = ADAT.COND_INFO || {}, EXH_INFO = ADAT.EXH_INFO || [];
+  const COND_INFO = ADAT.COND_INFO || {}, EXH_INFO = ADAT.EXH_INFO || [], RES_INFO = ADAT.RES_INFO || {};
   function condLeiras(name, rb = null) {
     const n = String(name ?? '').trim(), exh = n.match(/^exhaustion(?:\s+([1-6]))?$/i);
     const alap = exh ? 'Exhaustion' : Object.keys(COND_INFO).find(k => k.toLowerCase() === n.toLowerCase()) || '';
@@ -1663,7 +1671,9 @@ window.Sheet = (() => {
     if (f) return {src: 'jellemzo', tx: ddbSablonLap(String(f.text), f.name, s)};
     const oszt = new Set((s?.classes || []).map(c => findClass(c.name) || c.name)), jelolt = Array.isArray(rb?.features) ? rb.features.filter(x => egyezik(x?.n) && x.tx) : [];
     const k = jelolt.find(x => oszt.has(x.cls)) || jelolt[0];
-    return k ? {src: 'szabalykonyv', tx: String(k.tx)} : {src: '', tx: ''};
+    if (k) return {src: 'szabalykonyv', tx: String(k.tx)};
+    const p = Object.keys(RES_INFO).find(x => x.toLowerCase() === n);  // a program saját leírása (Inspiration)
+    return p ? {src: 'program', tx: RES_INFO[p]} : {src: '', tx: ''};
   }
   // a felszerelt páncél / pajzs: a szabálykönyvből, ennek hiányában név alapján
   function wornArmor(s, rb) {
@@ -1744,7 +1754,7 @@ window.Sheet = (() => {
     for (const h of hitDice(s)) { const r = Math.min(h.used, left); left -= r; if (h.used - r > 0) hdu[h.die] = h.used - r; }
     return {
       hp: {max: s.hp.max, cur: s.hp.max, temp: 0}, deathSaves: {ok: 0, fail: 0}, hitDiceUsed: hdu,
-      resources: s.resources.map(r => r.reset === 'none' ? r : {...r, used: 0}),
+      resources: s.resources.map(r => r.reset === 'none' || r.reset === 'level' ? r : {...r, used: 0}),
       spellcasting: {...s.spellcasting, used: s.spellcasting.used.map(() => 0), pact: {...s.spellcasting.pact, used: 0}},
       exhaustion: Math.max(0, s.exhaustion - 1)
     };
@@ -1867,7 +1877,7 @@ window.Sheet = (() => {
   // a karakterlap-sablon JSON-importhoz (kitalált minta, nem valódi játékos)
   const TEMPLATE = {
     format: FORMAT,
-    _leiras: 'DM Screen karakterlap. Importálás: Könyvtár → JSON / Sablon fül. A számolt értékeket (módosítók, mentők, skillek, spell DC) a program számolja; amit itt megadsz: a választások és a jelenlegi állapot. skillProf: 1 = jártas, 2 = expertise. spellcasting.slots: 1–9. szintű slotok száma. resources.reset: short | long | none. initBonus: null = DEX (+ Jack of All Trades).',
+    _leiras: 'DM Screen karakterlap. Importálás: Könyvtár → JSON / Sablon fül. A számolt értékeket (módosítók, mentők, skillek, spell DC) a program számolja; amit itt megadsz: a választások és a jelenlegi állapot. skillProf: 1 = jártas, 2 = expertise. spellcasting.slots: 1–9. szintű slotok száma. resources.reset: short | long | none | level (szintlépéskor), resources.desc: saját leírás. initBonus: null = DEX (+ Jack of All Trades).',
     name: 'Minta Tolvaj', race: 'Lightfoot Halfling', background: 'Urchin', alignment: 'chaotic good', portrait: '', owner: '',
     classes: [{name: 'Rogue', subclass: 'Thief', level: 3}],
     abilities: {str: 8, dex: 17, con: 14, int: 12, wis: 13, cha: 10},

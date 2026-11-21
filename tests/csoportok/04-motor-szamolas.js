@@ -380,7 +380,7 @@ describe('Szabálymotor: teljes számolás (3. lépés)', () => {
     const p = H.materialize(s, c), s2 = H.norm({...s, ...p});
     eq(s2.spells.map(x => [x.name, x.always, !!x.auto]), [['Bless', true, true], ['Cure Wounds', true, true], ['Spiritual Weapon', true, true], ['Shield', false, false]]);
     eq(s2.features.map(f => [f.name, !!f.auto]), [['Channel Divinity', true], ['Bonus Proficiency', true], ['Arcane Recovery', true], ['Saját dolog', false]]);
-    eq(s2.resources, [{name: 'Channel Divinity', max: 1, used: 1, reset: 'short', auto: true}, {name: 'Arcane Recovery', max: 1, used: 0, reset: 'long', auto: true}]);
+    eq(s2.resources, [{name: 'Channel Divinity', max: 1, used: 1, reset: 'short', auto: true}, {name: 'Arcane Recovery', max: 1, used: 0, reset: 'long', auto: true}, {name: 'Inspiration', max: 1, used: 0, reset: 'level', auto: true}]);
     eq([s2.spellcasting.ability, H.spellDc(s2), H.spellAtk(s2), s2.cache.spell], ['wis', 13, 5, {dc: 13, atk: 5}]);
     eq(H.materialize(s2, H.calc(s2, rb)), {}, 'másodszorra semmi nem változik');
     // a régi számoló függvények a cache-ből dolgoznak (pl. Aura of Protection), szabálykönyv nélkül a jellemzők megmaradnak
