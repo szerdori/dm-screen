@@ -753,6 +753,33 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="var"]');
     eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk, r('Teszt Láng').dmg], ['2d10', '6', '2d8']); has(r('Teszt Láng').t, 'DEX 13');
   });
+  ktest('Harness Divine Power (TERV-fejlesztesek-2026-11-21.md, 4. lépés): a Channel Divinity is fogy; elfogyva kérdez; visszavonás mindkettőt visszaadja; slot visszaadása ⌈PB/2⌉ szintig', () => {
+    const H = W.Sheet;
+    const lap = (cd = 0, hdp = 0, used = [1, 2, 1], level = 6) => openSheet({classes: [{name: 'Cleric', level}], spellcasting: {ability: 'wis', slots: [4, 3, 3], used, pact: {level: 0, max: 0, used: 0}},
+      resources: [{name: 'Channel Divinity', max: 2, used: cd, reset: 'short'}, {name: 'Harness Divine Power', max: 2, used: hdp, reset: 'long'}, {name: 'Ki', max: 2, used: 0, reset: 'short'}]});
+    const pip = (n, j) => kclick(kqa('[data-act="res"]').find(b => b.dataset.i === String(n) && b.dataset.j === String(j)));
+    const used = () => lastUpdate().resources.map(r => r.used);
+    lap(); pip(1, 0); eq(used(), [1, 1, 0], 'HDP → CD is');
+    // a slot-választó: PB 3 → legfeljebb 2. szint; elhasznált 1. és 2. szintű
+    eq(kqa('#slotVissza [data-act="slotVissza"]').map(b => b.textContent), ['1. szint', '2. szint']);
+    kclick('#slotVissza [data-act="slotVissza"][data-l="1"]'); eq(lastUpdate().spellcasting.used.slice(0, 3), [1, 1, 1]); ok(!kq('#slotVissza'), 'eltűnt');
+    // visszavonás: mindkettő vissza, nincs slot-választó
+    lap(1, 1); pip(1, 0); eq(used(), [0, 0, 0]); ok(!kq('#slotVissza'), 'visszavonásnál nincs');
+    // csak CD: a HDP nem változik
+    lap(); pip(0, 0); eq(used(), [1, 0, 0]); ok(!kq('#slotVissza'));
+    // elfogyott CD: kérdés; Mégse = semmi
+    lap(2, 0); const m = klog.length; K.confirm = () => false; pip(1, 0); eq(klog.length, m, 'Mégse: nem írt');
+    K.confirm = () => true; pip(1, 0); eq(used(), [2, 1, 0]);
+    // „Most nem”; elhasznált slot nélkül nincs gomb
+    lap(0, 0, [0, 0, 0]); pip(1, 0); eq(kqa('#slotVissza [data-act="slotVissza"]').length, 0); has(kq('#slotVissza').textContent, 'nincs elhasznált slot');
+    kclick('#slotVissza [data-act="slotMostNem"]'); ok(!kq('#slotVissza'));
+    // PB 2 (5. szint alatt): legfeljebb 1. szint
+    lap(0, 0, [1, 1, 0], 3); pip(1, 0); eq(kqa('#slotVissza [data-act="slotVissza"]').map(b => b.dataset.l), ['0']);
+    // a függvény: TCE-feature nélküli Clericnél (nincs HDP) a CD önmagában; ismeretlen index
+    const s = H.norm({classes: [{name: 'Cleric', level: 6}], resources: [{name: 'Channel Divinity', max: 2}]});
+    eq(H.resKapcsolt(s, 0, 1), {resources: [{name: 'Channel Divinity', max: 2, used: 1, reset: 'long'}], cel: null, elfogyott: false, slotMax: 0});
+    eq(H.resKapcsolt(s, 5, 1).resources, s.resources);
+  });
   test('Inspiration (TERV-fejlesztesek-2026-11-21.md, 7. lépés): „level” visszatöltés (norm, pihenők, szintlépés); minden motoros lapon max 1, a DM felülírhatja', () => {
     const H = W.Sheet, rb = rbVarazs();
     eq(H.norm({resources: [{name: 'A', reset: 'level'}, {name: 'B', reset: 'rossz'}]}).resources.map(r => r.reset), ['level', 'long']);

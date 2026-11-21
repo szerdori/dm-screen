@@ -1675,6 +1675,19 @@ window.Sheet = (() => {
     const p = Object.keys(RES_INFO).find(x => x.toLowerCase() === n);  // a program saját leírása (Inspiration)
     return p ? {src: 'program', tx: RES_INFO[p]} : {src: '', tx: ''};
   }
+  // összekapcsolt erőforrás (TERV-fejlesztesek-2026-11-21.md, 4. lépés; SheetAdat.RES_KAPCS): a(z) i. erőforrás új used-je mellett a kapcsolt is ugyanannyival
+  // változik (a visszavonás is visszaad). Visszatér: {resources, cel: a kapcsolt erőforrás | null, elfogyott: nem futja a kapcsoltból, slotMax: visszakapható slot szintje (0 = nincs)}
+  const RES_KAPCS = ADAT.RES_KAPCS || {}, RES_SLOT = ADAT.RES_SLOT || {};
+  const kulcsCI = (o, n) => Object.keys(o).find(k => k.toLowerCase() === String(n || '').trim().toLowerCase());
+  function resKapcsolt(s, i, ujUsed) {
+    const r = s.resources[i];
+    if (!r) return {resources: s.resources, cel: null, elfogyott: false, slotMax: 0};
+    const uj = Math.max(0, Math.min(r.max, ujUsed)), d = uj - r.used, k = kulcsCI(RES_KAPCS, r.name);
+    const ci = k ? s.resources.findIndex(x => x.name.toLowerCase() === RES_KAPCS[k].toLowerCase()) : -1, cel = ci >= 0 ? s.resources[ci] : null;
+    const resources = s.resources.map((x, j) => j === i ? {...x, used: uj} : j === ci && d ? {...x, used: Math.max(0, Math.min(x.max, x.used + d))} : x);
+    const sk = kulcsCI(RES_SLOT, r.name);
+    return {resources, cel, elfogyott: !!cel && d > 0 && cel.used + d > cel.max, slotMax: d > 0 && sk && RES_SLOT[sk] === 'pbFel' ? Math.ceil(pb(s) / 2) : 0};
+  }
   // a felszerelt páncél / pajzs: a szabálykönyvből, ennek hiányában név alapján
   function wornArmor(s, rb) {
     const items = rb ? allItems(rb) : [];
@@ -1975,7 +1988,7 @@ window.Sheet = (() => {
 
   return {FORMAT, VERSION, ABIL, ABIL_FULL, SKILLS, skillLabel, SKILL_INFO, CONDITIONS, COINS, RESETS, CLASSES, EMAIL_RE, TEMPLATE, ORD,
     num, str, isObj, mod, sgn, safeUrl, propOf, norm, normHist, normInventory, findClass, level, pb, saveBonus, skillProfOf, skillBonus, passive, initiative,
-    spellAbility, spellDc, spellAtk, spellCasts, spellSave, spellCastOf, cantripKocka, cantripDarab, spellDmgBonus, spellBonuszok, spellGyogyit, condLeiras, COND_INFO, resLeiras, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
+    spellAbility, spellDc, spellAtk, spellCasts, spellSave, spellCastOf, cantripKocka, cantripDarab, spellDmgBonus, spellBonuszok, spellGyogyit, condLeiras, COND_INFO, resLeiras, resKapcsolt, attacksPerAction, classLabel, hitDice, attuned, hpStatus, slotsFor, shortRest, longRest, damage, heal,
     FEATURE_FX, TCE_FX, TCE_CSERE, TCE_LISTA, tceKey, tceIgen, spellOnList, classInfo, calc, CALC_LEPESEK, featOk, mcCheck, materialize, ovEdits, refName, maxSpellLevel, adoptSpells, spellKept, SPELL_KINDS, stableJson, levelUpBuild, levelUpPlan, levelUpApply, restorePatch, HIST_MAX, ROLLS_MAX, normRoll, DMG_TYPES, DMG_KINDS, dmgType, termeszetesFegyver, tavolsagiFegyver, fegyverFajta, REQ_TTL_MS, normRollReq, reqAktiv, reqRoll, backupPatch, backupAllowed, exportLap, exportNev, torlesPatch, todoInfo, freeInfo, MEZO_INFO,
     NC_METHODS, NC_ARRAY, NC_BUY_POINTS, NC_BUY_COST, ncBlank, ncRoll, ncPool, ncBaseFromPick, ncBuyLeft, ncAbilityProblem, ncSetClass, ncPlan, SE_CAT_HU, normSeEq, seCatItems, seRows, seJartas, seHiany, seCsomag, seLeltar, seErmek, seMod, seAr, seBolt, seAranyDob, seKosar, seEredmeny,
     abBonusOf, raceAb, swapRaceAb, addAb, EFFECTS, INCAP, effectOf, effects, rollFx, dropConc,

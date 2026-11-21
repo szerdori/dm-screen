@@ -17,7 +17,7 @@ const ktest = (name, fn, opts) => test(name, async () => {
   K.confirm = () => true;
   K.localStorage.removeItem('dmscreen-szintlepes-p1');
   try { await fn(); }
-  finally { Object.assign(K, ORIGK); K.KDB = undefined; K.eval('lu = null; histCache.clear(); openKeys.delete("hist")'); K.localStorage.removeItem('dmscreen-szintlepes-p1'); K.frameElement.width = 420; delete K.navigator.onLine; K.location.hash = ''; K.KApp.setSheets([]); K.KApp.setChars([]); K.KApp.setRulebook(null); K.route(); }
+  finally { Object.assign(K, ORIGK); K.KDB = undefined; K.eval('lu = null; slotValaszt = null; histCache.clear(); openKeys.delete("hist")'); K.localStorage.removeItem('dmscreen-szintlepes-p1'); K.frameElement.width = 420; delete K.navigator.onLine; K.location.hash = ''; K.KApp.setSheets([]); K.KApp.setChars([]); K.KApp.setRulebook(null); K.route(); }
 }, opts);
 const openSheet = (extra = {}, email = 'a@x.hu', dm = false) => {
   K.KApp.setAuth({status: 'signedIn', email, dm});

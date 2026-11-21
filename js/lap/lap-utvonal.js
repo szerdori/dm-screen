@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-utvonal, a karakter.html része): rajzolás, útvonal (#lap/id), kapu
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-utvonal', N) és a karakter.html-ben a lap-utvonal.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-utvonal', 1);
+modul('lap-utvonal', 2);
 
 // gépelés közben nem rajzolunk újra (pl. ha a DM közben sebzést ír a lapra), csak amikor a mező elveszti a fókuszt
 function render(force = false) {
@@ -39,7 +39,7 @@ function route() {
   $('#infoPop').hidden = true;
   const m = location.hash.match(/^#lap\/([A-Za-z0-9_-]{1,64})$/);
   const id = m ? m[1] : null;
-  if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; lu = null; hdOpen = false; castOpen = null; featPick = null; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
+  if (id !== view.id) { view = {id, tab: 'harc'}; draft = null; lu = null; hdOpen = false; castOpen = null; featPick = null; slotValaszt = null; searchQ = {spell: '', item: '', feat: ''}; window.scrollTo(0, 0); }
   render(true);
 }
 function gate(html) { const g = $('#gate'); g.hidden = !html; if (html) g.innerHTML = `<div>${html}</div>`; }

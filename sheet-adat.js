@@ -241,6 +241,10 @@ window.SheetAdat = (() => {
 
   // a program által adott, jellemző nélküli erőforrások leírása (TERV-fejlesztesek-2026-11-21.md, 7–8. lépés; saját megfogalmazás, PHB 2014 125. o.)
   const RES_INFO = {Inspiration: 'A DM adja jó játékért, a karakter jellemének megfelelő döntésért. Elhasználva előnnyel dobsz egy támadásra, mentőre vagy képességpróbára (a dobás előtt döntesz). Egyszerre csak egy lehet nálad; odaadhatod egy társadnak is. Itt szintlépéskor töltődik vissza, a DM menet közben is adhat.'};
-  return {RES_INFO, COND_INFO, EXH_INFO, VARAZS_BONUSZ, SKILL_INFO, FX_LABEL, LAND_SPELLS, FEATURE_FX, RB_FX_OFF, TCE_LISTA, TCE_CSERE, TCE_KOVET, TCE_FX, BUILD_HELY, SAJAT_JARTASSAG, SAJAT_JELLEMZO, KEZI_INFO, MEZO_INFO};
+  // összekapcsolt erőforrások (TERV-fejlesztesek-2026-11-21.md, 4. lépés): a kulcs használata a másikból is elhasznál egyet (TCE 30. o.: a Harness Divine Power egy Channel Divinityba kerül)
+  const RES_KAPCS = {'Harness Divine Power': 'Channel Divinity'};
+  // a kulcs használata után visszakapható spell slot legmagasabb szintje: 'pbFel' = a Proficiency Bonus fele, felfelé kerekítve
+  const RES_SLOT = {'Harness Divine Power': 'pbFel'};
+  return {RES_KAPCS, RES_SLOT, RES_INFO, COND_INFO, EXH_INFO, VARAZS_BONUSZ, SKILL_INFO, FX_LABEL, LAND_SPELLS, FEATURE_FX, RB_FX_OFF, TCE_LISTA, TCE_CSERE, TCE_KOVET, TCE_FX, BUILD_HELY, SAJAT_JARTASSAG, SAJAT_JELLEMZO, KEZI_INFO, MEZO_INFO};
 })();
 if (typeof modul === 'function') modul('sheet-adat', 2);

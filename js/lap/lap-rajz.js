@@ -68,6 +68,11 @@ function hpBox(s, ed) {
   </div>`;
 }
 const pipRow = (n, used, attrs, dis, label) => Array.from({length: n}, (_, j) => `<button class="pip ${j < used ? 'used' : ''}" ${attrs} data-j="${j}" ${dis} aria-label="${esc(label)} ${j + 1}"></button>`).join('');
+// visszakapható spell slot (TERV-fejlesztesek-2026-11-21.md, 4. lépés: Harness Divine Power, legfeljebb ⌈PB/2⌉ szintű, elhasznált slot)
+function slotVisszaSor(s, max) {
+  const sc = s.spellcasting, gombok = sc.used.map((u, l) => u > 0 && l < max ? `<button class="small" data-act="slotVissza" data-l="${l}">${l + 1}. szint</button>` : '').join('');
+  return `<div class="row castpick" id="slotVissza"><span class="hint">Visszakapott slot:</span>${gombok || '<span class="hint">nincs elhasznált slot (legfeljebb ' + esc(max) + '. szint)</span>'}<button class="small" data-act="slotMostNem">${gombok ? 'Most nem' : 'Rendben'}</button></div>`;
+}
 function tabHarc(s, ed) {
   const dis = ed ? '' : 'disabled';
   const fog = ed && s.attacks.length > 1;
@@ -78,7 +83,7 @@ function tabHarc(s, ed) {
   const varazs = casts.map(c => `<div class="li"><span class="nm"><b>Varázslat${c.cls && casts.length > 1 ? ` (${esc(c.cls)})` : ''}</b><small>spell save DC ${esc(c.dc)}${varMod(s, c.ab) ? ` · ${esc(c.ab.toUpperCase())} ${esc(varMod(s, c.ab))}` : ''}</small></span>${rollBtn(c.atk, 'Spell attack' + (c.cls && casts.length > 1 ? ` (${c.cls})` : ''), undefined, 'atk')}</div>`).join('');
   // a név a leírást nyitja (TERV-fejlesztesek-2026-11-21.md, 8. lépés: data-lr="res", data-ref = az erőforrás indexe)
   const res = s.resources.map((r, i) => `<div class="li"><span class="nm"><b>${nevGomb('res', String(i), r.name)}</b><small>${esc(r.max - r.used)} / ${esc(r.max)} · ${esc(RESET_HU[r.reset])}</small></span>
-    <span class="pips">${pipRow(r.max, r.used, `data-act="res" data-i="${i}"`, dis, r.name)}</span></div>`).join('');
+    <span class="pips">${pipRow(r.max, r.used, `data-act="res" data-i="${i}"`, dis, r.name)}</span></div>${ed && slotValaszt?.id === view.id && slotValaszt.i === i ? slotVisszaSor(s, slotValaszt.max) : ''}`).join('');
   // állapot / aktív hatás: a gépi hatás leírása; a DM kikapcsolhatja (⚙), ilyenkor csak emlékeztető
   const offBtn = key => isDM ? `<button class="small" data-act="effToggle" data-key="${esc(key)}" title="Automatikus hatás be / ki (DM)">⚙ ${s.effOff.includes(key) ? 'ki' : 'be'}</button>` : '';
   const conds = s.conditions.map((c, i) => {

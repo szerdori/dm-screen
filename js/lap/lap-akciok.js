@@ -1,12 +1,14 @@
 // Telefonos karakterlap (lap-akciok, a karakter.html része): a gombok nyilvántartása (LAP_AKCIOK: data-act → kezelő), módosítás, gépelés, billentyűk
 // A fájl csak deklarál; ami betöltéskor fut (figyelők, első rajzolás), az a lap-indulas.js. Ha változik, amire más fájl támaszkodik: modul('lap-akciok', N) és a karakter.html-ben a lap-akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-akciok', 5);
+modul('lap-akciok', 6);
 
 // ---------- nyilvántartás: data-act="nev" → LAP_AKCIOK.nev(el, s, i, act) ----------
 // Új gomb = új bejegyzés (s = a nyitott lap, i = a gomb data-i értéke). A kezelő maga ír és rajzol, ha kell.
 // Lap nélkül (belépés, lista, Fiók menü) csak ezek futnak:
 const LAP_NELKUL = new Set(['signIn', 'signOut', 'reload', 'infoClose', 'fiok', 'megj', 'keresDob', 'keresElvet']);
+// a visszakapható spell slot választója a Harc fülön (Harness Divine Power után): {id: lap, i: erőforrás, max: legmagasabb slotszint} | null
+let slotValaszt = null;
 // több gomb közös kezelője (a gomb neve dönt)
 const ncGomb = (el, s, i, act) => { if (s.newChar && canEdit(s)) ncAct(act, el, s); };
 const luGomb = (el, s, i, act) => { if (lu) luAct(act, el, s); };
@@ -70,7 +72,22 @@ const LAP_AKCIOK = {
     if (!canEdit(s) || s.resources[i]?.name !== el.dataset.name) return;
     patch({resources: s.resources.map((r, k) => { if (k !== i) return r; const {desc, ...x} = r; return v ? {...x, desc: v} : x; })});
   },
-  res(el, s, i) { patch({resources: s.resources.map((r, k) => k === i ? {...r, used: pipToggle(r.used, +el.dataset.j)} : r)}); },
+  // a pötty: a kapcsolt erőforrás is változik (Harness Divine Power → Channel Divinity; TERV-fejlesztesek-2026-11-21.md, 4. lépés), elfogyva rákérdez;
+  // a használat után a visszakapható spell slot gombjai (slotVissza)
+  res(el, s, i) {
+    const r = s.resources[i]; if (!r) return;
+    const k = H.resKapcsolt(s, i, pipToggle(r.used, +el.dataset.j));
+    if (k.elfogyott && !confirm(`Elfogyott a ${k.cel.name} (${k.cel.max} / ${k.cel.max}). Mégis használod?`)) return;
+    slotValaszt = k.slotMax ? {id: view.id, i, max: k.slotMax} : null;
+    patch({resources: k.resources});
+  },
+  slotVissza(el, s) {
+    const l = +el.dataset.l, used = [...s.spellcasting.used];
+    slotValaszt = null;
+    if (Number.isInteger(l) && used[l] > 0) { used[l]--; patch({spellcasting: {...s.spellcasting, used}}); toast(`✓ Visszakaptál egy ${l + 1}. szintű slotot`); }
+    else render(true);
+  },
+  slotMostNem() { slotValaszt = null; render(true); },
   slot(el, s) { const l = +el.dataset.l, used = [...s.spellcasting.used]; used[l] = pipToggle(used[l], +el.dataset.j); patch({spellcasting: {...s.spellcasting, used}}); },
   pact(el, s) { patch({spellcasting: {...s.spellcasting, pact: {...s.spellcasting.pact, used: pipToggle(s.spellcasting.pact.used, +el.dataset.j)}}}); },
   condRm(el, s, i) {
