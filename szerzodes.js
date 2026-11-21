@@ -28,7 +28,7 @@ window.Szerzodes = (() => {
     szabalyDarab: id => 'rules/' + id,
   };
   const HELYI = {allapot: 'dmscreen', lapok: 'dmscreen-sheets', szintlepes: id => 'dmscreen-szintlepes-' + id, csakBekeszitett: 'dmscreen-csak-bekeszitett',
-    betumeret: 'dmscreen-betumeret', tema: 'dmscreen-tema'};  // szintlepes: a varázsló piszkozata a telefonon; csakBekeszitett: a Varázslat fül szűrője; betumeret, tema: a telefonos lap megjelenítése (mind eszközönként)
+    betumeret: 'dmscreen-betumeret', tema: 'dmscreen-tema', oldalpanel: 'dmscreen-oldalpanel'};  // szintlepes: a varázsló piszkozata a telefonon; csakBekeszitett: a Varázslat fül szűrője; betumeret, tema: a telefonos lap megjelenítése; oldalpanel: a DM Screen oldalpanelének nézete játékosnál ('statblokk' = a régi, különben a beágyazott lap) (mind eszközönként)
   // a telefonos lap megjelenítése: az első érték az alapértelmezett (a mostani nézet: normál betű, sötét); a karakter.html <head>-je szövegként ismeri (teszt nézi)
   const MEGJELENITES = {betumeret: ['', 'nagy', 'extra'], tema: ['', 'vilagos']};
   const CSATORNA = 'dmscreen-player';
@@ -194,7 +194,7 @@ window.Szerzodes = (() => {
     return 'label';
   }
 
-  if (typeof modul === 'function') modul('szerzodes', 9);
+  if (typeof modul === 'function') modul('szerzodes', 10);
   return {UT, HELYI, MEGJELENITES, CSATORNA, SECTIONS, TEMPLATE, KINDS, SIDES, VIS, ALLAPOTOK, ALAP_BEALLITASOK, str, safeId, blankCreature, splitEntry,
     normInventory, normCreature, normCombatant, sanitizeState, normPublicChar, HP_MODOK, hpLathato};
 })();

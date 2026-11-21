@@ -3,6 +3,8 @@
 'use strict';
 modul('lap-utvonal', 2);
 
+// a DM Screen oldalpanelébe ágyazva (karakter.html?beagyazva=1; TERV-fejlesztesek-2026-11-21.md, 3. lépés)
+let beagyazva = new URLSearchParams(location.search).has('beagyazva');
 // gépelés közben nem rajzolunk újra (pl. ha a DM közben sebzést ír a lapra), csak amikor a mező elveszti a fókuszt
 function render(force = false) {
   keresAblak();  // a DM dobáskérése gépelés közben is felugrik
@@ -15,7 +17,7 @@ function render(force = false) {
   $('#who').innerHTML = me ? `<span class="fiokmail">${esc(me)}${isDM ? ' · DM' : ''}</span><br><a href="#" data-act="fiok" style="color:var(--muted)">👤 Fiók</a>` : '';
   const s = view.id && sheets.get(view.id);
   $('#rollbar').hidden = !s;
-  if (!s) { renderList(); return; }
+  if (!s) { if (beagyazva) $('#main').innerHTML = `<p class="hint">${view.id ? 'A lap betöltése…' : 'Nincs kiválasztott lap.'}</p>`; else renderList(); return; }
   // a varázsló a lap helyén fut; ha közben másik eszközön már szintet lépett, vagy elvették az engedélyt, bezárul
   if (lu && !lu.saving && (lu.id !== view.id || !luEnabled(s) || H.level(s) !== lu.from || !s.auto || !RB()?.classes?.length)) lu = null;
   if (lu && !lu.saving && lu.cls && lu.base !== H.stableJson(s.build)) { luRebase(s); toast('A lap közben változott: a választásokat újra kell kitölteni.', true); }

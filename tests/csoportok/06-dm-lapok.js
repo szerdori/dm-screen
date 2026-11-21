@@ -162,6 +162,26 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     ok(!f.log.some(l => /sheets\//.test(l)), 'betöltéskor nem írhat a lapra: ' + f.log);
     eq(f.store['characters/p1'].name, 'Minta Tolvaj', 'a csapat a lap szerinti nevet látja');
   });
+  test('oldalpanel (TERV-fejlesztesek-2026-11-21.md, 3. lépés): játékosnál a telefonos lap beágyazva (egy iframe, másik játékosnál csak a # változik), 📱 Lap / 📜 Statblokk kapcsoló megmarad; szörnynél statblokk', async () => {
+    const k = W.Szerzodes.HELYI.oldalpanel, BT = W.eval('Bongeszotar'); BT.torol(k);
+    const f = await loadWith({'dmscreen_library/p2': pc('Másik', 1, {id: 'p2', owner: 'b@x.hu'}), 'sheets/p2': sheetDoc({name: 'Másik', owner: 'b@x.hu'})});
+    const [a] = W.addToEncounter(lib(), 1), [b] = W.addToEncounter(A('S.library').find(c => c.id === 'p2'), 1), [m] = W.addToEncounter(mk('Ogre'), 1);
+    const valaszt = x => { W.eval(`selected = ${JSON.stringify(x.cid)}`); W.render(); };
+    valaszt(a);
+    const ifr = $('#lapNezet iframe');
+    ok(!$('#lapNezet').hidden && ifr, 'a lap látszik'); eq(ifr.getAttribute('src'), 'karakter.html?beagyazva=1&test=1#lap/p1');
+    ok(!$('#detail .sb'), 'nincs statblokk'); ok($('#detail [data-f="hp"]') && $('#detail [data-act="addCond"]'), 'a harci vezérlők maradnak');
+    valaszt(b); ok($('#lapNezet iframe') === ifr, 'ugyanaz az iframe'); eq(ifr.getAttribute('src'), 'karakter.html?beagyazva=1&test=1#lap/p2');
+    // kapcsoló: statblokk, és ez megmarad
+    click('#detail [data-act="oldalNezet"][data-v="statblokk"]');
+    ok($('#lapNezet').hidden && $('#detail .sb'), 'statblokk'); eq(BT.olvas(k), 'statblokk');
+    valaszt(a); ok($('#lapNezet').hidden && $('#detail .sb'), 'másik játékosnál is');
+    click('#detail [data-act="oldalNezet"][data-v="lap"]'); ok(!$('#lapNezet').hidden && !$('#detail .sb')); eq(BT.olvas(k), null);
+    // szörny: statblokk, nincs kapcsoló
+    valaszt(m); ok($('#lapNezet').hidden && $('#detail .sb') && !$('#detail [data-act="oldalNezet"]'), 'szörnynél statblokk');
+    ok(!f.log.some(l => /sheets\//.test(l)), 'nem írt a lapokra: ' + f.log);
+    W.eval('selected = null'); W.render();
+  });
   test('＋ Inspiration a Csapat nézetben (TERV-fejlesztesek-2026-11-21.md, 7. lépés): elhasználtat visszaad, hiányzót felvesz, megvan: csak jelzi; a lapra ír', async () => {
     const f = await loadWith({'sheets/p1': sheetDoc({resources: [{name: 'Inspiration', max: 1, used: 1, reset: 'level'}, {name: 'Ki', max: 2, used: 1, reset: 'short'}]})});
     W.setPartyMember('p1', true); W.openParty();

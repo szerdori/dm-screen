@@ -753,6 +753,18 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     kclick('[data-tab="var"]');
     eq([r('Teszt Tűz').dmg, r('Teszt Tűz').atk, r('Teszt Láng').dmg], ['2d10', '6', '2d8']); has(r('Teszt Láng').t, 'DEX 13');
   });
+  ktest('beágyazva (?beagyazva=1, TERV-fejlesztesek-2026-11-21.md, 3. lépés): nincs fejléc és ‹ Vissza, lap nélkül nincs lap-lista; a lap ugyanaz', async () => {
+    try {
+      K.eval('beagyazva = true; document.documentElement.dataset.beagyazva = "1"');
+      openSheet();
+      eq([K.getComputedStyle(kq('body>header')).display, K.getComputedStyle(kq('.top>a[href="#"]')).display], ['none', 'none']);
+      ok(kq('nav.tabs') && kq('[data-act="d20"]'), 'a fülek és a dobógombok megvannak');
+      K.location.hash = ''; K.route();
+      has(ktext(), 'Nincs kiválasztott lap'); ok(!kq('#main a[href^="#lap/"]'), 'nincs lap-lista');
+      K.location.hash = '#lap/nincs'; K.route(); has(ktext(), 'A lap betöltése');
+    } finally { K.eval('beagyazva = false; delete document.documentElement.dataset.beagyazva'); }
+    openSheet(); ok(K.getComputedStyle(kq('body>header')).display !== 'none', 'nem beágyazva: van fejléc');
+  });
   ktest('Harness Divine Power (TERV-fejlesztesek-2026-11-21.md, 4. lépés): a Channel Divinity is fogy; elfogyva kérdez; visszavonás mindkettőt visszaadja; slot visszaadása ⌈PB/2⌉ szintig', () => {
     const H = W.Sheet;
     const lap = (cd = 0, hdp = 0, used = [1, 2, 1], level = 6) => openSheet({classes: [{name: 'Cleric', level}], spellcasting: {ability: 'wis', slots: [4, 3, 3], used, pact: {level: 0, max: 0, used: 0}},

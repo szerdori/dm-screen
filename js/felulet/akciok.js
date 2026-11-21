@@ -52,6 +52,8 @@ const AKCIOK = {
       save(); render();
     }
   },
+  // oldalpanel játékosnál: 📱 Lap / 📜 Statblokk (TERV-fejlesztesek-2026-11-21.md, 3. lépés)
+  oldalNezet: el => { oldalNezetAllit(el.dataset.v); render(); },
   // állapot: a címke a leírást nyitja (TERV-fejlesztesek-2026-11-21.md, 1. lépés), az eltávolítás az ablak gombjával
   condInfo: el => { const x = harcos(el), h = x && condAblak(x, +el.dataset.i); if (h) openModal(h); },
   condClose: () => closeModal(),

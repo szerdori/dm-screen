@@ -34,6 +34,8 @@ main{display:flex;height:calc(100% - 52px)}
 #tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;align-items:start}
 #side{width:440px;min-width:360px;border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel)}
 #detail{flex:1;overflow:auto}
+#lapNezet{flex:1 1 auto;min-height:320px;display:flex;border-top:1px solid var(--line)} #lapNezet[hidden]{display:none} #lapNezet iframe{flex:1;width:100%;border:0;background:var(--bg)}
+#side.lapmod #detail{flex:none;max-height:42%} .nezetvalto{display:flex;gap:4px} .nezetvalto button.on{border-color:var(--accent)}
 #dice{border-top:1px solid var(--line);height:260px;display:flex;flex-direction:column}
 .dicebar{display:flex;gap:4px;padding:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
 .dicebar input{width:110px}
@@ -182,6 +184,7 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
   <section id="board"><div id="tiles"></div></section>
   <aside id="side">
     <div id="detail"></div>
+    <div id="lapNezet" hidden></div>
     <div id="dice">
       <div class="dicebar">
         <input id="diceInput" placeholder="pl. 2d6+3">
@@ -204,12 +207,12 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 // a közös fájlok várt változata (= a lenti <script src> ?v= száma); a verzióőr (regiFajl) ezzel veti össze a betöltött fájlokat:
 // régi, gyorsítótárazott példánynál a lapokra nem írunk (syncSheets). A fájlok előtt áll, hogy induláskor már meglegyen.
 // Új fájl vagy verzióemelés: a fájlban modul('név', N), itt és a <script src>-ben ugyanaz az N (teszt nézi).
-const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 9, tar: 5, alap: 2, leiras: 2, harc: 5, nehezseg: 2, loot: 1, csapat: 2, 'import-5etools': 2, 'import-ddb': 2, 'import-json': 2, szabalykonyv: 7, lapszinkron: 17, dobaskeres: 1, mentes: 4, konyvtar: 1, felszereles: 2, 'veletlen-build': 1, harcter: 4, 'jatekos-kepernyo': 2, modal: 2, 'konyvtar-ablak': 9, 'felszereles-ablak': 2, 'veletlen-ablak': 1, szerkeszto: 6, ablakok: 6, akciok: 12, indulas: 5};
+const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 10, tar: 5, alap: 2, leiras: 2, harc: 5, nehezseg: 2, loot: 1, csapat: 2, 'import-5etools': 2, 'import-ddb': 2, 'import-json': 2, szabalykonyv: 7, lapszinkron: 17, dobaskeres: 1, mentes: 4, konyvtar: 1, felszereles: 2, 'veletlen-build': 1, harcter: 4, 'jatekos-kepernyo': 2, modal: 2, 'konyvtar-ablak': 9, 'felszereles-ablak': 2, 'veletlen-ablak': 1, szerkeszto: 6, ablakok: 6, akciok: 12, indulas: 5};
 </script>
 <script src="kozos.js?v=4"></script>
 <script src="sheet-adat.js?v=2"></script>
 <script src="sheet.js?v=29"></script>
-<script src="szerzodes.js?v=9"></script>
+<script src="szerzodes.js?v=10"></script>
 <script src="js/adat/tar.js?v=5"></script>
 <script src="js/logika/alap.js?v=2"></script>
 <script src="js/logika/leiras.js?v=2"></script>

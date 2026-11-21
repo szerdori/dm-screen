@@ -187,8 +187,32 @@ function statblock(c) {
     ${c.notes ? `<h3>Jegyzet</h3><p>${linkify(c.notes)}</p>` : ''}
   </div>`;
 }
+// ---------- oldalpanel játékosnál: a telefonos lap beágyazva (TERV-fejlesztesek-2026-11-21.md, 3. lépés) ----------
+// karakter.html?beagyazva=1#lap/{id}: ugyanaz a lap, mint a telefonon (fülek, dobógombok); egy iframe marad, másik játékosnál csak a # utáni rész változik (nincs újratöltés).
+// A 📱 Lap / 📜 Statblokk választás eszközönként megmarad (böngésző-tároló; ha nem írható, a memóriában, amíg az oldal nyitva van).
+let oldalNezetTartalek = null;
+const oldalNezet = () => oldalNezetTartalek ?? (Bongeszotar.olvas(window.Szerzodes.HELYI.oldalpanel) === 'statblokk' ? 'statblokk' : 'lap');
+function oldalNezetAllit(v) {
+  const k = window.Szerzodes.HELYI.oldalpanel, ok = v === 'statblokk' ? Bongeszotar.ir(k, v) : Bongeszotar.torol(k);
+  oldalNezetTartalek = ok ? null : v === 'statblokk' ? 'statblokk' : 'lap';
+}
+// a harcosnak van-e (nem törölt) telefonos lapja: játékosnál és lappal rendelkező NPC-nél; szörnynél nincs
+const lapjaOf = x => { const id = x?.c.libId; return id && SHEETS[id] && !SHEETS[id].deleted ? id : ''; };
+function lapNezetFrissit(id) {
+  const el = $('#lapNezet');
+  $('#side').classList.toggle('lapmod', !!id); el.hidden = !id;
+  if (!id) return;
+  const src = `karakter.html?beagyazva=1${new URLSearchParams(location.search).has('test') ? '&test=1' : ''}#lap/${encodeURIComponent(id)}`;
+  let f = el.querySelector('iframe');
+  if (!f) { f = document.createElement('iframe'); f.title = 'Telefonos karakterlap'; el.appendChild(f); }
+  if (f.getAttribute('src') !== src) f.setAttribute('src', src);  // csak a # változik: a lap nem töltődik újra
+  else {  // a beágyazott lap közben magától másik lapra léphetett (pl. dobáskérés): vissza a választotthoz
+    try { const w = f.contentWindow, h = '#lap/' + encodeURIComponent(id); if (w && w.location.href !== 'about:blank' && w.location.hash !== h) w.location.hash = h; } catch { /* még töltődik */ }
+  }
+}
 function renderDetail() {
-  const x = byId(selected) || byId(S.enc.active);
+  const x = byId(selected) || byId(S.enc.active), lapId = lapjaOf(x), lapMod = !!lapId && oldalNezet() === 'lap';
+  lapNezetFrissit(lapMod ? lapId : '');
   if (!x) { $('#detail').innerHTML = `<div class="pad muted">Kattints egy csempe nevére a részletes adatlaphoz.<br><br>
     Gyorsbillentyűk: <span class="kbd">N</span> / <span class="kbd">Szóköz</span> következő, <span class="kbd">P</span> előző, <span class="kbd">Esc</span> ablak bezárása.<br>
     Dobások: kattints a <span class="roll">1d6+2</span> / <span class="roll hit">+4</span> értékekre. Shift = előny / kritikus, Ctrl = hátrány.</div>`; return; }
@@ -218,7 +242,8 @@ function renderDetail() {
       </div>
       <textarea data-f="notes" rows="2" placeholder="Jegyzet ehhez a harchoz (pl. kinek a célpontja, mit tervez)…">${esc(x.notes)}</textarea>
       <div class="row"><button class="small" data-act="editCombatant">✎ Adatlap szerkesztése</button><button class="small" data-act="saveToLib">📚 Mentés a könyvtárba</button></div>
+      ${lapId ? `<div class="row nezetvalto"><button class="small ${lapMod ? 'on' : ''}" data-act="oldalNezet" data-v="lap" title="A telefonos lap (fülek, dobógombok, varázslatok)">📱 Lap</button><button class="small ${lapMod ? '' : 'on'}" data-act="oldalNezet" data-v="statblokk" title="A régi, szörny-stílusú statblokk">📜 Statblokk</button></div>` : ''}
     </div>
-    ${statblock(c)}
+    ${lapMod ? '' : statblock(c)}
   </div>`;
 }

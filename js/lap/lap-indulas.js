@@ -1,7 +1,7 @@
 // Telefonos karakterlap (lap-indulas, a karakter.html része): a Firebase-modul kapuja (KApp), a figyelők felkapcsolása és az első rajzolás (az utolsó betöltött fájl)
 // Csak ez a fájl futtat kódot betöltéskor (a többi js/lap/ fájl csak deklarál). Ha változik, amire más fájl támaszkodik: modul('lap-indulas', N) és a karakter.html-ben a lap-indulas.js?v=N és a VART_MODULOK.
 'use strict';
-modul('lap-indulas', 1);
+modul('lap-indulas', 2);
 
 // a Firebase-modul (lent) hívja; a tesztek közvetlenül is
 window.KApp = {
@@ -35,6 +35,8 @@ window.KApp = {
 // betöltéskor: a régi fájl-ellenőrzés (most már minden fájl bejelentkezett), a figyelők a régi sorrendben, első rajzolás
 function lapIndulas() {
   sheetStale = regiFajl();
+  // a DM Screen oldalpanelébe ágyazva (TERV-fejlesztesek-2026-11-21.md, 3. lépés): nincs fejléc, ‹ Vissza és lap-lista (karakter.html stílusa)
+  if (beagyazva) document.documentElement.dataset.beagyazva = '1';
   utvonalEsemenyek();
   gesztusEsemenyek();
   akciokEsemenyek();
