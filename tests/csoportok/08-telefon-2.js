@@ -773,6 +773,28 @@ describe('Telefonos karakterlap (karakter.html)', () => {
     const t = W.sheetToCreature(W.Sheet.norm({...sheetDoc(), spells: [sp('Sleep', 1), sp('light', 0), sp('Bless', 1), sp('Fire Bolt', 0)]}), {kind: 'pc'}).traits.find(x => x.name === 'Varázslatok').text;
     has(t, 'Cantrips: Fire Bolt, light'); has(t, '1st level: Bless (nincs bekészítve), Sleep (nincs bekészítve)');
   });
+  ktest('varázsképesség-módosító (TERV-fejlesztesek-2026-11-21.md, 6. lépés): a Varázslat fül fejlécében, a Harc fül varázslat-sorában és a DM statblokkjában; multiclassnál osztályonként; varázsképesség nélkül nincs', () => {
+    K.KApp.setRulebook({version: 'v', rb: rbVarazs()});
+    openSheet({classes: [{name: 'Cleric', level: 5}], abilities: {str: 10, dex: 10, con: 10, int: 10, wis: 18, cha: 10}, spellcasting: {ability: 'wis', slots: [4, 3, 2], used: [], pact: {level: 0, max: 0, used: 0}}});
+    kclick('[data-tab="var"]');
+    has(ktext(), 'Varázsképesség: Wisdom (+4) · spell save DC 15');
+    kclick('[data-tab="harc"]');
+    has(ktext(), 'spell save DC 15 · WIS +4');
+    const t = s => W.sheetToCreature(W.Sheet.norm(s), {kind: 'pc'}).traits.find(x => x.name === 'Varázslatok').text;
+    has(t({...sheetDoc(), classes: [{name: 'Cleric', level: 5}], abilities: {wis: 18}, spellcasting: {ability: 'wis'}, spells: [{name: 'Bless', level: 1}]}), 'spell save DC 15, +7 to hit, WIS +4');
+    // negatív módosító
+    openSheet({classes: [{name: 'Wizard', level: 1}], abilities: {str: 10, dex: 10, con: 10, int: 8, wis: 10, cha: 10}, spellcasting: {ability: 'int', slots: [2], used: [], pact: {level: 0, max: 0, used: 0}}});
+    kclick('[data-tab="var"]'); has(ktext(), 'Intelligence (-1)');
+    // multiclass (Cleric 3 / Wizard 2): WIS 14 → +2, INT 16 → +3
+    openSheet({auto: true, build: {base: {wis: 14, int: 16}, levels: [...lv('Cleric', 3), ...lv('Wizard', 2)], spells: {}}, classes: [{name: 'Cleric', level: 3}, {name: 'Wizard', level: 2}]});
+    kclick('[data-tab="var"]');
+    const fej = kqa('.mcfej').map(e => e.textContent);
+    has(fej[0], 'Cleric (Wisdom +2)'); has(fej[1], 'Wizard (Intelligence +3)');
+    kclick('[data-tab="harc"]'); has(ktext(), 'WIS +2'); has(ktext(), 'INT +3');
+    // varázsképesség nélkül (Fighter): nincs sor
+    openSheet({classes: [{name: 'Fighter', level: 3}], spellcasting: {ability: '', slots: [], used: [], pact: {level: 0, max: 0, used: 0}}});
+    kclick('[data-tab="harc"]'); ok(!ktext().includes('spell save DC'), 'nincs varázslat-sor');
+  });
   ktest('skill leírása (TERV-fejlesztesek-2026-11.md, 2. lépés): a Képességek fülön és a skill-választóban a névre koppintva; a választóban onnan is választható; a dobógomb marad', () => {
     const pop = () => kq('#infoPop');
     openSheet();

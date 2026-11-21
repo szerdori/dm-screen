@@ -602,7 +602,7 @@ describe('Multiclass: szabálymotor (TERV-multiclass.md, 1. lépés)', () => {
     const t = W.sheetToCreature(n, {kind: 'pc'}).traits;
     eq(t.find(x => x.name === 'Támadás akciónként')?.text, '2 (Extra Attack, az Attack action része)');
     const spl = W.sheetToCreature(H().norm({...n, spells: [{name: 'Shield', level: 1, cls: 'Wizard'}]}), {kind: 'pc'}).traits.find(x => x.name === 'Varázslatok').text;
-    has(spl, 'Wizard: spell save DC 14, +6 to hit; Cleric: spell save DC 13, +5 to hit');
+    has(spl, 'Wizard: spell save DC 14, +6 to hit, INT +3; Cleric: spell save DC 13, +5 to hit, WIS +2');
   });
   test('szintlépés új osztályba: a terv az új osztály 1. szintjének választásait kéri, HP az új osztály kockájával', () => {
     const rb = rbMc(), s = mc({str: 13, dex: 14, con: 14, cha: 13}, lv('Fighter', 3));

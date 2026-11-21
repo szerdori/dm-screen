@@ -75,7 +75,7 @@ function tabHarc(s, ed) {
     ${a.hit.trim() ? rollBtn(parseInt(a.hit.replace('−', '-')) || 0, a.name + ' – támadás', undefined, 'atk') : ''}${diceOf(a.dmg) ? dmgBtn(diceOf(a.dmg), a.name + ' – sebzés', H.tavolsagiFegyver(a.name, a.note) ? 'wdmg' : 'wdmg:melee', tamadasFx(s, a)) : ''}</div>`).join('');
   // varázslás osztályonként (multiclass: mindegyik a saját képességével), és a támadások száma akciónként (Extra Attack)
   const casts = H.spellCasts(s), apa = H.attacksPerAction(s);
-  const varazs = casts.map(c => `<div class="li"><span class="nm"><b>Varázslat${c.cls && casts.length > 1 ? ` (${esc(c.cls)})` : ''}</b><small>spell save DC ${esc(c.dc)}</small></span>${rollBtn(c.atk, 'Spell attack' + (c.cls && casts.length > 1 ? ` (${c.cls})` : ''), undefined, 'atk')}</div>`).join('');
+  const varazs = casts.map(c => `<div class="li"><span class="nm"><b>Varázslat${c.cls && casts.length > 1 ? ` (${esc(c.cls)})` : ''}</b><small>spell save DC ${esc(c.dc)}${varMod(s, c.ab) ? ` · ${esc(c.ab.toUpperCase())} ${esc(varMod(s, c.ab))}` : ''}</small></span>${rollBtn(c.atk, 'Spell attack' + (c.cls && casts.length > 1 ? ` (${c.cls})` : ''), undefined, 'atk')}</div>`).join('');
   const res = s.resources.map((r, i) => `<div class="li"><span class="nm"><b>${esc(r.name)}</b><small>${esc(r.max - r.used)} / ${esc(r.max)} · ${esc(RESET_HU[r.reset])}</small></span>
     <span class="pips">${pipRow(r.max, r.used, `data-act="res" data-i="${i}"`, dis, r.name)}</span></div>`).join('');
   // állapot / aktív hatás: a gépi hatás leírása; a DM kikapcsolhatja (⚙), ilyenkor csak emlékeztető
@@ -170,12 +170,14 @@ function varSlotok(s, dis) {
     <span class="pips">${pipRow(sc.pact.max, sc.pact.used, 'data-act="pact"', dis, 'Pact slot')}</span></div>` : '';
   return slots + pact;
 }
-// a fejléc: varázsképesség, spell save DC, spell attack (multiclassnál osztályonként, a bekészítettek számával)
+// a varázsképesség módosítója („+4”; TERV-fejlesztesek-2026-11-21.md, 6. lépés); ismeretlen képességnél ''
+const varMod = (s, ab) => H.ABIL.includes(ab) ? sgn(mod(s.abilities[ab])) : '';
+// a fejléc: varázsképesség (a módosítóval), spell save DC, spell attack (multiclassnál osztályonként, a bekészítettek számával)
 function varFej(s, casts) {
   const ab = H.spellAbility(s);
   const bek = cls => s.spells.filter(sp => sp.level && sp.prepared && !sp.always && sp.cls === cls).length;
-  return casts.length > 1 ? casts.map(c => `<p class="mcfej"><b>${esc(c.cls)}</b>${c.ab ? ` (${esc(H.ABIL_FULL[c.ab] || c.ab)})` : ''}: spell save DC <b>${esc(c.dc)}</b> · spell attack ${rollBtn(c.atk, `Spell attack (${c.cls})`, undefined, 'atk')}${c.prep ? ` · bekészítve ${esc(bek(c.cls))} / ${esc(c.prep)}` : ''}</p>`).join('')
-    : ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>';
+  return casts.length > 1 ? casts.map(c => `<p class="mcfej"><b>${esc(c.cls)}</b>${c.ab ? ` (${esc(H.ABIL_FULL[c.ab] || c.ab)}${varMod(s, c.ab) ? ' ' + esc(varMod(s, c.ab)) : ''})` : ''}: spell save DC <b>${esc(c.dc)}</b> · spell attack ${rollBtn(c.atk, `Spell attack (${c.cls})`, undefined, 'atk')}${c.prep ? ` · bekészítve ${esc(bek(c.cls))} / ${esc(c.prep)}` : ''}</p>`).join('')
+    : ab ? `<p>Varázsképesség: <b>${esc(H.ABIL_FULL[ab])}${varMod(s, ab) ? ` (${esc(varMod(s, ab))})` : ''}</b> · spell save DC <b>${esc(H.spellDc(s))}</b> · spell attack ${rollBtn(H.spellAtk(s), 'Spell attack', undefined, 'atk')}</p>` : '<p class="hint">Nincs megadva varázsképesség (Alapadatok fül).</p>';
 }
 // a varázslatok listája: szintenként; multiclassnál előbb osztályonként (TERV-multiclass.md: mindegyik a saját DC-jével), a nem besorolt varázslatok az „Egyéb” alatt
 // csak: „csak a bekészítettek” – a cantripek mindig látszanak (nem kell bekészíteni őket)

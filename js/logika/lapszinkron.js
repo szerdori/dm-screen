@@ -42,7 +42,7 @@ function sheetToCreature(s, base) {
     // a szinten belül ábécérendben (TERV-fejlesztesek-2026-11-21.md, 5. lépés)
     const casts = H.spellCasts(s), by = {};
     [...s.spells].sort((a, b) => a.name.localeCompare(b.name, 'en', {sensitivity: 'base'})).forEach(sp => (by[sp.level] = by[sp.level] || []).push(sp.name + (sp.level && !sp.prepared && !sp.always ? ' (nincs bekészítve)' : '')));
-    traits.unshift({name: 'Varázslatok', text: [casts.map(c => `${casts.length > 1 ? c.cls + ': ' : ''}spell save DC ${c.dc}, ${sgn(c.atk)} to hit`).join('; '),
+    traits.unshift({name: 'Varázslatok', text: [casts.map(c => `${casts.length > 1 ? c.cls + ': ' : ''}spell save DC ${c.dc}, ${sgn(c.atk)} to hit${ABIL.includes(c.ab) ? `, ${c.ab.toUpperCase()} ${sgn(mod(s.abilities[c.ab]))}` : ''}`).join('; '),
       ...Object.keys(by).sort((a, b) => a - b).map(l => `${l == 0 ? 'Cantrips' : ordinal(+l) + ' level'}: ${by[l].join(', ')}`)].filter(Boolean).join('\n')});
   }
   // az AC és a speed az aktív hatásokkal (Mage Armor, Haste, Grappled…) együtt; a hatások a lap állapotai között vannak
