@@ -1,7 +1,7 @@
 // Események (felület): a gombok nyilvántartása (AKCIOK), kattintásszabályok, módosítás, gépelés, billentyűk és beillesztés kezelése.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('akciok', N) és az index.html-ben az akciok.js?v=N és a VART_MODULOK.
 'use strict';
-modul('akciok', 12);
+modul('akciok', 13);
 
 // ---------- nyilvántartás: data-act="nev" → AKCIOK.nev(el, e) ----------
 // Új gomb = új bejegyzés. A kezelő maga rajzol és ment, ha kell.
@@ -54,6 +54,7 @@ const AKCIOK = {
   },
   // oldalpanel játékosnál: 📱 Lap / 📜 Statblokk (TERV-fejlesztesek-2026-11-21.md, 3. lépés)
   oldalNezet: el => { oldalNezetAllit(el.dataset.v); render(); },
+  tovabbiak: () => { tovabbiakNyitva = !tovabbiakNyitva; render(); },  // lap módban a ritkább vezérlők (TERV-oldalpanel-bekeszites.md, 1. lépés)
   // állapot: a címke a leírást nyitja (TERV-fejlesztesek-2026-11-21.md, 1. lépés), az eltávolítás az ablak gombjával
   condInfo: el => { const x = harcos(el), h = x && condAblak(x, +el.dataset.i); if (h) openModal(h); },
   condClose: () => closeModal(),

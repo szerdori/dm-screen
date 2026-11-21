@@ -35,7 +35,7 @@ main{display:flex;height:calc(100% - 52px)}
 #side{width:440px;min-width:360px;border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel)}
 #detail{flex:1;overflow:auto}
 #lapNezet{flex:1 1 auto;min-height:320px;display:flex;border-top:1px solid var(--line)} #lapNezet[hidden]{display:none} #lapNezet iframe{flex:1;width:100%;border:0;background:var(--bg)}
-#side.lapmod #detail{flex:none;max-height:42%} .nezetvalto{display:flex;gap:4px} .nezetvalto button.on{border-color:var(--accent)}
+#side.lapmod #detail{flex:none;max-height:42%} #side.lapmod #dice{height:130px} #side.lapmod .dicebar .hint{display:none} .ctl.kompakt{margin:6px 8px;padding:6px 8px;gap:6px} .ctl.kompakt .row{gap:6px} .ctl.kompakt .knev{max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .nezetvalto{display:flex;gap:4px} .nezetvalto button.on{border-color:var(--accent)}
 #dice{border-top:1px solid var(--line);height:260px;display:flex;flex-direction:column}
 .dicebar{display:flex;gap:4px;padding:6px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
 .dicebar input{width:110px}
@@ -207,7 +207,7 @@ table.dt tr.hl td{color:var(--accent);font-weight:700}
 // a közös fájlok várt változata (= a lenti <script src> ?v= száma); a verzióőr (regiFajl) ezzel veti össze a betöltött fájlokat:
 // régi, gyorsítótárazott példánynál a lapokra nem írunk (syncSheets). A fájlok előtt áll, hogy induláskor már meglegyen.
 // Új fájl vagy verzióemelés: a fájlban modul('név', N), itt és a <script src>-ben ugyanaz az N (teszt nézi).
-const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 10, tar: 5, alap: 2, leiras: 2, harc: 5, nehezseg: 2, loot: 1, csapat: 2, 'import-5etools': 2, 'import-ddb': 2, 'import-json': 2, szabalykonyv: 7, lapszinkron: 17, dobaskeres: 1, mentes: 4, konyvtar: 1, felszereles: 2, 'veletlen-build': 1, harcter: 4, 'jatekos-kepernyo': 2, modal: 2, 'konyvtar-ablak': 9, 'felszereles-ablak': 2, 'veletlen-ablak': 1, szerkeszto: 6, ablakok: 6, akciok: 12, indulas: 5};
+const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 10, tar: 5, alap: 2, leiras: 2, harc: 5, nehezseg: 2, loot: 1, csapat: 2, 'import-5etools': 2, 'import-ddb': 2, 'import-json': 2, szabalykonyv: 7, lapszinkron: 17, dobaskeres: 1, mentes: 4, konyvtar: 1, felszereles: 2, 'veletlen-build': 1, harcter: 5, 'jatekos-kepernyo': 2, modal: 2, 'konyvtar-ablak': 9, 'felszereles-ablak': 2, 'veletlen-ablak': 1, szerkeszto: 6, ablakok: 6, akciok: 13, indulas: 5};
 </script>
 <script src="kozos.js?v=4"></script>
 <script src="sheet-adat.js?v=2"></script>
@@ -230,7 +230,7 @@ const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 10, tar: 
 <script src="js/logika/konyvtar.js?v=1"></script>
 <script src="js/logika/felszereles.js?v=2"></script>
 <script src="js/logika/veletlen-build.js?v=1"></script>
-<script src="js/felulet/harcter.js?v=4"></script>
+<script src="js/felulet/harcter.js?v=5"></script>
 <script src="js/felulet/jatekos-kepernyo.js?v=2"></script>
 <script src="js/felulet/modal.js?v=2"></script>
 <script src="js/felulet/konyvtar-ablak.js?v=9"></script>
@@ -238,7 +238,7 @@ const VART_MODULOK = {kozos: 4, 'sheet-adat': 2, sheet: 29, szerzodes: 10, tar: 
 <script src="js/felulet/veletlen-ablak.js?v=1"></script>
 <script src="js/felulet/szerkeszto.js?v=6"></script>
 <script src="js/felulet/ablakok.js?v=6"></script>
-<script src="js/felulet/akciok.js?v=12"></script>
+<script src="js/felulet/akciok.js?v=13"></script>
 <script src="js/indulas.js?v=5"></script>
 
 <script src="firebase-config.js"></script>

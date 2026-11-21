@@ -170,11 +170,22 @@ describe('Karakterlap a DM Screenben (szinkron, import, mentés)', () => {
     valaszt(a);
     const ifr = $('#lapNezet iframe');
     ok(!$('#lapNezet').hidden && ifr, 'a lap látszik'); eq(ifr.getAttribute('src'), 'karakter.html?beagyazva=1&test=1#lap/p1');
-    ok(!$('#detail .sb'), 'nincs statblokk'); ok($('#detail [data-f="hp"]') && $('#detail [data-act="addCond"]'), 'a harci vezérlők maradnak');
+    ok(!$('#detail .sb'), 'nincs statblokk'); ok($('#detail [data-f="hp"]') && $('#detail [data-f="init"]') && $('#detail [data-f="ac"]'), 'a fő harci vezérlők egy sorban');
+    // kompakt (TERV-oldalpanel-bekeszites.md, 1. lépés): a ritkább vezérlők a ▾ Továbbiak alatt; a dobó és a napló kisebb
+    ok($('#detail .ctl.kompakt') && !$('#detail [data-act="addCond"]') && !$('#detail [data-f="notes"]'), 'a többi rejtve');
+    eq(W.getComputedStyle($('#dice')).height, '130px');
+    setVal('#detail [data-f="init"]', '15'); eq(a.init, 15, 'a kompakt sor mezője a harcosra hat');
+    click('#detail [data-act="tovabbiak"]');
+    ok($('#detail [data-act="addCond"]') && $('#detail [data-f="notes"]') && $('#detail [data-f="max"]') && $('#detail [data-f="temp"]') && $('#detail [data-act="editCombatant"]'), 'kinyitva minden megvan');
+    $('#condSel').value = 'Prone'; click('#detail [data-act="addCond"]'); eq(a.cond.map(k => k.name), ['Prone']); ok($('#detail [data-act="tovabbiak"].on'), 'nyitva marad');
+    ok($('#detail .chip[data-act="condInfo"]'), 'a címke a kompakt nézetben is látszik');
+    click('#detail [data-act="tovabbiak"]'); ok(!$('#detail [data-act="addCond"]'), 'becsukva');
+    a.cond = [];
     valaszt(b); ok($('#lapNezet iframe') === ifr, 'ugyanaz az iframe'); eq(ifr.getAttribute('src'), 'karakter.html?beagyazva=1&test=1#lap/p2');
     // kapcsoló: statblokk, és ez megmarad
     click('#detail [data-act="oldalNezet"][data-v="statblokk"]');
     ok($('#lapNezet').hidden && $('#detail .sb'), 'statblokk'); eq(BT.olvas(k), 'statblokk');
+    ok($('#detail [data-act="addCond"]') && !$('#detail .ctl.kompakt'), 'statblokk módban a teljes vezérlő'); eq(W.getComputedStyle($('#dice')).height, '260px');
     valaszt(a); ok($('#lapNezet').hidden && $('#detail .sb'), 'másik játékosnál is');
     click('#detail [data-act="oldalNezet"][data-v="lap"]'); ok(!$('#lapNezet').hidden && !$('#detail .sb')); eq(BT.olvas(k), null);
     // szörny: statblokk, nincs kapcsoló

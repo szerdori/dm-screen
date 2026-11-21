@@ -1,7 +1,7 @@
 // Harctér (felület): a fő képernyő rajzolása – csempék, részletes adatlap, napló és dobáslinkek, nehézség, mentésjelző, belépő-ablak.
 // Rétegek: docs/dontesek/0006 – a felület csak a logikát hívja, a Tar-t és a DB-t nem. Ha változik, amire más fájl támaszkodik: modul('harcter', N) és az index.html-ben a harcter.js?v=N és a VART_MODULOK.
 'use strict';
-modul('harcter', 4);
+modul('harcter', 5);
 
 // ---------- fejléc: mentésjelző, emlékeztető a fájlba mentésre, belépő-ablak ----------
 const setSaveState = t => $('#saveState').textContent = t;
@@ -217,33 +217,58 @@ function renderDetail() {
     Gyorsbillentyűk: <span class="kbd">N</span> / <span class="kbd">Szóköz</span> következő, <span class="kbd">P</span> előző, <span class="kbd">Esc</span> ablak bezárása.<br>
     Dobások: kattints a <span class="roll">1d6+2</span> / <span class="roll hit">+4</span> értékekre. Shift = előny / kritikus, Ctrl = hátrány.</div>`; return; }
   const c = x.c;
+  // lap módban kompakt (TERV-oldalpanel-bekeszites.md, 1. lépés): felül egy sor (név, Init, HP, AC, a kapcsoló), a címkék; a többi a ▾ Továbbiak alatt
+  const fejSor = `<div class="row"><b style="flex:1">${esc(nameOf(x))}</b><span class="muted">${KIND_HU[c.kind] || ''}</span>
+        <select data-f="side">${Object.entries(SIDE_HU).map(([k, l]) => `<option value="${k}" ${sideOf(x) === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${selected && selected !== S.enc.active ? '<button class="small" data-act="deselect">aktuálishoz vissza</button>' : ''}</div>`;
+  const kapcsolo = lapId ? `<span class="nezetvalto"><button class="small ${lapMod ? 'on' : ''}" data-act="oldalNezet" data-v="lap" title="A telefonos lap (fülek, dobógombok, varázslatok)">📱 Lap</button><button class="small ${lapMod ? '' : 'on'}" data-act="oldalNezet" data-v="statblokk" title="A régi, szörny-stílusú statblokk">📜 Statblokk</button></span>` : '';
+  if (lapMod) {
+    $('#detail').innerHTML = `<div data-cid="${esc(x.cid)}">
+    <div class="ctl kompakt">
+      <div class="row"><b class="knev" title="${esc(KIND_HU[c.kind] || '')}">${esc(nameOf(x))}</b>
+        <label>Init</label><input type="number" data-f="init" value="${esc(x.init ?? '')}" style="width:46px">
+        <label>HP</label><input type="number" data-f="hp" value="${esc(x.hp)}" style="width:52px"><span class="muted">/ ${esc(c.hp.max)}${x.temp ? ' +' + esc(x.temp) : ''}</span>
+        <label>AC</label><input type="number" data-f="ac" value="${esc(c.ac)}" style="width:46px">
+        <span class="grow"></span>${selected && selected !== S.enc.active ? '<button class="small" data-act="deselect" title="Vissza az aktuális harcoshoz">↩</button>' : ''}${kapcsolo}<button class="small ${tovabbiakNyitva ? 'on' : ''}" data-act="tovabbiak" title="Oldal, max HP, temp, állapot hozzáadása, nyilvános név, jegyzet, szerkesztés">${tovabbiakNyitva ? '▴' : '▾'} Továbbiak</button></div>
+      ${condChips(x)}
+      ${tovabbiakNyitva ? `${fejSor}<div class="row"><label>Max HP</label><input type="number" data-f="max" value="${esc(c.hp.max)}" style="width:60px"><label>Temp</label><input type="number" data-f="temp" value="${esc(x.temp)}" style="width:52px"></div>
+      ${condSor(x)}${nyilvanosSor(x)}` : ''}
+    </div>
+  </div>`;
+    return;
+  }
   $('#detail').innerHTML = `<div data-cid="${esc(x.cid)}">
     <div class="ctl">
-      <div class="row"><b style="flex:1">${esc(nameOf(x))}</b><span class="muted">${KIND_HU[c.kind] || ''}</span>
-        <select data-f="side">${Object.entries(SIDE_HU).map(([k, l]) => `<option value="${k}" ${sideOf(x) === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        ${selected && selected !== S.enc.active ? '<button class="small" data-act="deselect">aktuálishoz vissza</button>' : ''}</div>
+      ${fejSor}
       <div class="row">
         <label>Init</label><input type="number" data-f="init" value="${esc(x.init ?? '')}" style="width:52px">
         <label>HP</label><input type="number" data-f="hp" value="${esc(x.hp)}"> / <input type="number" data-f="max" value="${esc(c.hp.max)}">
         <label>Temp</label><input type="number" data-f="temp" value="${esc(x.temp)}" style="width:52px">
         <label>AC</label><input type="number" data-f="ac" value="${esc(c.ac)}" style="width:52px">
       </div>
-      <div class="row">
+      ${condSor(x)}${condChips(x)}${nyilvanosSor(x)}
+      ${kapcsolo ? `<div class="row">${kapcsolo}</div>` : ''}
+    </div>
+    ${statblock(c)}
+  </div>`;
+}
+// az oldalpanel részei (a renderDetail rakja össze; a kompakt és a teljes nézet is ezeket használja)
+let tovabbiakNyitva = false;  // lap módban a ▾ Továbbiak nyitva (amíg az oldal nyitva van)
+function condSor(x) {
+  return `<div class="row">
         <select id="condSel">${CONDITIONS.map(k => `<option title="${esc(Sheet.condLeiras(k).hu)}">${k}</option>`).join('')}<option value="">egyéni…</option></select>
         <input id="condCustom" placeholder="egyéni" style="width:90px">
         <input id="condRounds" type="number" min="1" placeholder="kör" title="Hány körig tart (üres = amíg le nem veszed)" style="width:52px">
         <button class="small" data-act="addCond">Állapot +</button>
         <label><input type="checkbox" data-f="conc" ${x.conc ? 'checked' : ''}> Koncentráció</label>
-      </div>
-      ${x.cond.length || x.conc ? `<div class="conds">${x.conc ? '<span class="chip conc" data-act="toggleConc">Koncentráció</span>' : ''}${x.cond.map((k, i) => `<span class="chip" data-act="condInfo" data-i="${i}" title="Kattints a leírásért (onnan veheted le)">${esc(k.name)}${k.rounds != null ? ' (' + k.rounds + ')' : ''}</span>`).join('')}</div>` : ''}
-      <div class="row">
+      </div>`;
+}
+const condChips = x => x.cond.length || x.conc ? `<div class="conds">${x.conc ? '<span class="chip conc" data-act="toggleConc">Koncentráció</span>' : ''}${x.cond.map((k, i) => `<span class="chip" data-act="condInfo" data-i="${i}" title="Kattints a leírásért (onnan veheted le)">${esc(k.name)}${k.rounds != null ? ' (' + k.rounds + ')' : ''}</span>`).join('')}</div>` : '';
+function nyilvanosSor(x) {
+  return `<div class="row">
         <label>Játékosok ezt látják:</label><input data-f="pubName" value="${esc(x.publicName || '')}" placeholder="${esc(nameOf(x))}" title="Ha üres, a valódi nevét látják. Pl. „Csuklyás alak” egy még ismeretlen NPC-nél" style="flex:1">
         <label><input type="checkbox" data-f="hiddenP" ${x.hiddenP ? 'checked' : ''}> rejtett</label>
       </div>
       <textarea data-f="notes" rows="2" placeholder="Jegyzet ehhez a harchoz (pl. kinek a célpontja, mit tervez)…">${esc(x.notes)}</textarea>
-      <div class="row"><button class="small" data-act="editCombatant">✎ Adatlap szerkesztése</button><button class="small" data-act="saveToLib">📚 Mentés a könyvtárba</button></div>
-      ${lapId ? `<div class="row nezetvalto"><button class="small ${lapMod ? 'on' : ''}" data-act="oldalNezet" data-v="lap" title="A telefonos lap (fülek, dobógombok, varázslatok)">📱 Lap</button><button class="small ${lapMod ? '' : 'on'}" data-act="oldalNezet" data-v="statblokk" title="A régi, szörny-stílusú statblokk">📜 Statblokk</button></div>` : ''}
-    </div>
-    ${lapMod ? '' : statblock(c)}
-  </div>`;
+      <div class="row"><button class="small" data-act="editCombatant">✎ Adatlap szerkesztése</button><button class="small" data-act="saveToLib">📚 Mentés a könyvtárba</button></div>`;
 }
